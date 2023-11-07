@@ -22,16 +22,16 @@ vmap(vi_step, in_axes=(None, 0), out_axes=0)(values, mdps)
 
 > List of Algorithms
 
-| Algorithms | Sync  | Async |
-|:-----:|:---------:|:---------:|
-|  VI  |:heavy_check_mark:|:x:|
-|  PI  |:x:|:x:|
-|  Accelerated VI  |:x:|:x:|
-|  Momentum VI  |:x:|:x:|
-|  Momentum QL  |:x:|:x:|
-|  Relaxed VI  |:x:|:x:|
-|  Speedy QL  |:x:|:x:|
-|  Zap QL  |:x:|:x:|
+| Algorithms       | Sync             | Async     |
+|:----------------:|:----------------:|:---------:|
+|  VI              |:heavy_check_mark:|:x:        |
+|  PI              |:x:               |:x:        |
+|  Accelerated VI  |:x:               |:x:        |
+|  Momentum VI     |:x:               |:x:        |
+|  Momentum QL     |:x:               |:x:        |
+|  Relaxed VI      |:x:               |:x:        |
+|  Speedy QL       |:x:               |:x:        |
+|  Zap QL          |:x:               |:x:        |
 
 > Typehint
 
@@ -39,7 +39,7 @@ Jaxdp extensively uses typehints and annotations from [jaxtyping](https://github
 
 > MDP -> Pytree structure
 
-Jaxdp provides a Pytree definition for MDPs. This allow jaxdp to vectorize different MDPs for a DP step.
+Jaxdp provides a Pytree definition for MDPs, which allows Jaxdp to vectorize different MDPs for a DP step.
 
 ```Python
 import jax.numpy as jnp
