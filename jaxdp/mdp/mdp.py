@@ -1,11 +1,12 @@
-from typing import Tuple, Any, Dict, Optional
+from typing import Tuple, Any, Dict, Optional, Union, TypeVar
 import json
 import jax.numpy as jnp
-from jaxtyping import Array, Float
+import jax
+from dataclasses import dataclass
+from jaxtyping import Array, Float, jaxtyped
 from beartype import beartype
 
 
-@beartype
 class MDP():
     """ Base Markov Decision Process (MDP) class
 
@@ -27,7 +28,6 @@ class MDP():
                  terminal: Float[Array, "... S"],
                  name: str = "MDP",
                  validate: bool = True):
-
         self.name = name
         self.transition = transition
         self.reward = reward
