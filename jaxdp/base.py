@@ -1,108 +1,151 @@
-from typing import Optional, Callable
+from typing import Optional, Callable, Tuple, Dict, Union, Any
+from dataclasses import dataclass
 import jax.numpy as jnp
 import jax.random as jrd
 import jax
 import distrax
 from jaxtyping import Array, Float
 
+from jaxdp.mdp.mdp import MDP
+from jaxdp import TransitionType
 
-class BaseDP():
 
-    def __init__(self,
-                 transition: Float[Array, "A S S"],
-                 reward: Float[Array, "A S"],
-                 initial: Float[Array, "S"],
-                 terminal: Float[Array, "S"],
-                 episode_length: int
-                 ) -> None:
-        self.transition = transition
-        self.reward = reward
-        self.initial = initial
-        self.terminal = terminal
-        self.episode_length = episode_length
+def greedy_policy(value: Float[Array, "A S"]) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    return jax.nn.one_hot(jnp.argmax(value, axis=0, keepdims=False),
+                          num_classes=value.shape[0],
+                          axis=0)
 
-        self.state_size = self.transition.shape[1]
-        self.action_size = self.transition.shape[0]
 
-        if not jnp.allclose(transition.sum(axis=1), 1.0, atol=1e-5):
-            raise ValueError("Transition matrix must be column stochastic.")
+def soft_policy(value: Float[Array, "A S"],
+                temperature: float,
+                ) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    return jax.nn.softmax(value * temperature, axis=0)
 
-    def greedy_policy(self, values: Float[Array, "A S"]) -> Float[Array, "A S"]:
-        return jax.nn.one_hot(jnp.argmax(values, axis=0, keepdims=False),
-                              num_classes=self.action_size,
-                              axis=0)
-        return (jnp.argmax(values, axis=0, keepdims=True) ==
-                jnp.arange(self.action_size).reshape(-1, 1)).astype("float32")
 
-    def soft_policy(self, values: Float[Array, "A S"], key: jrd.KeyArray) -> Float[Array, "A S"]:
-        return distrax.OneHotCategorical(logits=values.T).sample(seed=key).T
+def e_greedy_policy(value: Float[Array, "A S"],
+                    epsilon: float,
+                    ) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    greedy_policy_p = greedy_policy(value)
+    return greedy_policy_p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
-    def e_greedy_policy(self,
-                        values: Float[Array, "A S"],
-                        epsilon: float,
-                        key: jrd.KeyArray
+
+def sample_from(policy: Float[Array, "A S"],
+                key: jrd.KeyArray,
+                ) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    return distrax.OneHotCategorical(probs=policy.T).sample(seed=key).T
+
+
+def expected_state_value(mdp: MDP, value: Float[Array, "S"]) -> float:
+    # TODO: Add docstring
+    return (value * mdp.initial).sum()
+
+
+def expected_q_value(mdp: MDP, value: Float[Array, "A S"]) -> float:
+    # TODO: Add docstring
+    return expected_state_value(mdp, jnp.max(value, axis=0))
+
+
+def _markov_chain_pi(mdp: MDP, policy: Float[Array, "A S"]
+                     ) -> Tuple[Float[Array, "S S"], Float[Array, "S"]]:
+    # TODO: Add docstring
+    transition_pi = jnp.einsum("as,axs->xs", policy, mdp.transition)
+    reward_pi = jnp.einsum("as,as->s", policy, mdp.reward)
+    return transition_pi, reward_pi
+
+
+def sample_based_policy_evaluation():
+    # TODO: Implement sample based evaluation
+    # TODO: Add test
+    # TODO: Add docstring
+    pass
+
+
+def policy_evaluation(mdp: MDP,
+                      policy: Float[Array, "A S"],
+                      gamma: float
+                      ) -> Float[Array, "S"]:
+    # TODO: Add docstring
+    transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
+    mc_state_values = jnp.linalg.inv(
+        jnp.eye(mdp.state_size) - gamma * transition_pi.T) @ (reward_pi * (1 - mdp.terminal))
+    return mc_state_values
+
+
+def q_policy_evaluation(mdp: MDP,
+                        policy: Float[Array, "A S"],
+                        gamma: float,
                         ) -> Float[Array, "A S"]:
-        random_act = distrax.OneHotCategorical(logits=jnp.zeros(values.shape).T).sample(seed=key).T
-        greedy_act = self.greedy_policy(values)
-        mask = jrd.bernoulli(p=epsilon, shape=self.state_size).reshape(1, -1)
-        return random_act * mask + (1 - mask) * greedy_act
+    # TODO: Add docstring
+    mc_state_values = policy_evaluation(mdp, policy, gamma)
+    return (mdp.reward * (1 - mdp.terminal).reshape(1, -1) +
+            gamma * jnp.einsum("axs,x", mdp.transition, mc_state_values))
 
-    def async_sample(self,
-                     policy_fn: Callable[[jrd.KeyArray], Float[Array, "A S"]],
-                     length: int,
-                     n_sample: int,
-                     key: jrd.KeyArray,
-                     initial_state: Optional[Float[Array, "S"]] = None
-                     ) -> Float[Array, "S N"]:
-        trajectory = {
-            "state": jnp.empty((n_sample, length, self.state_size)),
-            "next_state": jnp.empty((n_sample, length, self.state_size)),
-            "action": jnp.empty((n_sample, length, self.action_size)),
-            "reward": jnp.empty((n_sample, length)),
-            "terminal": jnp.empty((n_sample, length)),
-            "timeout": jnp.empty((n_sample, length)),
-        }
 
-        def _sample_init_state(subkey: jrd.KeyArray, n_sample: int) -> Float[Array, "S"]:
-            return distrax.OneHotCategorical(
-                probs=self.initial).sample(
-                    seed=subkey, sample_shape=(n_sample,))
+def bellman_error(mdp: MDP,
+                  policy: Float[Array, "A S"],
+                  value: Float[Array, "A S"],
+                  gamma: float
+                  ) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    target_values = jnp.einsum("axs,ux,ux,x->as",
+                               mdp.transition, value, policy, (1 - mdp.terminal))
+    return (mdp.reward + gamma * target_values - value) * (1 - mdp.terminal).reshape(1, -1)
 
-        key, subkey = jrd.split(key, num=2)
-        if initial_state is None:
-            state = _sample_init_state(subkey, n_sample)
-        else:
-            state = initial_state
 
-        # actions = self.greedy_policy(value)
-        actions = policy_fn()
-        episode_step = jnp.zeros((n_sample,))
-        for step in range(length):
-            action = jnp.einsum("as,bs->ba", actions, state)
-            reward = jnp.einsum("as,as,bs->b", self.reward, actions, state)
-            next_state_p = jnp.einsum("as,axs,bs->bx", actions, self.transition, state)
-            key, subkey = jrd.split(key, num=2)
-            next_state = distrax.OneHotCategorical(probs=next_state_p).sample(seed=subkey)
+def sync_sample_step(mdp: MDP,
+                     policy: Float[Array, "A S"],
+                     key: jrd.KeyArray
+                     ) -> Tuple[Float[Array, "S S"],
+                                Float[Array, "S A"],
+                                Float[Array, "S"],
+                                Float[Array, "S S"],
+                                Float[Array, "S"]]:
+    # TODO: Add docstring
+    transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
 
-            episode_step = episode_step + 1
-            timeout = episode_step >= self.episode_length
-            terminal = jnp.einsum("s,bs->b", self.terminal, next_state)
-            done = jnp.logical_or(terminal, timeout)
-            episode_step = episode_step * (1 - done)
+    state = jnp.eye(mdp.state_size)
+    action = sample_from(policy, key).T
+    reward = reward_pi * (1 - mdp.terminal)
+    next_state = distrax.OneHotCategorical(
+        probs=transition_pi.T).sample(seed=key)
+    terminal = jnp.einsum("sx,x->s", next_state, mdp.terminal)
 
-            key, subkey = jrd.split(key, num=2)
-            init_state = _sample_init_state(subkey, n_sample)
+    return state, action, reward, next_state, terminal
 
-            for array, name in ([state, "state"],
-                                [next_state, "next_state"],
-                                [action, "action"],
-                                [reward, "reward"],
-                                [timeout, "timeout"],
-                                [terminal, "terminal"]):
-                trajectory[name] = trajectory[name].at[:, step].set(array)
 
-            state = next_state * (1 - done.reshape(-1, 1)) + init_state * (done.reshape(-1, 1))
-        return trajectory
+def async_sample_step(mdp: MDP,
+                      policy: Float[Array, "A S"],
+                      state: Float[Array, "S"],
+                      episode_step: Float[Array, ""],
+                      episode_length: int,
+                      key: jrd.KeyArray
+                      ) -> TransitionType:
+    """ Multiplication-based async sample """
+    # TODO: Add test
+    # TODO: Add docstring
+    act_key, state_key, init_key = jrd.split(key, num=3)
+    policy_p = jnp.einsum("as,s->a", policy, state)
+    action = sample_from(policy_p, key=act_key)
 
-    def evaluate(self, value: Float[Array, "A S"]) -> float:
-        return (jnp.max(value, axis=0) * self.initial).sum()
+    next_state_p = jnp.einsum(
+        "a,axs,s->x", action, mdp.transition, state)
+    next_state = distrax.OneHotCategorical(
+        probs=next_state_p).sample(seed=state_key)
+    reward = jnp.einsum("as,a,s->", mdp.reward, action, state)
+    terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
+
+    episode_step = episode_step + 1
+    timeout = episode_step >= episode_length
+    terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
+    done = jnp.logical_or(terminal, timeout)
+
+    init_state = distrax.OneHotCategorical(
+        probs=mdp.initial).sample(seed=init_key)
+    state = next_state * (1 - done) + init_state * done
+    episode_step = episode_step * (1 - done)
+
+    return state, action, reward, next_state, terminal, timeout, episode_step

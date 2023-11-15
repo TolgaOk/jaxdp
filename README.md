@@ -11,13 +11,13 @@ from jax import vmap
 ...
 
 # Regular VI step
-VI.step(value, mdp)
+regular_vi_step = VI.step_sync(value, mdp)
 
 # Multiple values VI step
-vi_step = vmap(VI.step, in_axes=(0, None), out_axes=0)(values, mdp)
+mv_vi_step = vmap(VI.step_sync, in_axes=(0, None), out_axes=0)(values, mdp)
 
 # Multiple values multiple MDPs VI step
-vmap(vi_step, in_axes=(None, 0), out_axes=0)(values, mdps)
+mvmm_vi_step = vmap(mv_vi_step, in_axes=(None, 0), out_axes=0)(values, mdps)
 ```
 
 > List of Algorithms
@@ -44,10 +44,10 @@ Jaxdp provides a Pytree definition for MDPs, which allows Jaxdp to vectorize dif
 ```Python
 import jax.numpy as jnp
 import jax.tree_util
-from jaxdp import MDPtree
+from jaxdp.mdp import MDP
 
 
-mdp_1 = MDPtree(
+mdp_1 = MDP(
     transition=...,
     terminal=...,
     initial=...,
@@ -57,7 +57,7 @@ mdp_1 = MDPtree(
 ...
 
 # Stacked MDPs
-mdps = jax.tree_util.tree_map(lambda *mdp: jnp.stack(mdp), (mdp_1, mdp_2))
+mdps = jax.tree_util.tree_map(lambda *mdps: jnp.stack(mdps), mdp_1, mdp_2)
 ```
 
 ## Installation
