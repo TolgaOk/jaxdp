@@ -170,7 +170,7 @@ class TestBaseDP(unittest.TestCase):
             )
         )
 
-    def test_sync_sample_step(self) -> None:
+    def test_sync_sample(self) -> None:
         mdp = MDP.load_mdp_from_json("./mdp_data/tree.json")
 
         policy = jnp.array([
@@ -183,7 +183,7 @@ class TestBaseDP(unittest.TestCase):
 
         sync_sample_step = jax.jit(
             jax.vmap(
-                DP.sync_sample_step,
+                DP.sync_sample,
                 in_axes=(None, None, 0),
                 out_axes=0)
         )
@@ -222,7 +222,7 @@ class TestBaseDP(unittest.TestCase):
             (policy[0] - policy[1]) * (1 - mdp.terminal), reward.mean(axis=0), atol=1e-2
         ))
 
-    def test_async_sample_step(self) -> None:
+    def test_async_sample_step_pi(self) -> None:
         mdp = MDP.load_mdp_from_json("./mdp_data/tree.json")
 
         policies = jnp.array([[
@@ -237,15 +237,11 @@ class TestBaseDP(unittest.TestCase):
         batch_key_split = jax.vmap(jrd.split,
                                    in_axes=(0, None),
                                    out_axes=1)
-        keys = batch_key_split(
-            jrd.split(key, batch_size),
-            policy_size
-        )
 
         async_step = jax.jit(
             jax.vmap(
                 jax.vmap(
-                    DP.async_sample_step,
+                    DP.async_sample_step_pi,
                     in_axes=(None, None, 0, 0, None, 0),
                     out_axes=0),
                 in_axes=(None, 0, 0, 0, None, 0),
@@ -275,12 +271,13 @@ class TestBaseDP(unittest.TestCase):
                 jrd.split(step_key, batch_size),
                 policy_size
             )
-            (data["states"],
+            (
              data["action"],
-             data["reward"],
              data["next_state"],
+             data["reward"],
              data["terminal"],
              data["timeout"],
+             data["states"],
              data["episode_step"]
              ) = async_step(
                 mdp,
