@@ -7,7 +7,6 @@ import distrax
 from jaxtyping import Array, Float
 
 from jaxdp.mdp.mdp import MDP
-from jaxdp import TransitionType
 
 
 def greedy_policy(value: Float[Array, "A S"]) -> Float[Array, "A S"]:
