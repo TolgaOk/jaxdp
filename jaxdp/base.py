@@ -125,7 +125,6 @@ def async_sample_step(mdp: MDP,
                       key: jrd.KeyArray
                       ) -> TransitionType:
     """ Multiplication-based async sample """
-    # TODO: Add test
     # TODO: Add docstring
     act_key, state_key, init_key = jrd.split(key, num=3)
     policy_p = jnp.einsum("as,s->a", policy, state)
