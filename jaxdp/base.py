@@ -81,6 +81,18 @@ def sample_from(policy: Float[Array, "A S"],
     return distrax.OneHotCategorical(probs=policy.T).sample(seed=key).T
 
 
+def to_state_value(mdp: MDP, value: Float[Array, "A S"]) -> Float[Array, "S"]:
+    # TODO: Add docstring
+    # TODO: Add test
+    pass
+
+
+def to_state_action_value(mdp: MDP, value: Float[Array, "S"]) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    # TODO: Add test
+    pass
+
+
 def expected_state_value(mdp: MDP, value: Float[Array, "S"]) -> Float[Array, ""]:
     r"""
     Expected value of the state-values over initial distribution.
@@ -167,9 +179,9 @@ def policy_evaluation(mdp: MDP,
 
     """
     transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
-    mc_state_values = jnp.linalg.inv(
+    target_state_values = jnp.linalg.inv(
         jnp.eye(mdp.state_size) - gamma * transition_pi.T) @ (reward_pi * (1 - mdp.terminal))
-    return mc_state_values
+    return target_state_values
 
 
 def q_policy_evaluation(mdp: MDP,
@@ -196,13 +208,13 @@ def q_policy_evaluation(mdp: MDP,
             gamma * jnp.einsum("axs,x", mdp.transition, mc_state_values))
 
 
-def bellman_error(mdp: MDP,
+def bellman_operator(mdp: MDP,
                   policy: Float[Array, "A S"],
                   value: Float[Array, "A S"],
                   gamma: float
                   ) -> Float[Array, "A S"]:
     r"""
-    Evaluate the Bellman error for each state-action pair
+    Evaluate the Bellman operator for each state-action pair
 
     .. math::
         \mathcal{B}(Q)(s_i, a_j) = \big[r^{a_j} + \gamma 
@@ -215,7 +227,7 @@ def bellman_error(mdp: MDP,
         gamma (float): Discount factor
 
     Returns:
-        Float[Array, "A S"]: Bellman errors
+        Float[Array, "A S"]: Target values
 
     """
     target_values = jnp.einsum("axs,ux,ux,x->as",

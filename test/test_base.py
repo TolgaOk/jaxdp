@@ -130,7 +130,7 @@ class TestBaseDP(unittest.TestCase):
             )
         )
 
-    def test_bellman_error(self):
+    def test_bellman_operator(self):
         gamma = 0.5
         policy = jnp.array([
             [0.25, 0.75, 0.5, 1],
@@ -146,7 +146,7 @@ class TestBaseDP(unittest.TestCase):
         ])
         self.assertTrue(
             jnp.allclose(
-                DP.bellman_error(
+                DP.bellman_operator(
                     self.sequential_mdp,
                     policy,
                     value,
@@ -157,7 +157,7 @@ class TestBaseDP(unittest.TestCase):
 
         self.assertTrue(
             jnp.allclose(
-                DP.bellman_error(
+                DP.bellman_operator(
                     self.sequential_mdp,
                     policy,
                     DP.q_policy_evaluation(
