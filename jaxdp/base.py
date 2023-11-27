@@ -152,7 +152,10 @@ def _markov_chain_pi(mdp: MDP, policy: Float[Array, "A S"]
     return transition_pi, reward_pi
 
 
-def sample_based_policy_evaluation():
+def sample_based_policy_evaluation(mdp: MDP,
+                                   policy: Float[Array, "A S"],
+                                   key: jrd.KeyArray
+                                   ) -> Float[Array, "S"]:
     # TODO: Implement sample based evaluation
     # TODO: Add test
     # TODO: Add docstring
@@ -209,10 +212,10 @@ def q_policy_evaluation(mdp: MDP,
 
 
 def bellman_operator(mdp: MDP,
-                  policy: Float[Array, "A S"],
-                  value: Float[Array, "A S"],
-                  gamma: float
-                  ) -> Float[Array, "A S"]:
+                     policy: Float[Array, "A S"],
+                     value: Float[Array, "A S"],
+                     gamma: float
+                     ) -> Float[Array, "A S"]:
     r"""
     Evaluate the Bellman operator for each state-action pair
 

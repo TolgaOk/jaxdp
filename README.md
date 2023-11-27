@@ -22,16 +22,18 @@ mvmm_vi_step = vmap(mv_vi_step, in_axes=(None, 0), out_axes=0)(values, mdps)
 
 > List of Algorithms
 
-| Algorithms       | Sync             | Async     |
-|:----------------:|:----------------:|:---------:|
-|  VI              |:heavy_check_mark:|:x:        |
-|  PI              |:x:               |:x:        |
-|  Accelerated VI  |:x:               |:x:        |
-|  Momentum VI     |:x:               |:x:        |
-|  Momentum QL     |:x:               |:x:        |
-|  Relaxed VI      |:x:               |:x:        |
-|  Speedy QL       |:x:               |:x:        |
-|  Zap QL          |:x:               |:x:        |
+|Algorithms        |Exact             |Sync sampled      |Async sampled     |
+|:----------------:|:----------------:|:----------------:|:----------------:|
+|  VI              |:heavy_check_mark:|:heavy_minus_sign:|:heavy_minus_sign:|
+|  PI              |:heavy_check_mark:|:heavy_minus_sign:|:heavy_minus_sign:|
+|  Q Learning      |:heavy_minus_sign:|:heavy_check_mark:|:heavy_check_mark:|
+|  SARSA           |:heavy_minus_sign:|:heavy_check_mark:|:heavy_check_mark:|
+|  Accelerated VI  |:x:               |:x:               |:x:               |
+|  Momentum VI     |:x:               |:x:               |:x:               |
+|  Momentum QL     |:x:               |:x:               |:x:               |
+|  Relaxed VI      |:x:               |:x:               |:x:               |
+|  Speedy QL       |:x:               |:x:               |:x:               |
+|  Zap QL          |:x:               |:x:               |:x:               |
 
 > Typehint
 
