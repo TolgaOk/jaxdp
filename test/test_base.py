@@ -130,42 +130,43 @@ class TestBaseDP(unittest.TestCase):
             )
         )
 
-    def test_bellman_operator(self):
+    def test_bellman_q_operator(self):
         gamma = 0.5
         policy = jnp.array([
             [0.25, 0.75, 0.5, 1],
             [0.75, 0.25, 0.5, 0],
         ])
         value = jnp.array([
-            [1, 1, 1, 1],
-            [2, 2, 2, 2],
+            [1, 1, 1, 0],
+            [2, 2, 2, 0],
         ])
-        true_td = jnp.array([
+        true_diff = jnp.array([
             [5/4 * gamma - 1, 3/2 * gamma, -1, 0],
             [5/4 * gamma - 1, 3/2 * gamma - 2, -1, 0]
         ])
         self.assertTrue(
             jnp.allclose(
-                DP.bellman_operator(
+                DP.bellman_q_operator(
                     self.sequential_mdp,
                     policy,
                     value,
-                    gamma=gamma),
-                true_td
+                    gamma=gamma) - value,
+                true_diff
             )
         )
 
-        self.assertTrue(
-            jnp.allclose(
-                DP.bellman_operator(
-                    self.sequential_mdp,
-                    policy,
-                    DP.q_policy_evaluation(
+        target_value = DP.q_policy_evaluation(
                         self.sequential_mdp,
                         policy,
                         gamma=gamma
-                    ),
-                    gamma=gamma),
+                    )
+        self.assertTrue(
+            jnp.allclose(
+                DP.bellman_q_operator(
+                    self.sequential_mdp,
+                    policy,
+                    target_value,
+                    gamma=gamma) - target_value,
                 jnp.zeros((2, 4))
             )
         )
