@@ -1,59 +1,17 @@
-from typing import Optional, Callable, Dict, Tuple, Any, Union, List
+from typing import Dict, Union, List
 from abc import abstractmethod
 import jax.numpy as jnp
 import jax.random as jrd
-import jax
 from jaxtyping import Array, Float
 
 import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
-from jaxdp.runner import BaseRunner
+from jaxdp.algorithm import BaseAlgorithm
+import jaxdp.iterations as iterations
 
 
-def q_iteration_step(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "A S"]:
-    # TODO: Add docstring
-    # TODO: Add test
-    non_done = (1 - mdp.terminal)
-    return mdp.reward * non_done.reshape(1, -1) + gamma * jnp.einsum(
-        "axs,x,x->as",
-        mdp.transition,
-        jnp.max(value, axis=0),
-        non_done)
-
-
-def value_iteration_step(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "S"]:
-    # TODO: Add docstring
-    # TODO: Add test
-    non_done = (1 - mdp.terminal)
-    return jnp.max(mdp.reward + gamma * jnp.einsum(
-        "axs,x,x->as",
-        mdp.transition,
-        value,
-        non_done),
-        axis=0) * non_done
-
-
-def policy_iteration_step(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "A S"]:
-    # TODO: Add docstring
-    # TODO: Add test
-    policy_pi = jaxdp.greedy_policy(value)
-    return jaxdp.q_policy_evaluation(mdp, policy_pi, gamma)
-
-
-def accelerated_value_iteration_step():
-    pass
-
-
-def momentum_value_iteration_step():
-    pass
-
-
-def relaxed_value_iteration_step():
-    pass
-
-
-class RunIteration(BaseRunner):
+class BaseIteration(BaseAlgorithm):
 
     def __init__(self, state_size: int, action_size: int, seed: int) -> None:
         super().__init__()
@@ -133,7 +91,7 @@ class RunIteration(BaseRunner):
         pass
 
 
-class QIteration(RunIteration):
+class QIteration(BaseIteration):
 
     value_expr: str = "q"
 
@@ -155,10 +113,10 @@ class QIteration(RunIteration):
         return jrd.uniform(self.init_key, shape=(self.action_size, self.state_size))
 
     def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "A S"]:
-        return q_iteration_step(mdp, self.value, gamma)
+        return iterations.q_iteration_step(mdp, self.value, gamma)
 
 
-class ValueIteration(RunIteration):
+class ValueIteration(BaseIteration):
 
     value_expr: str = "v"
 
@@ -180,7 +138,7 @@ class ValueIteration(RunIteration):
         return jrd.uniform(self.init_key, shape=(self.state_size,))
 
     def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "S"]:
-        return value_iteration_step(mdp, self.value, gamma)
+        return iterations.value_iteration_step(mdp, self.value, gamma)
 
 
 class PolicyIteration():

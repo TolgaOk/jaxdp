@@ -1,16 +1,8 @@
-from typing import Union, Tuple, Optional, Dict, List, Any
-from abc import abstractmethod
-import jax
-import jax.numpy as jnp
-import jax.random as jrd
+from typing import Dict, Any
 from jaxtyping import Float, Array
 
 
-import jaxdp
-from jaxdp.mdp import MDP
-
-
-class BaseRunner():
+class BaseAlgorithm():
 
     value_expr: str = r"v"
     init_dist_expr: str = r"\rho"
