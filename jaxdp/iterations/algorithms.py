@@ -141,5 +141,7 @@ class ValueIteration(BaseIteration):
         return iterations.value_iteration_step(mdp, self.value, gamma)
 
 
-class PolicyIteration():
-    pass
+class PolicyIteration(QIteration):
+
+    def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "S"]:
+        return iterations.policy_iteration_step(mdp, self.value, gamma)
