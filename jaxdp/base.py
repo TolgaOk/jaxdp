@@ -11,7 +11,7 @@ from jaxdp.mdp.mdp import MDP
 
 def greedy_policy(value: Float[Array, "A S"]) -> Float[Array, "A S"]:
     r"""
-    Greedy policy distribution.
+    Greedy policy distribution from Q values.
 
     Args:
         value (Float[Array,"A S"]): Q Value array
@@ -23,6 +23,12 @@ def greedy_policy(value: Float[Array, "A S"]) -> Float[Array, "A S"]:
     return jax.nn.one_hot(jnp.argmax(value, axis=0, keepdims=False),
                           num_classes=value.shape[0],
                           axis=0)
+
+
+def greedy_policy_from_v(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "A S"]:
+    # TODO: Add docstring
+    # TODO: Add test
+    return greedy_policy(to_state_action_value(mdp, value, gamma))
 
 
 def soft_policy(value: Float[Array, "A S"],
@@ -81,16 +87,16 @@ def sample_from(policy: Float[Array, "A S"],
     return distrax.OneHotCategorical(probs=policy.T).sample(seed=key).T
 
 
-def to_state_value(mdp: MDP, value: Float[Array, "A S"]) -> Float[Array, "S"]:
+def to_state_value(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "S"]:
     # TODO: Add docstring
     # TODO: Add test
     pass
 
 
-def to_state_action_value(mdp: MDP, value: Float[Array, "S"]) -> Float[Array, "A S"]:
+def to_state_action_value(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "A S"]:
     # TODO: Add docstring
     # TODO: Add test
-    pass
+    return mdp.reward + gamma * jnp.einsum("axs,x->as", mdp.transition, value)
 
 
 def expected_state_value(mdp: MDP, value: Float[Array, "S"]) -> Float[Array, ""]:
@@ -211,13 +217,42 @@ def q_policy_evaluation(mdp: MDP,
             gamma * jnp.einsum("axs,x", mdp.transition, mc_state_values))
 
 
-def bellman_operator(mdp: MDP,
-                     policy: Float[Array, "A S"],
-                     value: Float[Array, "A S"],
-                     gamma: float
-                     ) -> Float[Array, "A S"]:
+def bellman_v_operator(mdp: MDP,
+                       policy: Float[Array, "A S"],
+                       value: Float[Array, "S"],
+                       gamma: float
+                       ) -> Float[Array, "S"]:
     r"""
-    Evaluate the Bellman operator for each state-action pair
+    Evaluate the Bellman policy operator for each state-action pair
+
+    .. math::
+        \mathcal{B}(V)(s_i) = \big[r^{a_j} + \gamma 
+            \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
+
+    Args:
+        mdp (MDP): Markov Decision Process
+        policy (Float[Array,"A S"]): Policy distribution
+        value (Float[Array,"S"]): State value array
+        gamma (float): Discount factor
+
+    Returns:
+        Float[Array, "S"]: Target value
+
+    """
+    # TODO: Update docstring
+    # TODO: Add test
+    target_values = jnp.einsum("axs,x,x->as",
+                               mdp.transition, value, (1 - mdp.terminal))
+    return jnp.einsum("as,as->s", mdp.reward + gamma * target_values, policy)
+
+
+def bellman_q_operator(mdp: MDP,
+                       policy: Float[Array, "A S"],
+                       value: Float[Array, "A S"],
+                       gamma: float
+                       ) -> Float[Array, "A S"]:
+    r"""
+    Evaluate the Bellman policy operator for each state-action pair
 
     .. math::
         \mathcal{B}(Q)(s_i, a_j) = \big[r^{a_j} + \gamma 
@@ -230,12 +265,12 @@ def bellman_operator(mdp: MDP,
         gamma (float): Discount factor
 
     Returns:
-        Float[Array, "A S"]: Target values
+        Float[Array, "A S"]: Target value
 
     """
     target_values = jnp.einsum("axs,ux,ux,x->as",
                                mdp.transition, value, policy, (1 - mdp.terminal))
-    return (mdp.reward + gamma * target_values - value) * (1 - mdp.terminal).reshape(1, -1)
+    return mdp.reward + gamma * target_values
 
 
 def sync_sample(mdp: MDP,
@@ -379,3 +414,8 @@ def async_sample_step_pi(mdp: MDP,
                                       episode_step=episode_step,
                                       episode_length=episode_length,
                                       key=step_key)
+
+
+def sg(array: Float[Array, "..."]) -> Float[Array, "..."]:
+    """Stop Gradient function"""
+    return jax.lax.stop_gradient(array)

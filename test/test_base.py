@@ -140,7 +140,7 @@ class TestBaseDP(unittest.TestCase):
             [1, 1, 1, 1],
             [2, 2, 2, 2],
         ])
-        true_td = jnp.array([
+        true_diff = jnp.array([
             [5/4 * gamma - 1, 3/2 * gamma, -1, 0],
             [5/4 * gamma - 1, 3/2 * gamma - 2, -1, 0]
         ])
@@ -150,8 +150,8 @@ class TestBaseDP(unittest.TestCase):
                     self.sequential_mdp,
                     policy,
                     value,
-                    gamma=gamma),
-                true_td
+                    gamma=gamma) - value,
+                true_diff
             )
         )
 
@@ -164,7 +164,7 @@ class TestBaseDP(unittest.TestCase):
                         self.sequential_mdp,
                         policy,
                         gamma=gamma
-                    ),
+                    ) - value,
                     gamma=gamma),
                 jnp.zeros((2, 4))
             )
