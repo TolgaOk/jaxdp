@@ -23,16 +23,13 @@ def _numerical_board(board):
     return num_board
 
 
-def pos_to_states(board):
-    _numerical_board(board)
-    counter = 0
-
-
-def flatten_state(board, indices, char):
+def _flatten_state(board, indices, char):
     return (board[indices[:, 0], indices[:, 1]] == char_map[char]).astype("float32")
 
 
 def grid_world(board):
+    # TODO: Add test
+    # TODO: Add documentation
     state_size = sum(item != "#" for item in chain(*board))
     action_size = 4
 
@@ -47,13 +44,13 @@ def grid_world(board):
     passable_index = jnp.argwhere(board != char_map["#"])
     state_index_map = jnp.cumsum(board != char_map["#"]) - 1
 
-    terminal = flatten_state(board, passable_index, "@")
-    initial = flatten_state(board, passable_index, "P")
+    terminal = _flatten_state(board, passable_index, "@")
+    initial = _flatten_state(board, passable_index, "P")
 
     for act_ind, move in enumerate([[1, 0], [0, 1], [-1, 0], [0, -1]]):
         move_index = passable_index + jnp.array(move).reshape(1, -1)
         violations = (jnp.logical_or(
-            flatten_state(board, move_index, "#"),
+            _flatten_state(board, move_index, "#"),
             terminal  # To make sure terminal state is a sink state
         ).reshape(-1, 1))
         move_index = ((1 - violations) * move_index +
@@ -64,8 +61,8 @@ def grid_world(board):
         transition = transition.at[act_ind].set(
             jax.nn.one_hot(state_index, num_classes=state_size).T)
 
-        goal = flatten_state(board, move_index, "@")
-        penalty = flatten_state(board, move_index, "X")
+        goal = _flatten_state(board, move_index, "@")
+        penalty = _flatten_state(board, move_index, "X")
         reward = reward.at[act_ind].set((goal - penalty) * (1 - terminal))
 
     return MDP(transition, reward, initial, terminal, "GridWorld")
