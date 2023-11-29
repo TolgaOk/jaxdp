@@ -43,6 +43,8 @@ class MDP():
             ValueError: If transition matrices are not column stochastic
             ValueError: If initial state distribution is not stochastic
             ValueError: If termination vector is not boolean-valued
+            ValueError: If terminal rewards are non-zero
+            ValueError: If terminal transitions are not self pointing
         """
         if not jnp.allclose(self.transition.sum(axis=-2), 1.0, atol=1e-5):
             raise ValueError(
@@ -56,6 +58,18 @@ class MDP():
                             jnp.count_nonzero(1 - self.terminal, axis=-1), self.state_size):
             raise ValueError(
                 "Terminal array should only contain boolean values!")
+
+        if not jnp.allclose(self.reward * self.terminal.reshape(1, -1), 0):
+            raise ValueError("Terminal rewards must be zero!")
+
+        if not jnp.allclose(
+                jnp.einsum("axs,s->as",
+                           (self.transition == jnp.expand_dims(
+                               jnp.eye(self.state_size), 0)),
+                           self.terminal
+                           ) / self.state_size,
+                self.terminal.reshape(1, -1)):
+            raise ValueError("Terminal transitions must be self pointing!")
 
     @property
     def state_size(self) -> int:

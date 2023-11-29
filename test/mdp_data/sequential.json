@@ -12,7 +12,7 @@
     "initial": [1, 0, 0, 0],
     "terminal": [0, 0, 0, 1],
     "reward": [
-        [0, 1, 0, 1],
+        [0, 1, 0, 0],
         [1, 0, 1, 0]
     ],
     "name": "SequentialMDP"
