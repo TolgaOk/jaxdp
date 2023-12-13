@@ -8,7 +8,6 @@ import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
 from jaxdp.algorithm import BaseAlgorithm
-import jaxdp.iterations as iterations
 
 
 class BaseIteration(BaseAlgorithm):
@@ -42,16 +41,16 @@ class BaseIteration(BaseAlgorithm):
                          ) -> Dict[str, Float[Array, "..."]]:
         greedy_policy = self.greedy_policy(mdp, gamma)
         return {
-            "expected_value": jaxdp.sg(self.expected_value(mdp)),
-            "policy_evaluation": jaxdp.sg((
+            "expected_value": self.expected_value(mdp),
+            "policy_evaluation": (
                 self.policy_evaluation(mdp, greedy_policy, gamma) *
                 mdp.initial
-            ).sum()),
-            "bellman_error": jaxdp.sg((
+            ).sum(),
+            "bellman_error": (
                 self.bellman_operator(mdp, greedy_policy, gamma) - self.value
-            ).max()),
-            "value_delta": jaxdp.sg((self.value - next_value).max()),
-            "value": jaxdp.sg(self.value),
+            ).max(),
+            "value_delta": (self.value - next_value).max(),
+            "value": self.value,
             "policy": greedy_policy,
         }
 
@@ -89,59 +88,3 @@ class BaseIteration(BaseAlgorithm):
     @abstractmethod
     def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "... S"]:
         pass
-
-
-class QIteration(BaseIteration):
-
-    value_expr: str = "q"
-
-    @property
-    def expected_value_expr(self) -> str:
-        return fr"${self.init_dist_expr}^T (\max_a {self.value_expr}_k^a)$"
-
-    def expected_value(self, mdp: MDP) -> Float[Array, ""]:
-        return jaxdp.expected_q_value(mdp, self.value)
-
-    def greedy_policy(self, *_) -> Float[Array, "A S"]:
-        return jaxdp.greedy_policy(self.value)
-
-    def bellman_operator(self, mdp: MDP, policy: Float[Array, "A S"], gamma: float
-                         ) -> Float[Array, "S"]:
-        return jaxdp.bellman_q_operator(mdp, policy, self.value, gamma)
-
-    def initialize_value(self) -> Float[Array, "A S"]:
-        return jrd.uniform(self.init_key, shape=(self.action_size, self.state_size))
-
-    def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "A S"]:
-        return iterations.q_iteration_step(mdp, self.value, gamma)
-
-
-class ValueIteration(BaseIteration):
-
-    value_expr: str = "v"
-
-    @property
-    def expected_value_expr(self) -> str:
-        return fr"${self.init_dist_expr}^T {self.value_expr}_k$"
-
-    def expected_value(self, mdp: MDP) -> Float[Array, ""]:
-        return jaxdp.expected_state_value(mdp, self.value)
-
-    def greedy_policy(self, mdp: MDP, gamma: float) -> Float[Array, "A S"]:
-        return jaxdp.greedy_policy_from_v(mdp, self.value, gamma)
-
-    def bellman_operator(self, mdp: MDP, policy: Float[Array, "A S"], gamma: float
-                         ) -> Float[Array, "S"]:
-        return jaxdp.bellman_v_operator(mdp, policy, self.value, gamma)
-
-    def initialize_value(self) -> Float[Array, "S"]:
-        return jrd.uniform(self.init_key, shape=(self.state_size,))
-
-    def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "S"]:
-        return iterations.value_iteration_step(mdp, self.value, gamma)
-
-
-class PolicyIteration(QIteration):
-
-    def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "S"]:
-        return iterations.policy_iteration_step(mdp, self.value, gamma)
