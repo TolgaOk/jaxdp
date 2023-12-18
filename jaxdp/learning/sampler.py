@@ -44,10 +44,9 @@ def _rollout_sample(length: int,
         terminal=jnp.zeros((batch_size, length)),
         timeout=jnp.zeros((batch_size, length)),
     )
-    batch_async_sample = (jax.vmap(
+    batch_async_sample = jax.vmap(
         jaxdp.async_sample_step_pi,
         (None, None, 0, 0, None, 0), 0)
-    )
     batch_split = jax.vmap(jrd.split, (0, None), 1)
     keys = batch_split(jrd.split(key, batch_size), length)
 
@@ -90,12 +89,6 @@ class Sampler():
         self._episode_length = []
         self._rewards = jnp.zeros(batch_size)
         self._lengths = jnp.zeros(batch_size)
-
-        self.batch_async_sample = jax.jit(
-            jax.vmap(
-                jaxdp.async_sample_step_pi,
-                (None, None, 0, 0, None, 0), 0)
-        )
 
     @property
     def recent_episode_rewards(self):
