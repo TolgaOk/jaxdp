@@ -31,7 +31,7 @@ class BaseLearning(BaseAlgorithm):
     def value_update(self, rollout: RolloutSample, gamma: float) -> Float[Array, "... S"]:
         pass
 
-    def run(self, sampler: Sampler, n_steps: int, gamma: float
+    def run(self, sampler: Sampler, n_steps: int,  gamma: float
             ) -> List[Dict[str, Float[Array, "..."]]]:
 
         metrics = []

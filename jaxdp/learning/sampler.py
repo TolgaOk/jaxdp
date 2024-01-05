@@ -102,22 +102,28 @@ class Sampler():
         self._episode_length = []
         return lengths
 
-    def rollout_sample(self, length: int, policy: Float[Array, "A S"], key: jrd.KeyArray,
+    def rollout_sample(self,
+                       policy: Float[Array, "A S"],
+                       key: jrd.KeyArray,
                        log_rewards: bool = True
                        ) -> RolloutSample:
         rollout, self._state, self._episode_step = _rollout_sample(
-            length, self.mdp, policy, self._state,
+            self.rollout_len, self.mdp, policy, self._state,
             self._episode_step, self.max_episode_length, key)
-        
+
         if log_rewards:
             dones = jnp.logical_or(rollout.terminal, rollout.timeout)
-            for index in range(length):
+            for index in range(self.rollout_len):
                 done = dones[:, index]
                 self._rewards = self._rewards + rollout.reward[:, index]
                 self._lengths = self._lengths + 1
-                self._episodic_reward += self._rewards[jnp.argwhere(done).flatten()].tolist()
-                self._episode_length += self._lengths[jnp.argwhere(done).flatten()].tolist()
-                self._rewards = self._rewards * (1 - done) + jnp.zeros(self.batch_size) * done
-                self._lengths = self._lengths * (1 - done) + jnp.zeros(self.batch_size) * done
+                self._episodic_reward += self._rewards[jnp.argwhere(
+                    done).flatten()].tolist()
+                self._episode_length += self._lengths[jnp.argwhere(
+                    done).flatten()].tolist()
+                self._rewards = self._rewards * \
+                    (1 - done) + jnp.zeros(self.batch_size) * done
+                self._lengths = self._lengths * \
+                    (1 - done) + jnp.zeros(self.batch_size) * done
 
         return rollout
