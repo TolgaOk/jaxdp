@@ -1,4 +1,4 @@
-from typing import Dict, Union, List, NamedTuple, Tuple
+from typing import Dict, Union, List, NamedTuple, Tuple, Optional
 from functools import partial
 import jax
 import jax.numpy as jnp
@@ -20,44 +20,65 @@ class RolloutSample(NamedTuple):
     terminal: Float[Array, "... T"]
     timeout: Float[Array, "... T"]
 
+    def __getitem__(self, key) -> "RolloutSample":
+        return RolloutSample(
+            self.state[key],
+            self.next_state[key],
+            self.action[key],
+            self.reward[key],
+            self.terminal[key],
+            self.timeout[key],
+        )
 
-@partial(jax.jit, static_argnames="length")
+
+class StepSample(NamedTuple):
+    state: Float[Array, "S"]
+    next_state: Float[Array, "S"]
+    action: Float[Array, "A"]
+    reward: Float[Array, ""]
+    terminal: Float[Array, ""]
+    timeout: Float[Array, ""]
+
+
+class SamplerState(NamedTuple):
+    last_state: Float[Array, "S"]
+    episode_step: Float[Array, ""]
+    rewards: Float[Array, ""]
+    lengths: Float[Array, ""]
+    episode_reward_queue: Float[Array, "K"]
+    episode_length_queue: Float[Array, "K"]
+
+
 def _rollout_sample(length: int,
                     mdp: MDP,
                     policy: Float[Array, "A S"],
-                    state: Float[Array, "... S"],
-                    episode_step: Float[Array, "..."],
+                    state: Float[Array, "S"],
+                    episode_step: Float[Array, ""],
                     max_episode_step: int,
                     key: jrd.KeyArray
                     ) -> Tuple[RolloutSample,
-                               Float[Array, "... S"],
-                               Float[Array, "..."]]:
-
-    batch_size = state.shape[0]
+                               Float[Array, "S"],
+                               Float[Array, ""]]:
     state_size = mdp.state_size
     action_size = mdp.action_size
     rollout = dict(
-        state=jnp.zeros((batch_size, length, state_size)),
-        next_state=jnp.zeros((batch_size, length, state_size)),
-        action=jnp.zeros((batch_size, length, action_size)),
-        reward=jnp.zeros((batch_size, length)),
-        terminal=jnp.zeros((batch_size, length)),
-        timeout=jnp.zeros((batch_size, length)),
+        state=jnp.zeros((length, state_size)),
+        next_state=jnp.zeros((length, state_size)),
+        action=jnp.zeros((length, action_size)),
+        reward=jnp.zeros((length,)),
+        terminal=jnp.zeros((length,)),
+        timeout=jnp.zeros((length,)),
     )
-    batch_async_sample = jax.vmap(
-        jaxdp.async_sample_step_pi,
-        (None, None, 0, 0, None, 0), 0)
-    batch_split = jax.vmap(jrd.split, (0, None), 1)
-    keys = batch_split(jrd.split(key, batch_size), length)
+    keys = jrd.split(key, length)
 
     def step_fn(index, step_data):
         rollout, state, episode_step = step_data
-        *step_data, _state, episode_step = batch_async_sample(
+        *step_data, _state, episode_step = jaxdp.async_sample_step_pi(
             mdp, policy, state, episode_step, max_episode_step, keys[index])
         names = ("action", "next_state", "reward",
                  "terminal", "timeout", "state")
         for name, data in zip(names, (*step_data, state)):
-            rollout[name] = rollout[name].at[:, index].set(data)
+            rollout[name] = rollout[name].at[index].set(data)
 
         return (rollout, _state, episode_step)
 
@@ -67,63 +88,64 @@ def _rollout_sample(length: int,
     return RolloutSample(**rollout), state, episode_step
 
 
-class Sampler():
+# def initialize(sampler: SamplerState, init_key: ArrayLike):
+#     return SamplerState(
+#         max_episode_length=max_episode_length,
+#         mdp=sampler.mdp,
+#         last_state=distrax.OneHotCategorical(
+#             probs=sampler.mdp.initial).sample(seed=init_key, sample_shape=(batch_size,)),
+#         episode_step=jnp.zeros((batch_size,)),
+#         rewards=jnp.zeros((rollout_len,)),
+#         lengths=jnp.zeros((rollout_len,)),
+#     )
 
-    def __init__(self,
-                 mdp: MDP,
-                 rollout_len: int,
-                 batch_size: int,
-                 max_episode_length: int,
-                 init_key: ArrayLike
-                 ) -> None:
-        self.mdp = mdp
-        self.state = None
-        self.rollout_len = rollout_len
-        self.batch_size = batch_size
-        self.max_episode_length = max_episode_length
 
-        self._state = distrax.OneHotCategorical(
-            probs=mdp.initial).sample(seed=init_key, sample_shape=(batch_size,))
-        self._episode_step = jnp.zeros((batch_size,))
-        self._episodic_reward = []
-        self._episode_length = []
-        self._rewards = jnp.zeros(batch_size)
-        self._lengths = jnp.zeros(batch_size)
+def rollout_sample(mdp: MDP,
+                   sampler_state: SamplerState,
+                   max_episode_length: int,
+                   rollout_len: int,
+                   policy: Float[Array, "A S"],
+                   key: jrd.KeyArray,
+                   ) -> Tuple[RolloutSample, SamplerState]:
+    rollout, last_state, episode_step = _rollout_sample(
+        rollout_len, mdp, policy, sampler_state.last_state,
+        sampler_state.episode_step, max_episode_length, key)
+    
 
-    @property
-    def recent_episode_rewards(self):
-        rewards = self._episodic_reward
-        self._episodic_reward = []
-        return rewards
+    rewards = sampler_state.rewards
+    lengths = sampler_state.lengths
+    eps_rewards = sampler_state.episode_reward_queue
+    eps_lengths = sampler_state.episode_length_queue
 
-    @property
-    def recent_episode_lengths(self):
-        lengths = self._episode_length
-        self._episode_length = []
-        return lengths
+    done = jnp.logical_or(rollout.terminal, rollout.timeout)
 
-    def rollout_sample(self,
-                       policy: Float[Array, "A S"],
-                       key: jrd.KeyArray,
-                       log_rewards: bool = True
-                       ) -> RolloutSample:
-        rollout, self._state, self._episode_step = _rollout_sample(
-            self.rollout_len, self.mdp, policy, self._state,
-            self._episode_step, self.max_episode_length, key)
+    def queue_push(queue_array, value, condition):
+        pushed_array = queue_array.at[1:].set(queue_array[:-1]).at[0].set(value)
+        no_nan_queue = jnp.nan_to_num(queue_array)
+        return (pushed_array * condition +
+                (no_nan_queue / (1 - jnp.isnan(queue_array) * (1 - condition))) * (1 - condition))
 
-        if log_rewards:
-            dones = jnp.logical_or(rollout.terminal, rollout.timeout)
-            for index in range(self.rollout_len):
-                done = dones[:, index]
-                self._rewards = self._rewards + rollout.reward[:, index]
-                self._lengths = self._lengths + 1
-                self._episodic_reward += self._rewards[jnp.argwhere(
-                    done).flatten()].tolist()
-                self._episode_length += self._lengths[jnp.argwhere(
-                    done).flatten()].tolist()
-                self._rewards = self._rewards * \
-                    (1 - done) + jnp.zeros(self.batch_size) * done
-                self._lengths = self._lengths * \
-                    (1 - done) + jnp.zeros(self.batch_size) * done
+    def step_fn(index, step_data):
+        rewards, lengths, eps_rewards, eps_lengths = step_data
+        rewards = rollout.reward[index] + rewards
+        lengths = 1 + lengths
 
-        return rollout
+        eps_rewards = queue_push(eps_rewards, rewards, done[index])
+        eps_lengths = queue_push(eps_lengths, lengths, done[index])
+
+        return (rewards * (1 - done[index]), lengths * (1 - done[index]), eps_rewards, eps_lengths)
+
+    rewards, lengths, eps_rewards, eps_lengths = jax.lax.fori_loop(
+        0, rollout.reward.shape[0], step_fn, (rewards,
+                                                lengths,
+                                                eps_rewards,
+                                                eps_lengths))
+
+    return rollout, SamplerState(
+        last_state,
+        episode_step,
+        rewards,
+        lengths,
+        eps_rewards,
+        eps_lengths
+    )
