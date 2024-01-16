@@ -48,6 +48,32 @@ class SamplerState(NamedTuple):
     episode_reward_queue: Float[Array, "K"]
     episode_length_queue: Float[Array, "K"]
 
+    @staticmethod
+    def initialize_rollout_state(mdp: MDP,
+                                 batch_size: int,
+                                 queue_size: int,
+                                 init_state_key: ArrayLike
+                                 ) -> "SamplerState":
+        init_state = jax.vmap(mdp.init_state, (0,))(jrd.split(init_state_key, batch_size))
+        return SamplerState(
+            init_state,
+            jnp.zeros((batch_size,)),
+            jnp.zeros((batch_size,)),
+            jnp.zeros((batch_size,)),
+            jnp.full((batch_size, queue_size,), jnp.nan),
+            jnp.full((batch_size, queue_size,), jnp.nan),
+        )
+
+    def refresh_queues(self) -> "SamplerState":
+        return SamplerState(
+            self.last_state,
+            self.episode_step,
+            self.rewards,
+            self.lengths,
+            jnp.full_like(self.episode_reward_queue, jnp.nan),
+            jnp.full_like(self.episode_length_queue, jnp.nan),
+        )
+
 
 def _rollout_sample(length: int,
                     mdp: MDP,
@@ -88,29 +114,16 @@ def _rollout_sample(length: int,
     return RolloutSample(**rollout), state, episode_step
 
 
-# def initialize(sampler: SamplerState, init_key: ArrayLike):
-#     return SamplerState(
-#         max_episode_length=max_episode_length,
-#         mdp=sampler.mdp,
-#         last_state=distrax.OneHotCategorical(
-#             probs=sampler.mdp.initial).sample(seed=init_key, sample_shape=(batch_size,)),
-#         episode_step=jnp.zeros((batch_size,)),
-#         rewards=jnp.zeros((rollout_len,)),
-#         lengths=jnp.zeros((rollout_len,)),
-#     )
-
-
 def rollout_sample(mdp: MDP,
                    sampler_state: SamplerState,
-                   max_episode_length: int,
-                   rollout_len: int,
                    policy: Float[Array, "A S"],
                    key: jrd.KeyArray,
+                   max_episode_length: int,
+                   rollout_len: int,
                    ) -> Tuple[RolloutSample, SamplerState]:
     rollout, last_state, episode_step = _rollout_sample(
         rollout_len, mdp, policy, sampler_state.last_state,
         sampler_state.episode_step, max_episode_length, key)
-    
 
     rewards = sampler_state.rewards
     lengths = sampler_state.lengths
@@ -137,9 +150,9 @@ def rollout_sample(mdp: MDP,
 
     rewards, lengths, eps_rewards, eps_lengths = jax.lax.fori_loop(
         0, rollout.reward.shape[0], step_fn, (rewards,
-                                                lengths,
-                                                eps_rewards,
-                                                eps_lengths))
+                                              lengths,
+                                              eps_rewards,
+                                              eps_lengths))
 
     return rollout, SamplerState(
         last_state,
