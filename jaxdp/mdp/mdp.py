@@ -3,7 +3,9 @@ import json
 import jax.numpy as jnp
 import jax
 from dataclasses import dataclass
+from jax.typing import ArrayLike
 from jaxtyping import Array, Float
+import distrax
 
 
 class MDP():
@@ -35,6 +37,10 @@ class MDP():
 
         if validate:
             self.validate()
+
+    def init_state(self, key: ArrayLike) -> Float[Array, "... S"]:
+        return distrax.OneHotCategorical(
+            probs=self.initial, dtype=jnp.float32).sample(seed=key)
 
     def validate(self) -> None:
         """ Validate the MDP matrices and vectors
