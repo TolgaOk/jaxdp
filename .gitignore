@@ -3,4 +3,5 @@
 *.DS_Store
 *.ipynb
 .vscode
+documents/
 logs/
