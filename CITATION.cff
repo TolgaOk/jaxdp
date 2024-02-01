@@ -1,0 +1,20 @@
+abstract: Fast detection of repackaged Android applications based on the comparison of resource files included into the package.
+ersion: 0.1.0
+authors:
+  - family-names: Ok
+    given-names: Tolga
+    orcid: "https://orcid.org/0000-0002-3669-6121"
+cff-version: 1.2.0
+date-released: "2024-02-01"
+identifiers:
+  - type: url
+    value: "https://github.com/zyrikby/FSquaDRA/tree/dc42c93991240da0fc9f1081e72be3eeb17d2638"
+    description: Latest version
+keywords:
+  - "dynamic programming"
+  - "reinforcement learning"
+  - "jax"
+license: MIT License
+message: If you use this software, please cite it using these metadata.
+repository-code: "https://github.com/TolgaOk/jaxdp"
+title: A Dynamic Programming package for discrete MDPs in JAX
