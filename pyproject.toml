@@ -1,0 +1,13 @@
+[project]
+name = "jaxdp"
+authors = [
+    {name = "Tolga Ok", email = "T.Ok@tudelft.nl"}
+]
+version = "0.1.0"
+requires-python = ">=3.8"
+readme = "README.md"
+description = "A Dynamic Programming package for discrete MDPs implemented in JAX"
+license = {text = "MIT License"}
+
+[tool.autopep8]
+max_line_length = 100

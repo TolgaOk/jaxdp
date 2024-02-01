@@ -25,13 +25,10 @@ class TrainMetrics(NamedTuple):
         return TrainMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
 
     def write(self, index: int, values: Dict[str, float]) -> "TrainMetrics":
+        self_dict = self._asdict()
         return TrainMetrics(
-            self.avg_episode_rewards.at[index].set(values["avg_episode_rewards"]),
-            self.avg_episode_lengths.at[index].set(values["avg_episode_lengths"]),
-            self.std_episode_rewards.at[index].set(values["std_episode_rewards"]),
-            self.std_episode_lengths.at[index].set(values["std_episode_lengths"]),
-            self.max_value_diff.at[index].set(values["max_value_diff"]),
-            self.avg_value_eval.at[index].set(values["avg_value_eval"]),
+            *[self_dict[name].at[index].set(value)
+              for name, value in values.items()]
         )
 
 
