@@ -1,3 +1,8 @@
+""" Implementation of "From Optimization to Control: Quasi Policy Iteration"
+    by Mohammad Amin Sharifi Kolarijani & Peyman Mohajerin Esfahani
+    https://arxiv.org/abs/2311.11166
+"""
+
 from typing import Dict, Union, List
 import jax.numpy as jnp
 import jax.random as jrd
@@ -7,7 +12,6 @@ from jaxtyping import Array, Float
 import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
-from jaxdp.iterations.vi import value_iteration_step, ValueIteration
 
 
 def bellman_operator(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "S"]:
@@ -49,38 +53,9 @@ def lambda_k(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "
     return gamma / (value.shape[-1] * (1 - gamma)) * ((delta_coeff - 1) * bellman_error + delta_coeff * reward).sum(-1)
 
 
-def quasi_policy_iteration_step(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "S"]:
+def quasi_policy_iteration_update(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "S"]:
     bellman_op = bellman_operator(mdp, value, gamma)
     reward = greedy_policy_reward(mdp, value, gamma)
     delta_coeff = delta_k(mdp, value, gamma)
     lambda_coeff = lambda_k(mdp, value, gamma)
     return (1 - delta_coeff) * bellman_op + delta_coeff * reward + lambda_coeff
-
-
-class QuasiPolicyIteration(ValueIteration):
-
-    def __init__(self, state_size: int, action_size: int, seed: int) -> None:
-        super().__init__(state_size, action_size, seed)
-        self.init_bellman_error = None
-        self.step = 0
-
-    @property
-    def expected_value_expr(self) -> str:
-        return fr"unknown"
-
-    def initialize_value(self) -> Float[Array, "S"]:
-        return jnp.zeros((self.state_size,))
-
-    def step_value(self, mdp: MDP, gamma: float) -> Float[Array, "A S"]:
-        bellman_op = bellman_operator(mdp, self.value, gamma)
-        vi_step = value_iteration_step(mdp, self.value, gamma)
-        self.step += 1
-        if self.init_bellman_error is None:
-            self.init_bellman_error = jnp.max(jnp.abs(self.value - bellman_op))
-            return vi_step
-        qpi_update = quasi_policy_iteration_step(mdp, self.value, gamma)
-        qpi_opt_bellman = bellman_operator(mdp, qpi_update, gamma)
-        qpi_bellman_error = jnp.max(jnp.abs(qpi_update - qpi_opt_bellman))
-        if qpi_bellman_error > gamma ** self.step * self.init_bellman_error:
-            return vi_step
-        return qpi_update
