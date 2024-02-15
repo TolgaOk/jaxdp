@@ -1,6 +1,4 @@
 from typing import Callable, Dict, Union, List, Tuple, NamedTuple, Type
-from abc import abstractmethod
-import numpy as np
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -53,8 +51,7 @@ def train(sampler_state: SamplerState,
     value = init_value
 
     def print_log(data):
-        if verbose:
-            print(f"Progress: {data[0]:5d}, Avg episode reward: {data[1]:.2f}")
+        print(f"Progress: {data[0]:5d}, Avg episode reward: {data[1]:.2f}")
 
     def log_fn(sampler_state, metrics, value_norm, index):
         metrics = metrics.write(
@@ -65,8 +62,9 @@ def train(sampler_state: SamplerState,
                 "std_episode_lengths": jnp.nanstd(sampler_state.episode_length_queue),
                 "max_value_diff": value_norm,
                 "avg_value_eval": jnp.nan})
-        call(print_log,
-             (index + 1, jnp.nanmean(sampler_state.episode_reward_queue)))
+        if verbose:
+            call(print_log,
+                 (index + 1, jnp.nanmean(sampler_state.episode_reward_queue)))
         sampler_state = sampler_state.refresh_queues()
         return sampler_state, metrics
 

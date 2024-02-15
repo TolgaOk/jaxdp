@@ -11,4 +11,3 @@ Please be aware of some of the formatting and style rules below. These rules are
     - By default vectorizable e.g. NamedTuple
     - Implements flatten and unflatten functions registered as the JAX pytree
 - Private function names start with an underscore ("_")
-
