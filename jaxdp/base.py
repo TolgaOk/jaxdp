@@ -214,7 +214,7 @@ def q_policy_evaluation(mdp: MDP,
     """
     mc_state_values = policy_evaluation(mdp, policy, gamma)
     return (mdp.reward * (1 - mdp.terminal).reshape(1, -1) +
-            gamma * jnp.einsum("axs,x", mdp.transition, mc_state_values))
+            gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
 
 
 def bellman_v_operator(mdp: MDP,
@@ -297,16 +297,18 @@ def sync_sample(mdp: MDP,
         Float[Array, "S"]]: Termination condition (either 0 or 1)
 
     """
-    transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
-
+    act_key, transition_key = jrd.split(key, 2)
     state = jnp.eye(mdp.state_size)
-    action = sample_from(policy, key).T
-    reward = reward_pi * (1 - mdp.terminal)
+    action = sample_from(policy, act_key)
+
+    reward = jnp.einsum("as,as,s->s", mdp.reward, action, 1 - mdp.terminal)
+    p_next_state = jnp.einsum("axs,as->sx", mdp.transition, action)
     next_state = distrax.OneHotCategorical(
-        probs=transition_pi.T, dtype=jnp.float32).sample(seed=key)
+        probs=p_next_state, dtype=jnp.float32).sample(seed=transition_key)
+
     terminal = jnp.einsum("sx,x->s", next_state, mdp.terminal)
 
-    return state, action, reward, next_state, terminal
+    return state, action.T, reward, next_state, terminal
 
 
 def async_sample_step(mdp: MDP,
