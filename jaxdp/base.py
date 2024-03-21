@@ -274,41 +274,28 @@ def bellman_q_operator(mdp: MDP,
 
 
 def sync_sample(mdp: MDP,
-                policy: Float[Array, "A S"],
                 key: jrd.KeyArray
-                ) -> Tuple[Float[Array, "S S"],
-                           Float[Array, "S A"],
-                           Float[Array, "S"],
-                           Float[Array, "S S"],
-                           Float[Array, "S"]]:
+                ) -> Tuple[Float[Array, "A S"],
+                           Float[Array, "A S S"],
+                           Float[Array, "A S"]]:
     r"""
-    Synchronously sample starting from each state in the given MDP by following the given policy
+    Synchronously sample starting from each state action pair in the given MDP
 
     Args:
         mdp (MDP): Markov Decision Process
-        policy (Float[Array,"AS"]): Policy distribution
         key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        Float[Array, "S S"]: States
-        Float[Array, "S A"]: Actions
         Float[Array, "S"]: Rewards
         Float[Array, "S S"]: Next states
         Float[Array, "S"]]: Termination condition (either 0 or 1)
 
     """
-    act_key, transition_key = jrd.split(key, 2)
-    state = jnp.eye(mdp.state_size)
-    action = sample_from(policy, act_key)
-
-    reward = jnp.einsum("as,as,s->s", mdp.reward, action, 1 - mdp.terminal)
-    p_next_state = jnp.einsum("axs,as->sx", mdp.transition, action)
     next_state = distrax.OneHotCategorical(
-        probs=p_next_state, dtype=jnp.float32).sample(seed=transition_key)
+        probs=jnp.einsum("axs->asx", mdp.transition), dtype=jnp.float32).sample(seed=key)
+    terminal = jnp.einsum("asx,x->as", next_state, mdp.terminal)
 
-    terminal = jnp.einsum("sx,x->s", next_state, mdp.terminal)
-
-    return state, action.T, reward, next_state, terminal
+    return mdp.reward, next_state, terminal
 
 
 def async_sample_step(mdp: MDP,
