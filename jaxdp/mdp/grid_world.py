@@ -1,3 +1,4 @@
+from typing import List
 import jax.numpy as jnp
 from itertools import chain
 import jax
@@ -27,13 +28,13 @@ def _flatten_state(board, indices, char):
     return (board[indices[:, 0], indices[:, 1]] == char_map[char]).astype("float32")
 
 
-def grid_world(board):
+def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
     # TODO: Add test
     # TODO: Add documentation
     state_size = sum(item != "#" for item in chain(*board))
     action_size = 4
 
-    transition = jnp.zeros((action_size, state_size, state_size))
+    _transition = jnp.zeros((action_size, state_size, state_size))
     reward = jnp.zeros((action_size, state_size))
     initial = jnp.zeros((state_size,))
     terminal = jnp.zeros((state_size,))
@@ -58,11 +59,17 @@ def grid_world(board):
         flat_index = move_index[:, 0] * board_width + move_index[:, 1]
 
         state_index = state_index_map[flat_index]
-        transition = transition.at[act_ind].set(
+        _transition = _transition.at[act_ind].set(
             jax.nn.one_hot(state_index, num_classes=state_size).T)
 
         goal = _flatten_state(board, move_index, "@")
         penalty = _flatten_state(board, move_index, "X")
         reward = reward.at[act_ind].set((goal - penalty) * (1 - terminal))
+
+    transition = jnp.zeros_like(_transition)
+    for act_ind, slip_ind in enumerate([[1, 3], [0, 2], [1, 3], [0, 2]]):
+        transition = transition.at[act_ind].set(
+            (1 - p_slip) * _transition[act_ind] +
+            p_slip * _transition[jnp.array(slip_ind)].mean(0))
 
     return MDP(transition, reward, initial, terminal, "GridWorld")
