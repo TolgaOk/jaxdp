@@ -12,7 +12,8 @@ def q_iteration_update(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Fl
     # TODO: Add docstring
     # TODO: Add test
     non_done = (1 - mdp.terminal)
-    return mdp.reward * non_done.reshape(1, -1) + gamma * jnp.einsum(
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    return reward * non_done.reshape(1, -1) + gamma * jnp.einsum(
         "axs,x,x->as",
         mdp.transition,
         jnp.max(value, axis=0),
@@ -23,7 +24,8 @@ def value_iteration_update(mdp: MDP, value: Float[Array, "S"], gamma: float) -> 
     # TODO: Add docstring
     # TODO: Add test
     non_done = (1 - mdp.terminal)
-    return jnp.max(mdp.reward + gamma * jnp.einsum(
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    return jnp.max(reward + gamma * jnp.einsum(
         "axs,x,x->as",
         mdp.transition,
         value,

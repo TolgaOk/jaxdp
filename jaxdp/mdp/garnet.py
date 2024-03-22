@@ -33,6 +33,6 @@ def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: jrd.Key
     transition = transition.transpose(0, 2, 1)
     terminal = jnp.zeros((state_size,))
     initial = jnp.ones((state_size,)) / state_size
-    reward = jrd.uniform(reward_key, (action_size, state_size), minval=min_reward, maxval=max_reward)
+    reward = jrd.uniform(reward_key, (action_size, state_size, state_size), minval=min_reward, maxval=max_reward)
 
     return MDP(transition, reward, initial, terminal, f"GarnetMDP(#branch={branch_size})")
