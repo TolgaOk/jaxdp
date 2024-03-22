@@ -37,10 +37,12 @@ class SyncTrainMetrics(NamedTuple):
     max_value_diff: Float[Array, "N"]
     max_bellman_error: Float[Array, "N"]
     expected_value: Float[Array, "N"]
+    value_error: Float[Array, "N"]
 
     @staticmethod
     def initialize(step_size: int) -> "SyncTrainMetrics":
-        return SyncTrainMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(4)])
+        return SyncTrainMetrics(*[jnp.full((step_size,), jnp.nan)
+                                  for _ in range(5)])
 
 
 QValueType: Type = Float[Array, "A S"]
@@ -112,8 +114,10 @@ def evaluate_value():
 
 def sync_train(init_value: QValueType,
                mdp: MDP,
+               value_star: Float[Array, "A S"],
                key: ArrayLike,
                n_steps: int,
+               eval_period: int,
                gamma: float,
                policy_fn: Callable,
                update_fn: Callable,
@@ -122,6 +126,9 @@ def sync_train(init_value: QValueType,
 
     metrics = SyncTrainMetrics.initialize(n_steps)
     value = init_value
+
+    def _eval_policy(policy):
+        return (jaxdp.policy_evaluation(mdp, policy, gamma) * mdp.initial).sum()
 
     def _step_fn(index, _step_data):
         metrics, value, learner_state, key = _step_data
@@ -133,18 +140,25 @@ def sync_train(init_value: QValueType,
         next_value, learner_state = update_fn(index, sample, value, learner_state)
 
         policy = policy_fn(next_value, index)
-        expected_policy_eval = jnp.nan
+        expected_policy_eval = jax.lax.cond(
+            (index % eval_period) == (eval_period - 1),
+            _eval_policy,
+            lambda _: jnp.nan,
+            policy
+        )
         expected_value = jnp.einsum("as,as,s->", policy, value, mdp.initial)
         max_value_diff = jnp.abs(next_value - value).max()
         max_bellman_error = jnp.abs(jaxdp.bellman_q_operator(
             mdp, policy, value, gamma) - value).max()
-
+        value_error = jnp.linalg.norm(value - value_star, ord=2) / \
+            jnp.linalg.norm(value_star, ord=2)
 
         metrics = SyncTrainMetrics(
             metrics.expected_policy_eval.at[index].set(expected_policy_eval),
             metrics.max_value_diff.at[index].set(max_value_diff),
             metrics.max_bellman_error.at[index].set(max_bellman_error),
             metrics.expected_value.at[index].set(expected_value),
+            metrics.value_error.at[index].set(value_error),
         )
 
         return metrics, next_value, learner_state, key
