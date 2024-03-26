@@ -90,13 +90,12 @@ def sample_from(policy: Float[Array, "A S"],
 def to_state_value(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "S"]:
     # TODO: Add docstring
     # TODO: Add test
-    pass
+    raise NotImplementedError
 
 
 def to_state_action_value(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "A S"]:
     # TODO: Add docstring
     # TODO: Add test
-
     return (jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) +
             gamma * jnp.einsum("axs,x->as", mdp.transition, value))
 
