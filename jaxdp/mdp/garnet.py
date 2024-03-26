@@ -7,7 +7,8 @@ from jaxdp.mdp import MDP
 from jaxtyping import Float, Array
 
 
-def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: jrd.KeyArray) -> MDP:
+def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: jrd.KeyArray,
+                min_reward: float = 0, max_reward: float = 1.0) -> MDP:
     # TODO: Add test
     # TODO: Add documentation
     branch_key, transition_key, reward_key = jrd.split(key, 3)
@@ -32,6 +33,6 @@ def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: jrd.Key
     transition = transition.transpose(0, 2, 1)
     terminal = jnp.zeros((state_size,))
     initial = jnp.ones((state_size,)) / state_size
-    reward = jrd.uniform(reward_key, (action_size, state_size))
+    reward = jrd.uniform(reward_key, (action_size, state_size, state_size), minval=min_reward, maxval=max_reward)
 
     return MDP(transition, reward, initial, terminal, f"GarnetMDP(#branch={branch_size})")

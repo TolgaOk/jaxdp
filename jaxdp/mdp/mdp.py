@@ -14,7 +14,7 @@ class MDP():
     Args:
         transition (Float[Array, "... A S S"]): Column stochastic matrix that
             describes the transition dynamics of the MDP
-        reward (Float[Array, "... A S"]): Reward matrix
+        reward (Float[Array, "... A S S"]): Reward matrix
         initial (Float[Array, "... S"]): Stochastic vector for the initial state distribution
         terminal (Float[Array, "... S"]): A boolean-valued vector for terminal states
         name (str, optional): Name of the MDP. Defaults to "MDP".
@@ -24,7 +24,7 @@ class MDP():
 
     def __init__(self,
                  transition: Float[Array, "... A S S"],
-                 reward: Float[Array, "... A S"],
+                 reward: Float[Array, "... A S S"],
                  initial: Float[Array, "... S"],
                  terminal: Float[Array, "... S"],
                  name: str = "MDP",
@@ -65,7 +65,7 @@ class MDP():
             raise ValueError(
                 "Terminal array should only contain boolean values!")
 
-        if not jnp.allclose(self.reward * self.terminal.reshape(1, -1), 0):
+        if not jnp.allclose(self.reward * self.terminal.reshape(1, -1, 1), 0):
             raise ValueError("Terminal rewards must be zero!")
 
         if not jnp.allclose(

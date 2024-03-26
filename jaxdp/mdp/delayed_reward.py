@@ -1,5 +1,4 @@
 from typing import Tuple, Any, Union, Type
-from gym.spaces import Box, Discrete
 import jax.numpy as jnp
 import jax.random as jrd
 import jax

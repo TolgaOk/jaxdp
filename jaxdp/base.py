@@ -90,13 +90,14 @@ def sample_from(policy: Float[Array, "A S"],
 def to_state_value(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "S"]:
     # TODO: Add docstring
     # TODO: Add test
-    pass
+    raise NotImplementedError
 
 
 def to_state_action_value(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "A S"]:
     # TODO: Add docstring
     # TODO: Add test
-    return mdp.reward + gamma * jnp.einsum("axs,x->as", mdp.transition, value)
+    return (jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) +
+            gamma * jnp.einsum("axs,x->as", mdp.transition, value))
 
 
 def expected_state_value(mdp: MDP, value: Float[Array, "S"]) -> Float[Array, ""]:
@@ -135,8 +136,9 @@ def expected_q_value(mdp: MDP, value: Float[Array, "A S"]) -> Float[Array, ""]:
     return expected_state_value(mdp, jnp.max(value, axis=0))
 
 
-def _markov_chain_pi(mdp: MDP, policy: Float[Array, "A S"]
-                     ) -> Tuple[Float[Array, "S S"], Float[Array, "S"]]:
+def _markov_chain_pi(mdp: MDP,
+                     policy: Float[Array, "A S"]
+                     ) -> Tuple[Float[Array, "S S"], Float[Array, "S S"]]:
     r"""
     Make Markov Chain of an MDP by fixing the policy.
 
@@ -150,11 +152,11 @@ def _markov_chain_pi(mdp: MDP, policy: Float[Array, "A S"]
 
     Returns:
         Float[Array, "S S"]: Transition matrix
-        Float[Array, "S"]: Reward vector
+        Float[Array, "S S"]: Reward matrix
 
     """
     transition_pi = jnp.einsum("as,axs->xs", policy, mdp.transition)
-    reward_pi = jnp.einsum("as,as->s", policy, mdp.reward)
+    reward_pi = jnp.einsum("as,asx->sx", policy, mdp.reward)
     return transition_pi, reward_pi
 
 
@@ -188,9 +190,9 @@ def policy_evaluation(mdp: MDP,
 
     """
     transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
-    target_state_values = jnp.linalg.inv(
-        jnp.eye(mdp.state_size) - gamma * transition_pi.T) @ (reward_pi * (1 - mdp.terminal))
-    return target_state_values
+
+    return (jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @
+            jnp.einsum("sx,sx->s", transition_pi.T, reward_pi))
 
 
 def q_policy_evaluation(mdp: MDP,
@@ -213,8 +215,8 @@ def q_policy_evaluation(mdp: MDP,
 
     """
     mc_state_values = policy_evaluation(mdp, policy, gamma)
-    return (mdp.reward * (1 - mdp.terminal).reshape(1, -1) +
-            gamma * jnp.einsum("axs,x", mdp.transition, mc_state_values))
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    return (reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
 
 
 def bellman_v_operator(mdp: MDP,
@@ -243,7 +245,8 @@ def bellman_v_operator(mdp: MDP,
     # TODO: Add test
     target_values = jnp.einsum("axs,x,x->as",
                                mdp.transition, value, (1 - mdp.terminal))
-    return jnp.einsum("as,as->s", mdp.reward + gamma * target_values, policy)
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    return jnp.einsum("as,as->s", reward + gamma * target_values, policy)
 
 
 def bellman_q_operator(mdp: MDP,
@@ -270,43 +273,34 @@ def bellman_q_operator(mdp: MDP,
     """
     target_values = jnp.einsum("axs,ux,ux,x->as",
                                mdp.transition, value, policy, (1 - mdp.terminal))
-    return mdp.reward + gamma * target_values
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    return reward + gamma * target_values
 
 
 def sync_sample(mdp: MDP,
-                policy: Float[Array, "A S"],
                 key: jrd.KeyArray
-                ) -> Tuple[Float[Array, "S S"],
-                           Float[Array, "S A"],
-                           Float[Array, "S"],
-                           Float[Array, "S S"],
-                           Float[Array, "S"]]:
+                ) -> Tuple[Float[Array, "A S"],
+                           Float[Array, "A S S"],
+                           Float[Array, "A S"]]:
     r"""
-    Synchronously sample starting from each state in the given MDP by following the given policy
+    Synchronously sample starting from each state action pair in the given MDP
 
     Args:
         mdp (MDP): Markov Decision Process
-        policy (Float[Array,"AS"]): Policy distribution
         key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        Float[Array, "S S"]: States
-        Float[Array, "S A"]: Actions
         Float[Array, "S"]: Rewards
         Float[Array, "S S"]: Next states
         Float[Array, "S"]]: Termination condition (either 0 or 1)
 
     """
-    transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
-
-    state = jnp.eye(mdp.state_size)
-    action = sample_from(policy, key).T
-    reward = reward_pi * (1 - mdp.terminal)
     next_state = distrax.OneHotCategorical(
-        probs=transition_pi.T, dtype=jnp.float32).sample(seed=key)
-    terminal = jnp.einsum("sx,x->s", next_state, mdp.terminal)
+        probs=jnp.einsum("axs->asx", mdp.transition), dtype=jnp.float32).sample(seed=key)
+    terminal = jnp.einsum("asx,x->as", next_state, mdp.terminal)
+    reward = jnp.einsum("asx,asx->as", mdp.reward, next_state)
 
-    return state, action, reward, next_state, terminal
+    return reward, next_state, terminal
 
 
 def async_sample_step(mdp: MDP,
@@ -354,7 +348,7 @@ def async_sample_step(mdp: MDP,
         "a,axs,s->x", action, mdp.transition, state)
     next_state = distrax.OneHotCategorical(
         probs=next_state_p, dtype=jnp.float32).sample(seed=state_key)
-    reward = jnp.einsum("as,a,s->", mdp.reward, action, state)
+    reward = jnp.einsum("asx,a,s,x->", mdp.reward, action, state, next_state)
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
 
     episode_step = episode_step + 1

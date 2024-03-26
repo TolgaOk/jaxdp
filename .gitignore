@@ -2,5 +2,9 @@
 *.egg-info
 *.DS_Store
 .vscode
+*.ipynb
 documents/
 logs/
+examples/data
+examples/figures
+./mypy_cache

@@ -61,7 +61,7 @@ def train(
         step_info = {
             "expected_value": jaxdp.expected_q_value(mdp, value),
             "policy_evaluation": (jaxdp.policy_evaluation(mdp, policy, gamma) * mdp.initial).sum(),
-            "bellman_error": jaxdp.bellman_q_operator(mdp, policy, value, gamma).max(),
+            "bellman_error": jnp.abs(value - jaxdp.bellman_q_operator(mdp, policy, value, gamma)).max(),
             "value_delta": jnp.max(jnp.abs(next_value - value)),
             "policy_delta": (1 - jnp.all(jnp.isclose(next_policy, policy), axis=0)).sum(),
         }
