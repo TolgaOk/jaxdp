@@ -1,7 +1,7 @@
 from typing import Optional, Callable, Tuple, Dict, Union, Any
-from dataclasses import dataclass
 import jax.numpy as jnp
 import jax.random as jrd
+from jax.typing import ArrayLike
 import jax
 import distrax
 from jaxtyping import Array, Float
@@ -162,12 +162,31 @@ def _markov_chain_pi(mdp: MDP,
 
 def sample_based_policy_evaluation(mdp: MDP,
                                    policy: Float[Array, "A S"],
-                                   key: jrd.KeyArray
-                                   ) -> Float[Array, "S"]:
-    # TODO: Implement sample based evaluation
+                                   key: ArrayLike,
+                                   gamma: float,
+                                   max_episode_length: int) -> Float[Array, ""]:
     # TODO: Add test
     # TODO: Add docstring
-    pass
+    episode_step = jnp.zeros((1,))
+    state = mdp.initial
+    episode_rewards = jnp.full((max_episode_length,), jnp.nan)
+    is_terminated = jnp.array(False).astype("bool")
+
+    def _step(index, _data):
+        _episode_step, _key, _episode_rewards, _state, _is_terminated = _data
+        _key, step_key = jrd.split(_key)
+        (act, next_state, reward, terminal, timeout, _state, _episode_step
+         ) = async_sample_step_pi(
+            mdp, policy, _state, _episode_step, max_episode_length, step_key)
+        reward = (1 - _is_terminated) * reward * (gamma ** index)
+        _is_terminated = jnp.logical_or(terminal, _is_terminated)
+        _episode_rewards = _episode_rewards.at[index].set(reward)
+
+        return _episode_step, _key, _episode_rewards, _state, _is_terminated
+
+    _, _, episode_rewards, _, _ = jax.lax.fori_loop(0, max_episode_length, _step,
+                                                    (episode_step, key, episode_rewards, state, is_terminated))
+    return episode_rewards.sum()
 
 
 def policy_evaluation(mdp: MDP,

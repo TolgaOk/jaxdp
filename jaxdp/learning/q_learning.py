@@ -56,3 +56,39 @@ def sync_q_learning_update(sample: SyncSample,
     target_values = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma)
 
     return value + (target_values - value) * alpha
+
+
+def sync_speedy_q_learning_update(sample: SyncSample,
+                                  value: Float[Array, "A S"],
+                                  past_value: Float[Array, "A S"],
+                                  gamma: float,
+                                  alpha: float,
+                                  ) -> Tuple[Float[Array, "A S"], Float[Array, "A S"]]:
+    batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
+    bellman_op = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma)
+    past_bellma_op = batch_q_target(sample.next_state, sample.reward,
+                                    sample.terminal, past_value, gamma)
+
+    return (value + alpha * (past_bellma_op - value) + (1 - alpha) * (bellman_op - past_bellma_op),
+            value)
+
+
+def sync_zap_q_learning_update(sample: SyncSample,
+                               value: Float[Array, "A S"],
+                               matrix_gain: Float[Array, "AS AS"],
+                               gamma: float,
+                               alpha: float,
+                               beta: float,
+                               ) -> Tuple[Float[Array, "A S"], Float[Array, "AS AS"]]:
+    act_size, state_size = value.shape
+    batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
+    delta = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma) - value
+
+    next_action = jax.nn.one_hot(jnp.argmax(jnp.einsum(
+        "asx,ux->asu", sample.next_state, value), axis=-1), act_size)
+    step_matrix_gain = (jnp.eye(act_size * state_size) -
+                        gamma * jnp.einsum("asx,asu->asux", sample.next_state, next_action
+                                           ).reshape(act_size * state_size, act_size * state_size))
+    matrix_gain = matrix_gain + beta * (step_matrix_gain - matrix_gain)
+    return (value + alpha * (jnp.linalg.inv(matrix_gain) @ delta.flatten()).reshape(act_size, state_size),
+            matrix_gain)
