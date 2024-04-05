@@ -5,6 +5,7 @@ from jax.typing import ArrayLike
 import jax
 import distrax
 from jaxtyping import Array, Float
+from jax.typing import ArrayLike
 
 from jaxdp.mdp.mdp import MDP
 
@@ -71,14 +72,14 @@ def e_greedy_policy(value: Float[Array, "A S"],
 
 
 def sample_from(policy: Float[Array, "A S"],
-                key: jrd.KeyArray,
+                key: ArrayLike,
                 ) -> Float[Array, "A S"]:
     r"""
     Sample from a policy. The samples will be one-hot vectors.
 
     Args:
         policy (Float[Array,"A S"]): Policy distribution
-        key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
+        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         Float[Array, "A S"]: Sampled actions in the one-hot vector form for each state.
@@ -297,7 +298,7 @@ def bellman_q_operator(mdp: MDP,
 
 
 def sync_sample(mdp: MDP,
-                key: jrd.KeyArray
+                key: ArrayLike
                 ) -> Tuple[Float[Array, "A S"],
                            Float[Array, "A S S"],
                            Float[Array, "A S"]]:
@@ -306,7 +307,7 @@ def sync_sample(mdp: MDP,
 
     Args:
         mdp (MDP): Markov Decision Process
-        key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
+        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         Float[Array, "S"]: Rewards
@@ -327,7 +328,7 @@ def async_sample_step(mdp: MDP,
                       state: Float[Array, "S"],
                       episode_step: Float[Array, ""],
                       episode_length: int,
-                      key: jrd.KeyArray
+                      key: ArrayLike
                       ) -> Tuple[Float[Array, "S"],
                                  Float[Array, ""],
                                  Float[Array, ""],
@@ -350,7 +351,7 @@ def async_sample_step(mdp: MDP,
         state (Float[Array,"S"]): Current state of the MDP
         episode_step (Float[Array,""]): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
+        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         Float[Array, "S"]: Next states of the transition (not necessarily equal to stepped State)
@@ -388,7 +389,7 @@ def async_sample_step_pi(mdp: MDP,
                          state: Float[Array, "S"],
                          episode_step: Float[Array, ""],
                          episode_length: int,
-                         key: jrd.KeyArray
+                         key: ArrayLike
                          ) -> Tuple[Float[Array, "S"],
                                     Float[Array, "A"],
                                     Float[Array, ""],
@@ -405,7 +406,7 @@ def async_sample_step_pi(mdp: MDP,
         state (Float[Array,"S"]): Current state of the MDP
         episode_step (Float[Array,""]): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (jrd.KeyArray): State of the JAX pseudorandom number generators (PRNGs)
+        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         Float[Array, "A"]: Action of the transition

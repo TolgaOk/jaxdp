@@ -106,7 +106,7 @@ def _rollout_sample(length: int,
                     state: Float[Array, "S"],
                     episode_step: Float[Array, ""],
                     max_episode_step: int,
-                    key: jrd.KeyArray
+                    key: ArrayLike
                     ) -> Tuple[RolloutSample,
                                Float[Array, "S"],
                                Float[Array, ""]]:
@@ -182,7 +182,7 @@ def record_episode_stats(episode_stat: EpisodeStats,
 def rollout_sample(mdp: MDP,
                    sampler_state: SamplerState,
                    policy: Float[Array, "A S"],
-                   key: jrd.KeyArray,
+                   key: ArrayLike,
                    max_episode_length: int,
                    rollout_len: int,
                    ) -> Tuple[RolloutSample, SamplerState]:

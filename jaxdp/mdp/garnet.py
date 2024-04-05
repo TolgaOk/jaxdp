@@ -5,9 +5,10 @@ import jax
 
 from jaxdp.mdp import MDP
 from jaxtyping import Float, Array
+from jax.typing import ArrayLike
 
 
-def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: jrd.KeyArray,
+def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: ArrayLike,
                 min_reward: float = 0, max_reward: float = 1.0) -> MDP:
     # TODO: Add test
     # TODO: Add documentation

@@ -4,9 +4,10 @@ import jax.random as jrd
 import jax
 
 from jaxdp.mdp import MDP
+from jax.typing import ArrayLike
 
 
-def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: jrd.KeyArray) -> MDP:
+def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: ArrayLike) -> MDP:
     # TODO: Add test
     # TODO: Add documentation
     state_size = int((action_size ** (delay + 1) - 1) / (action_size - 1))
