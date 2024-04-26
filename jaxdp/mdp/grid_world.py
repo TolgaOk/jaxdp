@@ -70,4 +70,4 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
             (1 - p_slip) * _transition[act_ind] +
             p_slip * _transition[jnp.array(slip_ind)].mean(0))
 
-    return MDP(transition, reward, initial, terminal, "GridWorld")
+    return MDP(transition, reward, initial, terminal * 0, "GridWorld")

@@ -138,7 +138,8 @@ def sync_train(init_value: QValueType,
         sample = SyncSample(next_state, reward, terminal)
 
         _next_value, learner_state = update_fn(index, sample, value, learner_state)
-        next_value = jnp.einsum("as,s->as", _next_value, 1 - mdp.terminal)
+        # next_value = jnp.einsum("as,s->as", _next_value, 1 - mdp.terminal)
+        next_value = _next_value
 
         policy = policy_fn(next_value, index)
         expected_policy_eval = jax.lax.cond(
