@@ -36,4 +36,4 @@ def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: ArrayLi
     initial = jnp.ones((state_size,)) / state_size
     reward = jrd.uniform(reward_key, (action_size, state_size, state_size), minval=min_reward, maxval=max_reward)
 
-    return MDP(transition, reward, initial, terminal, f"GarnetMDP(#branch={branch_size})")
+    return MDP(transition, reward, initial, terminal, name=f"GarnetMDP(#branch={branch_size})")

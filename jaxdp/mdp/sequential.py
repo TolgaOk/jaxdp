@@ -22,4 +22,4 @@ def sequential_mdp(state_size: int) -> MDP:
     initial = jnp.zeros((state_size,)).at[0].set(1)
     reward = jnp.zeros((2, state_size)).at[0, state_size-2].set(1)
 
-    return MDP(transition, reward, initial, terminal, f"SequentialMDP")
+    return MDP(transition, reward, initial, terminal, name=f"SequentialMDP")

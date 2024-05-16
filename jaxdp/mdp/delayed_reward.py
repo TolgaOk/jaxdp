@@ -34,4 +34,4 @@ def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: Arr
     terminal = jnp.concatenate(
         [jnp.zeros((state_size - n_leafs,)), jnp.ones((n_leafs,))])
 
-    return MDP(transition, reward, initial, terminal, f"DelayedRewardMDP(delay=f{delay})")
+    return MDP(transition, reward, initial, terminal, name=f"DelayedRewardMDP(delay=f{delay})")

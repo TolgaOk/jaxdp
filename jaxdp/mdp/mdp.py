@@ -17,6 +17,7 @@ class MDP():
         reward (Float[Array, "... A S S"]): Reward matrix
         initial (Float[Array, "... S"]): Stochastic vector for the initial state distribution
         terminal (Float[Array, "... S"]): A boolean-valued vector for terminal states
+        features (Float[Array, "... S F"]): State features
         name (str, optional): Name of the MDP. Defaults to "MDP".
         validate (bool, optional): If true, validate the input matrices and vectors. Defaults to 
             True.
@@ -27,6 +28,7 @@ class MDP():
                  reward: Float[Array, "... A S S"],
                  initial: Float[Array, "... S"],
                  terminal: Float[Array, "... S"],
+                 features: Optional[Float[Array, "... S F"]] = None,
                  name: str = "MDP",
                  validate: bool = True):
         self.name = name
@@ -34,6 +36,9 @@ class MDP():
         self.reward = reward
         self.initial = initial
         self.terminal = terminal
+        if features is None:
+            features = jnp.eye(self.state_size)
+        self.features = features
 
         if validate:
             self.validate()
@@ -80,6 +85,10 @@ class MDP():
     @property
     def state_size(self) -> int:
         return self.transition.shape[-2]
+    
+    @property
+    def feature_size(self) -> int:
+        return self.features.shape[-1]
 
     @property
     def action_size(self) -> int:
@@ -140,6 +149,7 @@ def flatten_mdp(container) -> Tuple[Float[Array, ""], Dict[str, Any]]:
         container.reward,
         container.initial,
         container.terminal,
+        container.features,
     ]
     return flat_contents, {
         "name": container.name,

@@ -38,7 +38,7 @@ def _graph_mdp(state_size: int, edge_info: Dict[str, Tuple[int]]) -> MDP:
     terminal = jnp.zeros((state_size,))
     initial = jnp.ones((state_size,)) / state_size
 
-    return MDP(transition, reward / 100, initial, terminal, f"GraphMDP")
+    return MDP(transition, reward / 100, initial, terminal, name=f"GraphMDP")
 
 
 graph_mdp = partial(_graph_mdp, state_size=_state_size, edge_info=_edge_info)
