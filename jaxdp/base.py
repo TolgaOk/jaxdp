@@ -297,6 +297,15 @@ def bellman_q_operator(mdp: MDP,
     return reward + gamma * target_values
 
 
+def bellman_optimality_operator(mdp: MDP,
+                                value: Float[Array, "A S"],
+                                gamma: float
+                                ) -> Float[Array, "A S"]:
+    target_values = jnp.einsum("axs,x->as", mdp.transition, jnp.max(value, axis=0, keepdims=False))
+    rewards = jnp.einsum("axs,asx->as", mdp.transition, mdp.reward)
+    return rewards + gamma * target_values
+
+
 def sync_sample(mdp: MDP,
                 key: ArrayLike
                 ) -> Tuple[Float[Array, "A S"],
