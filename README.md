@@ -26,12 +26,11 @@ mvmm_vi_step = vmap(mv_vi_step, in_axes=(None, 0, None))(values, mdps, gamma)
 |:--------------------:|:----------------:|
 |  VI                  |:heavy_check_mark:|
 |  PI                  |:heavy_check_mark:|
-|  Accelerated VI      |:x:               |
-|  Relaxed VI          |:x:               |
+|  Nesterov VI         |:heavy_check_mark:|
+|  Accelerated VI      |:heavy_check_mark:|
 
 |Learning Algorithms |Sync sampled      |Async sampled     |
 |:------------------:|:----------------:|:----------------:|
-|  SARSA             |:x:               |:x:               |
 |  TD($\lambda$)     |:x:               |:heavy_check_mark:|
 |  Q-learning (QL)   |:heavy_check_mark:|:heavy_check_mark:|
 |  Momentum QL       |:x:               |:x:               |
