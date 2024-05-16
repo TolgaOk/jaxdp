@@ -1,4 +1,4 @@
-from typing import Dict, NamedTuple, Union, List, Tuple, Callable, Type
+from typing import Dict, NamedTuple, Union, List, Tuple, Callable, Type, Any
 from abc import abstractmethod
 import jax.numpy as jnp
 import jax.random as jrd
@@ -40,7 +40,8 @@ def train(
     init_value: ValueArray,
     n_iterations: int,
     gamma: float,
-    update_fn: Callable[[MDP, ValueArray, float], ValueArray],
+    update_fn: Callable[[MDP, ValueArray, Any, float], Tuple[ValueArray, Any]],
+    update_state: Any,
     verbose: bool = True
 ) -> Tuple[IterationMetrics, ValueArray]:
 
@@ -53,9 +54,9 @@ def train(
         print(f"Progress: {step:5d}")
 
     def step_fn(index, step_data):
-        metrics, value, policy = step_data
+        metrics, value, policy, update_state = step_data
 
-        next_value = update_fn(mdp, value, gamma)
+        next_value, update_state = update_fn(mdp, value, update_state, gamma)
         next_policy = jaxdp.greedy_policy(next_value)
 
         step_info = {
@@ -69,9 +70,9 @@ def train(
         metrics = metrics.write(index, step_info)
         if verbose:
             call(print_log, (index + 1, step_info))
-        return metrics, next_value, next_policy
+        return metrics, next_value, next_policy, update_state
 
-    metrics, value, policy = jax.lax.fori_loop(
-        0, n_iterations, step_fn, (metrics, value, policy))
+    metrics, value, policy, update_state = jax.lax.fori_loop(
+        0, n_iterations, step_fn, (metrics, value, policy, update_state))
 
-    return metrics, value
+    return metrics, value, update_state
