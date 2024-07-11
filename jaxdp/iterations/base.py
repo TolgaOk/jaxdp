@@ -13,16 +13,16 @@ from jaxdp.mdp import MDP
 
 
 class IterationMetrics(NamedTuple):
-
     expected_value: Float[Array, "N"]
     policy_evaluation: Float[Array, "N"]
     bellman_error: Float[Array, "N"]
     value_delta: Float[Array, "N"]
     policy_delta: Float[Array, "N"]
+    value_error: Float[Array, "N"]
 
     @staticmethod
     def initialize(step_size: int) -> "IterationMetrics":
-        return IterationMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(5)])
+        return IterationMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
 
     def write(self, index: int, values: Dict[str, float]) -> "IterationMetrics":
         self_dict = self._asdict()
@@ -35,15 +35,16 @@ class IterationMetrics(NamedTuple):
 ValueArray = Float[Array, "A S"]
 
 
-def train(
-    mdp: MDP,
-    init_value: ValueArray,
-    n_iterations: int,
-    gamma: float,
-    update_fn: Callable[[MDP, ValueArray, Any, float], Tuple[ValueArray, Any]],
-    update_state: Any,
-    verbose: bool = True
-) -> Tuple[IterationMetrics, ValueArray]:
+def train(mdp: MDP,
+          init_value: ValueArray,
+          value_star: ValueArray,
+          n_iterations: int,
+          gamma: float,
+          update_fn: Callable[[MDP, ValueArray, Any, float], Tuple[ValueArray, Any]],
+          update_state: Any,
+          verbose: bool = True
+          ) -> Tuple[IterationMetrics, ValueArray]:
+    # TODO: Add docstring
 
     metrics = IterationMetrics.initialize(n_iterations)
     value = init_value
@@ -65,6 +66,7 @@ def train(
             "bellman_error": jnp.abs(value - jaxdp.bellman_q_operator(mdp, policy, value, gamma)).max(),
             "value_delta": jnp.max(jnp.abs(next_value - value)),
             "policy_delta": (1 - jnp.all(jnp.isclose(next_policy, policy), axis=0)).sum(),
+            "value_error": jnp.abs(value - value_star).max(),
         }
 
         metrics = metrics.write(index, step_info)
@@ -76,3 +78,12 @@ def train(
         0, n_iterations, step_fn, (metrics, value, policy, update_state))
 
     return metrics, value, update_state
+
+
+def no_update_state(update_fn: Callable):
+    """ Update function wrapper to ignore update_state in the train
+    """
+    def wrapper(mdp, value, prev_value, gamma, *args, **kwargs):
+        return update_fn(mdp, value, gamma, *args, **kwargs), prev_value
+
+    return wrapper

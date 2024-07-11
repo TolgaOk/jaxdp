@@ -66,10 +66,10 @@ def sync_speedy_q_learning_update(sample: SyncSample,
                                   ) -> Tuple[Float[Array, "A S"], Float[Array, "A S"]]:
     batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
     bellman_op = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma)
-    past_bellma_op = batch_q_target(sample.next_state, sample.reward,
+    past_bellman_op = batch_q_target(sample.next_state, sample.reward,
                                     sample.terminal, past_value, gamma)
 
-    return (value + alpha * (past_bellma_op - value) + (1 - alpha) * (bellman_op - past_bellma_op),
+    return (value + alpha * (past_bellman_op - value) + (1 - alpha) * (bellman_op - past_bellman_op),
             value)
 
 

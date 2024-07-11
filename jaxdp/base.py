@@ -88,10 +88,10 @@ def sample_from(policy: Float[Array, "A S"],
     return distrax.OneHotCategorical(probs=policy.T, dtype=jnp.float32).sample(seed=key).T
 
 
-def to_state_value(mdp: MDP, value: Float[Array, "A S"], gamma: float) -> Float[Array, "S"]:
+def to_greedy_state_value(value: Float[Array, "A S"]) -> Float[Array, "S"]:
     # TODO: Add docstring
     # TODO: Add test
-    raise NotImplementedError
+    return jnp.max(value, axis=0)
 
 
 def to_state_action_value(mdp: MDP, value: Float[Array, "S"], gamma: float) -> Float[Array, "A S"]:

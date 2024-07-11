@@ -35,7 +35,7 @@ class TrainMetrics(NamedTuple):
 class SyncTrainMetrics(NamedTuple):
     expected_policy_eval: Float[Array, "N"]
     max_value_diff: Float[Array, "N"]
-    max_bellman_error: Float[Array, "N"]
+    bellman_error: Float[Array, "N"]
     expected_value: Float[Array, "N"]
     value_error: Float[Array, "N"]
 
@@ -150,7 +150,7 @@ def sync_train(init_value: QValueType,
         )
         expected_value = jnp.einsum("as,as,s->", policy, value, mdp.initial)
         max_value_diff = jnp.abs(next_value - value).max()
-        max_bellman_error = jnp.abs(jaxdp.bellman_q_operator(
+        bellman_error = jnp.abs(jaxdp.bellman_q_operator(
             mdp, policy, value, gamma) - value).max()
         value_error = jnp.linalg.norm(value - value_star, ord=2) / \
             jnp.linalg.norm(value_star, ord=2)
@@ -158,7 +158,7 @@ def sync_train(init_value: QValueType,
         metrics = SyncTrainMetrics(
             metrics.expected_policy_eval.at[index].set(expected_policy_eval),
             metrics.max_value_diff.at[index].set(max_value_diff),
-            metrics.max_bellman_error.at[index].set(max_bellman_error),
+            metrics.bellman_error.at[index].set(bellman_error),
             metrics.expected_value.at[index].set(expected_value),
             metrics.value_error.at[index].set(value_error),
         )
@@ -169,3 +169,12 @@ def sync_train(init_value: QValueType,
         0, n_steps, _step_fn, (metrics, value, learner_state, key))
 
     return metrics, value
+
+
+def no_learner_state(update_fn: Callable):
+    """ Update function wrapper to ignore learner_state in the train
+    """
+    def wrapper(sample, value, learner_state, gamma, *args, **kwargs):
+        return update_fn(sample, value, gamma, *args, **kwargs), None
+
+    return wrapper

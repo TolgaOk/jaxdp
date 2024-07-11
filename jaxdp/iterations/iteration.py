@@ -39,6 +39,7 @@ def policy_iteration_update(mdp: MDP, value: Float[Array, "A S"], gamma: float) 
     policy_pi = jaxdp.greedy_policy(value)
     return jaxdp.q_policy_evaluation(mdp, policy_pi, gamma)
 
+
 def nesterov_qi_update(mdp: MDP,
                        value: Float[Array, "A S"],
                        prev_value: Float[Array, "A S"],
