@@ -116,12 +116,12 @@ def sync_train(init_value: QValueType,
                mdp: MDP,
                value_star: Float[Array, "A S"],
                key: ArrayLike,
+               learner_state: Any,
                n_steps: int,
                eval_period: int,
                gamma: float,
                policy_fn: Callable,
                update_fn: Callable,
-               learner_state: Any
                ) -> Any:
 
     metrics = SyncTrainMetrics.initialize(n_steps)

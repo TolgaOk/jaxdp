@@ -83,7 +83,7 @@ def train(mdp: MDP,
 def no_update_state(update_fn: Callable):
     """ Update function wrapper to ignore update_state in the train
     """
-    def wrapper(mdp, value, prev_value, gamma, *args, **kwargs):
-        return update_fn(mdp, value, gamma, *args, **kwargs), prev_value
+    def wrapper(mdp, value, update_state, gamma, *args, **kwargs):
+        return update_fn(mdp, value, gamma, *args, **kwargs), update_state
 
     return wrapper
