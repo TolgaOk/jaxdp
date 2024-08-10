@@ -5,34 +5,35 @@ import jax.numpy as jnp
 import jax.random as jrd
 from jaxtyping import Float, Array
 from jax.typing import ArrayLike
+from jaxdp.typehints import QType, F
 
 from jaxdp.learning.sampler import RolloutSample, SamplerState, StepSample, SyncSample
 
 
-def q_target(next_state: Float[Array, "S"],
-             reward: Float[Array, ""],
-             terminal: Float[Array, ""],
-             value: Float[Array, "A S"],
+def q_target(next_state: F["S"],
+             reward: F[""],
+             terminal: F[""],
+             value: F["A S"],
              gamma: float
-             ) -> Float[Array, ""]:
+             ) -> F[""]:
     return (gamma * jnp.max(jnp.einsum("x,ux,->u", next_state,
                                        value, (1 - terminal)), axis=0)
             + reward)
 
 
 def q_step(sample: StepSample,
-           value: Float[Array, "A S"],
+           value: QType,
            gamma: float
-           ) -> Float[Array, ""]:
+           ) -> F[""]:
     return (q_target(sample.next_state, sample.reward, sample.terminal, value, gamma) -
             jnp.einsum("s,a,as->", sample.state, sample.action, value))
 
 
 def q_learning_update(rollout: RolloutSample,
-                      value: Float[Array, "A S"],
+                      value: QType,
                       gamma: float,
                       alpha: float,
-                      ) -> Float[Array, "A S"]:
+                      ) -> QType:
     batch_q_update = jax.vmap(
         jax.vmap(
             q_step,
@@ -47,10 +48,10 @@ def q_learning_update(rollout: RolloutSample,
 
 
 def sync_q_learning_update(sample: SyncSample,
-                           value: Float[Array, "A S"],
+                           value: QType,
                            gamma: float,
                            alpha: float,
-                           ) -> Float[Array, "A S"]:
+                           ) -> QType:
 
     batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
     target_values = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma)
@@ -59,11 +60,11 @@ def sync_q_learning_update(sample: SyncSample,
 
 
 def sync_speedy_q_learning_update(sample: SyncSample,
-                                  value: Float[Array, "A S"],
-                                  past_value: Float[Array, "A S"],
+                                  value: QType,
+                                  past_value: QType,
                                   gamma: float,
                                   alpha: float,
-                                  ) -> Tuple[Float[Array, "A S"], Float[Array, "A S"]]:
+                                  ) -> Tuple[QType, QType]:
     batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
     bellman_op = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma)
     past_bellman_op = batch_q_target(sample.next_state, sample.reward,
@@ -74,12 +75,12 @@ def sync_speedy_q_learning_update(sample: SyncSample,
 
 
 def sync_zap_q_learning_update(sample: SyncSample,
-                               value: Float[Array, "A S"],
-                               matrix_gain: Float[Array, "AS AS"],
+                               value: QType,
+                               matrix_gain: F["AS AS"],
                                gamma: float,
                                alpha: float,
                                beta: float,
-                               ) -> Tuple[Float[Array, "A S"], Float[Array, "AS AS"]]:
+                               ) -> Tuple[QType, F["AS AS"]]:
     act_size, state_size = value.shape
     batch_q_target = jax.vmap(jax.vmap(q_target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
     delta = batch_q_target(sample.next_state, sample.reward, sample.terminal, value, gamma) - value

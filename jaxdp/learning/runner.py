@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Union, List, Tuple, NamedTuple, Type, Any
+from typing import Callable, Dict, Union, List, Tuple, NamedTuple, Type, Any, NewType
 
 import jax
 import jax.numpy as jnp
@@ -9,16 +9,17 @@ from jax.experimental.host_callback import call
 
 from jaxdp.learning.sampler import RolloutSample, SamplerState, SyncSample
 from jaxdp.mdp.mdp import MDP
+from jaxdp.typehints import QType, VType, PiType, F, I
 import jaxdp
 
 
 class TrainMetrics(NamedTuple):
-    avg_episode_rewards: Float[Array, "N"]
-    avg_episode_lengths: Float[Array, "N"]
-    std_episode_rewards: Float[Array, "N"]
-    std_episode_lengths: Float[Array, "N"]
-    max_value_diff: Float[Array, "N"]
-    avg_value_eval: Float[Array, "N"]
+    avg_episode_rewards: F["N"]
+    avg_episode_lengths: F["N"]
+    std_episode_rewards: F["N"]
+    std_episode_lengths: F["N"]
+    max_value_diff: F["N"]
+    avg_value_eval: F["N"]
 
     @staticmethod
     def initialize(step_size: int) -> "TrainMetrics":
@@ -33,11 +34,11 @@ class TrainMetrics(NamedTuple):
 
 
 class SyncTrainMetrics(NamedTuple):
-    expected_policy_eval: Float[Array, "N"]
-    max_value_diff: Float[Array, "N"]
-    bellman_error: Float[Array, "N"]
-    expected_value: Float[Array, "N"]
-    value_error: Float[Array, "N"]
+    expected_policy_eval: F["N"]
+    max_value_diff: F["N"]
+    bellman_error: F["N"]
+    expected_value: F["N"]
+    value_error: F["N"]
 
     @staticmethod
     def initialize(step_size: int) -> "SyncTrainMetrics":
@@ -45,22 +46,19 @@ class SyncTrainMetrics(NamedTuple):
                                   for _ in range(5)])
 
 
-QValueType: Type = Float[Array, "A S"]
-PolicyType: Type = Float[Array, "A S"]
-BatchKeys: Type = Int32[Array, "B 2"]
-
+BatchKeys: Type = NewType("BatchKeys", I["B 2"])
 
 def train(sampler_state: SamplerState,
-          init_value: QValueType,
+          init_value: QType,
           mdp,
           key: ArrayLike,
           eval_steps: int,
           n_steps: int,
-          policy_fn: Callable[[QValueType, int], Float[Array, "A"]],
-          update_fn: Callable[[RolloutSample, QValueType], QValueType],
-          sample_fn: Callable[[MDP, SamplerState, PolicyType, BatchKeys], RolloutSample],
+          policy_fn: Callable[[QType, int], F["A"]],
+          update_fn: Callable[[RolloutSample, QType], QType],
+          sample_fn: Callable[[MDP, SamplerState, PiType, BatchKeys], RolloutSample],
           verbose: bool = True,
-          ) -> Tuple[TrainMetrics, QValueType]:
+          ) -> Tuple[TrainMetrics, QType]:
 
     metrics = TrainMetrics.initialize(n_steps // eval_steps)
     value = init_value
@@ -112,9 +110,9 @@ def evaluate_value():
     raise NotImplementedError
 
 
-def sync_train(init_value: QValueType,
+def sync_train(init_value: QType,
                mdp: MDP,
-               value_star: Float[Array, "A S"],
+               value_star: QType,
                key: ArrayLike,
                learner_state: Any,
                n_steps: int,
