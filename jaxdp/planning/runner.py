@@ -13,7 +13,7 @@ from jaxdp.mdp import MDP
 from jaxdp.typehints import QType, VType, F
 
 
-class IterationMetrics(NamedTuple):
+class PlanningMetrics(NamedTuple):
     expected_value: F["N"]
     policy_evaluation: F["N"]
     bellman_error: F["N"]
@@ -22,12 +22,12 @@ class IterationMetrics(NamedTuple):
     value_error: F["N"]
 
     @staticmethod
-    def initialize(step_size: int) -> "IterationMetrics":
-        return IterationMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
+    def initialize(step_size: int) -> "PlanningMetrics":
+        return PlanningMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
 
-    def write(self, index: int, values: Dict[str, float]) -> "IterationMetrics":
+    def write(self, index: int, values: Dict[str, float]) -> "PlanningMetrics":
         self_dict = self._asdict()
-        return IterationMetrics(
+        return PlanningMetrics(
             *[self_dict[name].at[index].set(value)
               for name, value in values.items()]
         )
@@ -41,10 +41,10 @@ def train(mdp: MDP,
           value_star: QType,
           update_fn: Callable[[MDP, QType, Any, float], Tuple[QType, Any]],
           verbose: bool = True
-          ) -> Tuple[IterationMetrics, QType]:
+          ) -> Tuple[PlanningMetrics, QType, Any]:
     # TODO: Add docstring
 
-    metrics = IterationMetrics.initialize(n_iterations)
+    metrics = PlanningMetrics.initialize(n_iterations)
     value = init_value
     policy = jaxdp.greedy_policy.q(value)
 
