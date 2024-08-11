@@ -7,8 +7,8 @@ def make_data_table(results, percentile: int = 25):
     table = []
 
     for name, info in results.items():
-        for metric in info["metric"]._fields:
-            values = getattr(info["metric"], metric)
+        for metric in info._fields:
+            values = getattr(info, metric)
             percentiles = jnp.nanpercentile(
                 values, q=jnp.array([percentile, 50, 100 - percentile]), axis=0)
             not_nan_indices = jnp.argwhere(1 - jnp.isnan(percentiles.sum(0))).flatten()
@@ -21,13 +21,62 @@ def make_data_table(results, percentile: int = 25):
                  "y_low": percentiles[0][not_nan_indices].tolist(),
                  "y_median": percentiles[1][not_nan_indices].tolist(),
                  "y_high": percentiles[2][not_nan_indices].tolist(),
-                 "color": info["color"],
                  }
             )
     return table
 
 
-def figure(title, table):
+def add_figure_data(data, color, fig, row=None, col=None, visible=True):
+    fig.add_trace(
+        go.Scatter(
+            x=data["x"],
+            y=data["y_low"],
+            mode="lines",
+            showlegend=False,
+            visible=visible,
+            legendgroup=data["algo"],
+            opacity=0.75,
+            line={"color": color, "width": 0}
+        ),
+        row=row,
+        col=col
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=data["x"],
+            y=data["y_high"],
+            mode="lines",
+            showlegend=False,
+            visible=visible,
+            fill="tonexty",
+            legendgroup=data["algo"],
+            opacity=0.75,
+            line={"color": color, "width": 0}
+        ),
+        row=row,
+        col=col
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=data["x"],
+            y=data["y_median"],
+            mode="lines",
+            name=data["algo"],
+            showlegend=True,
+            visible=visible,
+            legendgroup=data["algo"],
+            marker={"color": color},
+            line={"color": color}
+        ),
+        row=row,
+        col=col
+    )
+
+    return fig
+
+
+def figure(title, table, colors):
+    fig = go.FigureWidget()
     metrics = set([(item["metric"], item["env"]) for item in table])
     metric_map = {name: index for index, name in enumerate(metrics)}
     buttons = [
@@ -41,49 +90,10 @@ def figure(title, table):
         for metric, env in metric_map.keys()
     ]
 
-    fig = go.FigureWidget()
     for index, data in enumerate(table):
         buttons[metric_map[(data["metric"], data["env"])]]["args"][0]["visible"][(
             index * 3):(index * 3) + 3] = [True] * 3
-
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_low"],
-                mode="lines",
-                showlegend=False,
-                visible=False,
-                legendgroup=data["algo"],
-                opacity=0.75,
-                line={"color": data["color"], "width": 1}
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_high"],
-                mode="lines",
-                showlegend=False,
-                visible=False,
-                fill="tonexty",
-                legendgroup=data["algo"],
-                opacity=0.75,
-                line={"color": data["color"], "width": 1}
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_median"],
-                mode="lines",
-                name=data["algo"],
-                showlegend=True,
-                visible=False,
-                legendgroup=data["algo"],
-                marker={"color": data["color"]},
-                line={"color": data["color"], "dash": "dash"}
-            )
-        )
+        add_figure_data(data, colors[data["algo"]], fig, visible=False)
     fig.update_layout(
         template="simple_white",
         width=700,
