@@ -1,9 +1,6 @@
 from typing import Dict, NamedTuple, Union, List, Tuple, Callable, Type, Any
-from abc import abstractmethod
 import jax.numpy as jnp
 import jax.random as jrd
-from jaxtyping import Array, Float
-from jax.typing import ArrayLike
 import jax
 from jax.experimental.host_callback import call
 

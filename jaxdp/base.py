@@ -1,12 +1,9 @@
-from atexit import register
 from typing import Optional, Callable, Tuple, Dict, Union, Any
 import jax.numpy as jnp
 import jax.random as jrd
-from jax.typing import ArrayLike
+from jax.typing import ArrayLike as KeyType
 import jax
 import distrax
-from jaxtyping import Array, Float
-from jax.typing import ArrayLike
 
 from jaxdp.mdp.mdp import MDP
 from jaxdp.typehints import QType, VType, PiType, F
@@ -85,13 +82,13 @@ def e_greedy_policy(value: VType, epsilon: float, ) -> PiType:
 
 
 @register_as("q")
-def sample_from(policy: QType, key: ArrayLike) -> F["A S"]:
+def sample_from(policy: QType, key: KeyType) -> F["A S"]:
     r"""
     Sample from a policy. The samples will be one-hot vectors.
 
     Args:
         policy (PiType): Policy distribution
-        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
+        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         F["A S"]: Sampled actions in the one-hot vector form for each state.
@@ -281,7 +278,7 @@ def _markov_chain_pi(mdp: MDP, policy: PiType) -> Tuple[F["S S"], F["S S"]]:
 
 def sample_based_policy_evaluation(mdp: MDP,
                                    policy: PiType,
-                                   key: ArrayLike,
+                                   key: KeyType,
                                    gamma: float,
                                    max_episode_length: int
                                    ) -> F[""]:
@@ -309,13 +306,13 @@ def sample_based_policy_evaluation(mdp: MDP,
     return episode_rewards.sum()
 
 
-def sync_sample(mdp: MDP, key: ArrayLike) -> Tuple[F["A S"], F["A S S"], F["A S"]]:
+def sync_sample(mdp: MDP, key: KeyType) -> Tuple[F["A S"], F["A S S"], F["A S"]]:
     r"""
     Synchronously sample starting from each state action pair in the given MDP
 
     Args:
         mdp (MDP): Markov Decision Process
-        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
+        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         VType: Rewards
@@ -336,7 +333,7 @@ def async_sample_step(mdp: MDP,
                       state: F["S"],
                       episode_step: F[""],
                       episode_length: int,
-                      key: ArrayLike
+                      key: KeyType
                       ) -> Tuple[F["S"], F[""], F[""], F[""], F["S"], F[""]]:
     r"""
     Asynchronously sample from the given MDP by following the given action. The starting state
@@ -354,7 +351,7 @@ def async_sample_step(mdp: MDP,
         state (F["S"]): Current state of the MDP
         episode_step (F[""]): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
+        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         VType: Next states of the transition (not necessarily equal to stepped State)
@@ -392,7 +389,7 @@ def async_sample_step_pi(mdp: MDP,
                          state: F["S"],
                          episode_step: F[""],
                          episode_length: int,
-                         key: ArrayLike
+                         key: KeyType
                          ) -> Tuple[F["S"], F["A"], F[""], F[""], F[""], F["S"], F[""]]:
     r"""
     Asynchronously sample from the given MDP by following the given policy.
@@ -403,7 +400,7 @@ def async_sample_step_pi(mdp: MDP,
         state (F["S"]): Current state of the MDP
         episode_step (F[""]): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (ArrayLike): State of the JAX pseudorandom number generators (PRNGs)
+        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
         F["A"]: Action of the transition

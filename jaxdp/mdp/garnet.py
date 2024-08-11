@@ -4,7 +4,6 @@ import jax.random as jrd
 import jax
 
 from jaxdp.mdp import MDP
-from jaxtyping import Float, Array
 from jax.typing import ArrayLike as KeyType
 
 

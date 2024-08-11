@@ -1,9 +1,7 @@
-from atexit import register
 from typing import Dict, Union, List
 import jax.numpy as jnp
 import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
-from jaxtyping import Array, Float
 
 import jaxdp
 from jaxdp import MDP
