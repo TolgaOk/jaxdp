@@ -3,14 +3,24 @@ from typing import Callable, Dict, Union, List, Tuple, NamedTuple, Type, Any, Ne
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
-from jaxtyping import Array, Float, Int32
-from jax.typing import ArrayLike
+from jax.typing import ArrayLike as KeyType
 from jax.experimental.host_callback import call
 
 from jaxdp.learning.sampler import RolloutSample, SamplerState, SyncSample
 from jaxdp.mdp.mdp import MDP
 from jaxdp.typehints import QType, VType, PiType, F, I
 import jaxdp
+from jaxdp.utils import register_as
+
+
+class ExpDecay(NamedTuple):
+    temperature: float = 1.0
+    offset: int = 1
+
+    def decay_fn(self) -> Callable[[int], float]:
+        def decay(step: int):
+            return (1 / (step / self.temperature + self.offset))
+        return decay
 
 
 class TrainMetrics(NamedTuple):
@@ -48,10 +58,12 @@ class SyncTrainMetrics(NamedTuple):
 
 BatchKeys: Type = NewType("BatchKeys", I["B 2"])
 
+
+@register_as("async")
 def train(sampler_state: SamplerState,
           init_value: QType,
           mdp,
-          key: ArrayLike,
+          key: KeyType,
           eval_steps: int,
           n_steps: int,
           policy_fn: Callable[[QType, int], F["A"]],
@@ -106,27 +118,29 @@ def train(sampler_state: SamplerState,
     return metrics, value
 
 
-def evaluate_value():
+@register_as("async")
+def evaluate():
     raise NotImplementedError
 
 
-def sync_train(init_value: QType,
-               mdp: MDP,
-               value_star: QType,
-               key: ArrayLike,
-               learner_state: Any,
-               n_steps: int,
-               eval_period: int,
-               gamma: float,
-               policy_fn: Callable,
-               update_fn: Callable,
-               ) -> Any:
+@register_as("sync")
+def train(init_value: QType,
+          mdp: MDP,
+          value_star: QType,
+          key: KeyType,
+          learner_state: Any,
+          n_steps: int,
+          eval_period: int,
+          gamma: float,
+          policy_fn: Callable,
+          update_fn: Callable,
+          ) -> Any:
 
     metrics = SyncTrainMetrics.initialize(n_steps)
     value = init_value
 
     def _eval_policy(policy):
-        return (jaxdp.policy_evaluation(mdp, policy, gamma) * mdp.initial).sum()
+        return (jaxdp.policy_evaluation.q(mdp, policy, gamma) * mdp.initial).sum()
 
     def _step_fn(index, _step_data):
         metrics, value, learner_state, key = _step_data
@@ -135,7 +149,7 @@ def sync_train(init_value: QType,
         reward, next_state, terminal = jaxdp.sync_sample(mdp, step_key)
         sample = SyncSample(next_state, reward, terminal)
 
-        _next_value, learner_state = update_fn(index, sample, value, learner_state)
+        _next_value, learner_state = update_fn(index, sample, value, learner_state, gamma)
         # next_value = jnp.einsum("as,s->as", _next_value, 1 - mdp.terminal)
         next_value = _next_value
 
@@ -148,10 +162,9 @@ def sync_train(init_value: QType,
         )
         expected_value = jnp.einsum("as,as,s->", policy, value, mdp.initial)
         max_value_diff = jnp.abs(next_value - value).max()
-        bellman_error = jnp.abs(jaxdp.bellman_q_operator(
+        bellman_error = jnp.abs(jaxdp.bellman_operator.q(
             mdp, policy, value, gamma) - value).max()
-        value_error = jnp.linalg.norm(value - value_star, ord=2) / \
-            jnp.linalg.norm(value_star, ord=2)
+        value_error = jnp.linalg.norm(value - value_star, ord=2)
 
         metrics = SyncTrainMetrics(
             metrics.expected_policy_eval.at[index].set(expected_policy_eval),
@@ -166,13 +179,27 @@ def sync_train(init_value: QType,
     metrics, value, learner_state, key = jax.lax.fori_loop(
         0, n_steps, _step_fn, (metrics, value, learner_state, key))
 
-    return metrics, value
+    return metrics, value, learner_state
+
+
+@register_as("sync")
+def evaluate():
+    raise NotImplementedError
 
 
 def no_learner_state(update_fn: Callable):
     """ Update function wrapper to ignore learner_state in the train
     """
-    def wrapper(sample, value, learner_state, gamma, *args, **kwargs):
-        return update_fn(sample, value, gamma, *args, **kwargs), None
+    def wrapper(index, sample, value, learner_state, *args, **kwargs):
+        return update_fn(index, sample, value, *args, **kwargs), None
+
+    return wrapper
+
+
+def no_step_index(update_fn: Callable):
+    """ Update function wrapper to ignore step index in the train
+    """
+    def wrapper(index, *args, **kwargs):
+        return update_fn(*args, **kwargs)
 
     return wrapper

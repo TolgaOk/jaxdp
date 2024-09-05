@@ -1,10 +1,8 @@
 from typing import Any, Dict, Union, List, NamedTuple, Tuple, Optional
-from functools import partial
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
-from jaxtyping import Array, Float
-from jax.typing import ArrayLike
+from jax.typing import ArrayLike as KeyType
 import distrax
 
 import jaxdp
@@ -78,7 +76,7 @@ class SamplerState(NamedTuple):
     def initialize_rollout_state(mdp: MDP,
                                  batch_size: int,
                                  queue_size: int,
-                                 init_state_key: ArrayLike
+                                 init_state_key: KeyType
                                  ) -> "SamplerState":
         init_state = jax.vmap(mdp.init_state, (0,))(jrd.split(init_state_key, batch_size))
         return SamplerState(
@@ -107,7 +105,7 @@ def _rollout_sample(length: int,
                     state: F["S"],
                     episode_step: F[""],
                     max_episode_step: int,
-                    key: ArrayLike
+                    key: KeyType
                     ) -> Tuple[RolloutSample,
                                F["S"],
                                F[""]]:
@@ -183,7 +181,7 @@ def record_episode_stats(episode_stat: EpisodeStats,
 def rollout_sample(mdp: MDP,
                    sampler_state: SamplerState,
                    policy: PiType,
-                   key: ArrayLike,
+                   key: KeyType,
                    max_episode_length: int,
                    rollout_len: int,
                    ) -> Tuple[RolloutSample, SamplerState]:
