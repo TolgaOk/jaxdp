@@ -46,7 +46,7 @@ def eval_policy(mdp: MDP, policy: PiType, gamma: float) -> float:
     return (jaxdp.policy_evaluation.v(mdp, policy, gamma) * mdp.initial).sum()
 
 
-@register_as("async")
+@register_as("asynchronous")
 def train(sampler_state: SamplerState,
           init_value: QType,
           mdp: MDP,
@@ -66,22 +66,23 @@ def train(sampler_state: SamplerState,
     metrics = initialize_metrics(AsyncTrainMetrics, n_steps // eval_period)
     value = init_value
 
-    def _print_fn(print_data):
+    def _print_fn(print_data, ):
         index, metrics = print_data
+        title = "Training Metrics - Iteration"
         print("=" * 50)
-        print(f"{'Training Metrics - Iteration':^50} {index}")
+        print(f"{title:^40} {index + 1}")
         print("")
         for name in metrics._fields:
-            value = getattr(metrics, name)[index].item()
-            formatted_name = name.replace('_', ' ').title()
-            print(f"{formatted_name:<30} : {value:>15.4f}")
+            val = getattr(metrics, name)[index].item()
+            formatted_name = name.replace("_", " ").title()
+            print(f"{formatted_name:<30} : {val:>15.4f}")
 
     def _log_fn(sampler_state, metrics, step_data):
         index, value, next_value = step_data
         target_policy = target_policy_fn(value, index)
 
         sampled_rewards = sampler_state.episode_reward_queue
-        sampled_lengths = sampler_state.episode_reward_queue
+        sampled_lengths = sampler_state.episode_length_queue
 
         bellman_error = jnp.abs(jaxdp.bellman_operator.q(
             mdp, target_policy, value, gamma) - value).max()
@@ -101,32 +102,31 @@ def train(sampler_state: SamplerState,
         )
 
         if verbose:
-            call(_print_fn, (index + 1, metrics))
+            call(_print_fn, (index, metrics))
         sampler_state = sampler_state.refresh_queues()
         return sampler_state, metrics
 
     def _step_fn(index, step_data):
-        metrics, sampler_state, value, key = step_data
+        metrics, sampler_state, value, learner_state, key = step_data
 
         key, step_key = jrd.split(key, 2)
-        step_keys = jrd.split(step_key, sampler_state.last_state.shape[0])
         behavior_policy = behavior_policy_fn(value, index)
-        rollout_sample, sampler_state = sample_fn(mdp, sampler_state, behavior_policy, step_keys)
-        next_value = update_fn(index, rollout_sample, value, learner_state, gamma)
+        rollout_sample, sampler_state = sample_fn(mdp, sampler_state, behavior_policy, step_key)
+        next_value, learner_state = update_fn(index, rollout_sample, value, learner_state, gamma)
 
         sampler_state, metrics, = jax.lax.cond(
             (index % eval_period) == (eval_period - 1),
             _log_fn,
             lambda sampler_state, metrics, *_: (sampler_state, metrics),
-            sampler_state, metrics, (index, value, next_value))
+            sampler_state, metrics, (index // eval_period, value, next_value))
 
         value = next_value
-        return metrics, sampler_state, value, key
+        return metrics, sampler_state, value, learner_state, key
 
-    metrics, sampler_state, value, key = jax.lax.fori_loop(
-        0, n_steps, _step_fn, (metrics, sampler_state, value, key))
+    metrics, sampler_state, value, learner_state, key = jax.lax.fori_loop(
+        0, n_steps, _step_fn, (metrics, sampler_state, value, learner_state, key))
 
-    return metrics, value
+    return metrics, value, learner_state, sampler_state
 
 
 @register_as("sync")

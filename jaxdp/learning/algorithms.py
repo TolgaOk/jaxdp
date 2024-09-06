@@ -28,23 +28,22 @@ class q_learning(metaclass=StaticMeta):
         return (q_learning.target(sample.next_state, sample.reward, sample.terminal, value, gamma) -
                 jnp.einsum("s,a,as->", sample.state, sample.action, value))
 
-    @register_as("async")
+    @register_as("asynchronous")
     def update(rollout: RolloutSample,
                value: QType,
                gamma: float,
                alpha: float,
                ) -> QType:
         batch_q_update = jax.vmap(
-            jax.vmap(
-                q_learning.step,
-                (0, None, None)),
+            q_learning.step,
             (0, None, None))
 
         target_values = batch_q_update(rollout, value, gamma)
-        target_values = jnp.einsum("bts,bta,bt->btas", rollout.state, rollout.action, target_values)
+        target_values = jnp.einsum("ts,ta,t->tas",
+                                   rollout.state, rollout.action, target_values)
         count = jnp.clip(jnp.einsum(
-            "bts,bta->as", rollout.state, rollout.action), 1.0, None)
-        return value + target_values.sum((0, 1)) / count * alpha
+            "ts,ta->as", rollout.state, rollout.action), 1.0, None)
+        return value + target_values.sum(axis=0) / count * alpha
 
     @register_as("sync")
     def update(sample: SyncSample,

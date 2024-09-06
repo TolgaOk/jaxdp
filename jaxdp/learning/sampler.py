@@ -74,18 +74,17 @@ class SamplerState(NamedTuple):
 
     @staticmethod
     def initialize_rollout_state(mdp: MDP,
-                                 batch_size: int,
                                  queue_size: int,
                                  init_state_key: KeyType
                                  ) -> "SamplerState":
-        init_state = jax.vmap(mdp.init_state, (0,))(jrd.split(init_state_key, batch_size))
+        init_state = mdp.init_state(init_state_key)
         return SamplerState(
             init_state,
-            jnp.zeros((batch_size,)),
-            jnp.zeros((batch_size,)),
-            jnp.zeros((batch_size,)),
-            jnp.full((batch_size, queue_size,), jnp.nan),
-            jnp.full((batch_size, queue_size,), jnp.nan),
+            jnp.array(1.0),
+            jnp.array(1.0),
+            jnp.array(1.0),
+            jnp.full((queue_size,), jnp.nan),
+            jnp.full((queue_size,), jnp.nan),
         )
 
     def refresh_queues(self) -> "SamplerState":
@@ -138,13 +137,13 @@ def _rollout_sample(length: int,
     return RolloutSample(**rollout), state, episode_step
 
 
-def record_episode_stats(episode_stat: EpisodeStats,
-                         rollout_data: RolloutSample
-                         ) -> EpisodeStats:
-    rewards = episode_stat.rewards
-    lengths = episode_stat.lengths
-    eps_rewards = episode_stat.episode_reward_queue
-    eps_lengths = episode_stat.episode_length_queue
+def update_sampler_records(rollout_data: RolloutSample,
+                           sampler_state: SamplerState,
+                           ) -> EpisodeStats:
+    rewards = sampler_state.rewards
+    lengths = sampler_state.lengths
+    eps_rewards = sampler_state.episode_reward_queue
+    eps_lengths = sampler_state.episode_length_queue
 
     done = jnp.logical_or(rollout_data.terminal, rollout_data.timeout)
 
@@ -158,7 +157,6 @@ def record_episode_stats(episode_stat: EpisodeStats,
         rewards, lengths, eps_rewards, eps_lengths = step_data
         rewards = rollout_data.reward[index] + rewards
         lengths = 1 + lengths
-
         eps_rewards = queue_push(eps_rewards, rewards, done[index])
         eps_lengths = queue_push(eps_lengths, lengths, done[index])
 
@@ -170,12 +168,7 @@ def record_episode_stats(episode_stat: EpisodeStats,
                                                    eps_rewards,
                                                    eps_lengths))
 
-    return EpisodeStats(
-        rewards,
-        lengths,
-        eps_rewards,
-        eps_lengths
-    )
+    return rewards, lengths, eps_rewards, eps_lengths
 
 
 def rollout_sample(mdp: MDP,
@@ -189,18 +182,8 @@ def rollout_sample(mdp: MDP,
         rollout_len, mdp, policy, sampler_state.last_state,
         sampler_state.episode_step, max_episode_length, key)
 
-    episode_stats = record_episode_stats(rollout, EpisodeStats(
-        rewards=sampler_state.rewards,
-        lengths=sampler_state.lengths,
-        eps_rewards=sampler_state.eps_rewards,
-        eps_lengths=sampler_state.eps_lengths,
-    ))
-
     return rollout, SamplerState(
         last_state,
         episode_step,
-        episode_stats.rewards,
-        episode_stats.lengths,
-        episode_stats.eps_rewards,
-        episode_stats.eps_lengths
+        *update_sampler_records(rollout, sampler_state)
     )
