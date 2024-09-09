@@ -171,10 +171,10 @@ def update_sampler_records(rollout_data: RolloutSample,
     return rewards, lengths, eps_rewards, eps_lengths
 
 
-def rollout_sample(mdp: MDP,
+def rollout_sample(key: KeyType,
+                   mdp: MDP,
                    sampler_state: SamplerState,
                    policy: PiType,
-                   key: KeyType,
                    max_episode_length: int,
                    rollout_len: int,
                    ) -> Tuple[RolloutSample, SamplerState]:

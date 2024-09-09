@@ -111,7 +111,7 @@ def train(sampler_state: SamplerState,
 
         key, step_key = jrd.split(key, 2)
         behavior_policy = behavior_policy_fn(value, index)
-        rollout_sample, sampler_state = sample_fn(mdp, sampler_state, behavior_policy, step_key)
+        rollout_sample, sampler_state = sample_fn(step_key, mdp, sampler_state, behavior_policy)
         next_value, learner_state = update_fn(index, rollout_sample, value, learner_state, gamma)
 
         sampler_state, metrics, = jax.lax.cond(
