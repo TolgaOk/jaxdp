@@ -6,11 +6,11 @@ import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
 from jax.experimental.host_callback import call
 
-from jaxdp.learning.sampler import RolloutSample, SamplerState, SyncSample
+from jaxdp.learning.sampler import RolloutSample, SamplerState, SyncSample, rollout_sample
 from jaxdp.mdp.mdp import MDP
 from jaxdp.typehints import QType, VType, PiType, F, I
 import jaxdp
-from jaxdp.utils import register_as
+from jaxdp.utils import register_as, StaticMeta
 
 
 class AsyncTrainMetrics(NamedTuple):
@@ -198,3 +198,17 @@ def no_step_index(update_fn: Callable):
         return update_fn(*args, **kwargs)
 
     return wrapper
+
+
+class reducer(metaclass=StaticMeta):
+
+    def every_visit(rollout: RolloutSample,
+                    value: QType,
+                    ) -> QType:
+        count = jnp.clip(jnp.einsum(
+            "...s,...a->as", rollout.state, rollout.action), 1.0, None)
+        return jnp.einsum("...,...s,...a,as->as",
+                          value,
+                          rollout.state,
+                          rollout.action,
+                          1 / count)

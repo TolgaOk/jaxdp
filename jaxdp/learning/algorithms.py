@@ -1,4 +1,5 @@
-from typing import Dict, Union, List, NamedTuple, Tuple
+from turtle import update
+from typing import Callable, Dict, Union, List, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -21,29 +22,20 @@ class q_learning(metaclass=StaticMeta):
                                            value, (1 - terminal)), axis=0)
                 + reward)
 
-    def step(sample: StepSample,
+    def step(transition: StepSample,
              value: QType,
              gamma: float
              ) -> F[""]:
-        return (q_learning.target(sample.next_state, sample.reward, sample.terminal, value, gamma) -
-                jnp.einsum("s,a,as->", sample.state, sample.action, value))
+        return (q_learning.target(transition.next_state, transition.reward, transition.terminal, value, gamma) -
+                jnp.einsum("s,a,as->", transition.state, transition.action, value))
 
     @register_as("asynchronous")
-    def update(rollout: RolloutSample,
-               value: QType,
-               gamma: float,
+    def update(value: QType,
+               target_value: QType,
                alpha: float,
                ) -> QType:
-        batch_q_update = jax.vmap(
-            q_learning.step,
-            (0, None, None))
+        return value + alpha * target_value
 
-        target_values = batch_q_update(rollout, value, gamma)
-        target_values = jnp.einsum("ts,ta,t->tas",
-                                   rollout.state, rollout.action, target_values)
-        count = jnp.clip(jnp.einsum(
-            "ts,ta->as", rollout.state, rollout.action), 1.0, None)
-        return value + target_values.sum(axis=0) / count * alpha
 
     @register_as("sync")
     def update(sample: SyncSample,
