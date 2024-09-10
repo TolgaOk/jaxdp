@@ -1,3 +1,4 @@
+import stat
 from typing import Optional, Callable, Tuple, Dict, Union, Any
 import jax.numpy as jnp
 import jax.random as jrd
@@ -7,238 +8,249 @@ import distrax
 
 from jaxdp.mdp.mdp import MDP
 from jaxdp.typehints import QType, VType, PiType, F
-from jaxdp.utils import register_as
+from jaxdp.utils import StaticMeta
 
 
-@register_as("q")
-def greedy_policy(value: QType) -> PiType:
-    r"""
-    Greedy policy distribution from Q values.
+class greedy_policy(metaclass=StaticMeta):
 
-    Args:
-        value (QType): Q Value array
+    @staticmethod
+    def q(value: QType) -> PiType:
+        """
+        Greedy policy distribution from Q values.
 
-    Returns:
-        PiType: Policy distribution as one hot vectors
+        Args:
+            value (QType): Q Value array
 
-    """
-    return jax.nn.one_hot(jnp.argmax(value, axis=0, keepdims=False),
-                          num_classes=value.shape[0],
-                          axis=0)
+        Returns:
+            PiType: Policy distribution as one hot vectors
 
+        """
+        return jax.nn.one_hot(jnp.argmax(value, axis=0, keepdims=False),
+                              num_classes=value.shape[0],
+                              axis=0)
 
-@register_as("v")
-def greedy_policy(mdp: MDP, value: VType, gamma: float) -> PiType:
-    # TODO: Add docstring
-    # TODO: Add test
-    return greedy_policy.q(to_state_action_value(mdp, value, gamma))
+    @staticmethod
+    def v(mdp: MDP, value: VType, gamma: float) -> PiType:
+        # TODO: Add docstring
+        # TODO: Add test
+        return greedy_policy.q(to_state_action_value(mdp, value, gamma))
 
 
-@register_as("q")
-def soft_policy(value: QType, temperature: float) -> PiType:
-    r"""
-    Softmax policy distribution.
+class soft_policy(metaclass=StaticMeta):
 
-    Args:
-        value (QType): Q Value array
-        temperature (float): Temperature parameter of softmax. Lower values will result in
-            uniform policy distribution while higher values will result a distribution closed
-            to greedy policy.
+    @staticmethod
+    def q(value: QType, temperature: float) -> PiType:
+        r"""
+        Softmax policy distribution.
 
-    Returns:
-        PiType: Policy distribution
+        Args:
+            value (QType): Q Value array
+            temperature (float): Temperature parameter of softmax. Lower values will result in
+                uniform policy distribution while higher values will result a distribution closed
+                to greedy policy.
 
-    """
-    return jax.nn.softmax(value * temperature, axis=0)
+        Returns:
+            PiType: Policy distribution
 
+        """
+        return jax.nn.softmax(value * temperature, axis=0)
 
-@register_as("v")
-def soft_policy(value: VType, temperature: float) -> PiType:
-    raise NotImplementedError
+    @staticmethod
+    def v(value: VType, temperature: float) -> PiType:
+        raise NotImplementedError
 
 
-@register_as("q")
-def e_greedy_policy(value: QType, epsilon: float, ) -> PiType:
-    r"""
-    Epsilon greedy policy distribution.
+class e_greedy_policy(metaclass=StaticMeta):
 
-    Args:
-        value (QType): Q Value array
-        epsilon (float): Epsilon parameter. The policy takes the greedy action with 
-            (1 - epsilon + epsilon/|A|) probability while take a non-greedy action with 
-            (epsilon / |A|) probability where |A| is the dimension of the action space.
+    @staticmethod
+    def q(value: QType, epsilon: float, ) -> PiType:
+        r"""
+        Epsilon greedy policy distribution.
 
-    Returns:
-        PiType: Policy distribution
+        Args:
+            value (QType): Q Value array
+            epsilon (float): Epsilon parameter. The policy takes the greedy action with 
+                (1 - epsilon + epsilon/|A|) probability while take a non-greedy action with 
+                (epsilon / |A|) probability where |A| is the dimension of the action space.
 
-    """
-    greedy_policy.p = greedy_policy.q(value)
-    return greedy_policy.p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
+        Returns:
+            PiType: Policy distribution
 
+        """
+        greedy_policy.p = greedy_policy.q(value)
+        return greedy_policy.p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
-@register_as("v")
-def e_greedy_policy(value: VType, epsilon: float, ) -> PiType:
-    raise NotImplementedError
+    @staticmethod
+    def v(value: VType, epsilon: float, ) -> PiType:
+        raise NotImplementedError
 
 
-@register_as("q")
-def sample_from(policy: QType, key: KeyType) -> F["A S"]:
-    r"""
-    Sample from a policy. The samples will be one-hot vectors.
+class sample_from(metaclass=StaticMeta):
 
-    Args:
-        policy (PiType): Policy distribution
-        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+    @staticmethod
+    def q(policy: QType, key: KeyType) -> F["A S"]:
+        r"""
+        Sample from a policy. The samples will be one-hot vectors.
 
-    Returns:
-        F["A S"]: Sampled actions in the one-hot vector form for each state.
+        Args:
+            policy (PiType): Policy distribution
+            key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
 
-    """
-    return distrax.OneHotCategorical(probs=policy.T, dtype=jnp.float32).sample(seed=key).T
+        Returns:
+            F["A S"]: Sampled actions in the one-hot vector form for each state.
 
+        """
+        return distrax.OneHotCategorical(probs=policy.T, dtype=jnp.float32).sample(seed=key).T
 
-@register_as("v")
-def expected_value(mdp: MDP, value: VType) -> F[""]:
-    r"""
-    Expected value of the state-values over initial distribution.
 
-    .. math::
-        \underset{s_0 \sim \rho}{\mathbb{E}} [V(S)]
+class expected_value(metaclass=StaticMeta):
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        value (F[S"]): Value array
+    @staticmethod
+    def q(mdp: MDP, value: QType) -> F[""]:
+        r"""
+        Expected value of the state-action values (Q) over initial distribution.
 
-    Returns:
-        F[""]: Expected value
+        .. math::
+            \underset{\substack{s_0 \sim \rho \\ a \sim \pi^Q}}{\mathbb{E}} [Q(S, A)]
 
-    """
-    return (value * mdp.initial).sum()
+        Args:
+            mdp (MDP): Markov Decision Process
+            value (QType): Q Value array
 
+        Returns:
+            F[""]: Expected value
 
-@register_as("q")
-def expected_value(mdp: MDP, value: QType) -> F[""]:
-    r"""
-    Expected value of the state-action values (Q) over initial distribution.
+        """
+        return expected_value.v(mdp, jnp.max(value, axis=0))
 
-    .. math::
-        \underset{\substack{s_0 \sim \rho \\ a \sim \pi^Q}}{\mathbb{E}} [Q(S, A)]
+    @staticmethod
+    def v(mdp: MDP, value: VType) -> F[""]:
+        r"""
+        Expected value of the state-values over initial distribution.
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        value (QType): Q Value array
+        .. math::
+            \underset{s_0 \sim \rho}{\mathbb{E}} [V(S)]
 
-    Returns:
-        F[""]: Expected value
+        Args:
+            mdp (MDP): Markov Decision Process
+            value (F[S"]): Value array
 
-    """
-    return expected_value.v(mdp, jnp.max(value, axis=0))
+        Returns:
+            F[""]: Expected value
 
+        """
+        return (value * mdp.initial).sum()
 
-@register_as("v")
-def policy_evaluation(mdp: MDP, policy: PiType, gamma: float) -> VType:
-    r"""
-    Evaluate the policy for each state using the true MDP
 
-    .. math::
-        \eta(\pi)(s_i) = \big[(\mathrm{I}_n - \gamma P^\pi)r^\pi\big]_i
+class policy_evaluation(metaclass=StaticMeta):
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        policy (PiType): Policy distribution
-        gamma (float): Discount factor
+    @staticmethod
+    def q(mdp: MDP, policy: PiType, gamma: float) -> QType:
+        r"""
+        Evaluate the policy for each state-action pair using the true MDP
 
-    Returns:
-        VType: Cumulative discounted reward of each state
+        .. math::
+            \eta(\pi)(s_i, a_j) = \big[r^{a_j} + \gamma P^\pi (\mathrm{I}_n - \gamma P^\pi)r^\pi\big]_i
 
-    """
-    transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
+        Args:
+            mdp (MDP): Markov Decision Process
+            policy (PiType): Policy distribution
+            gamma (float): Discount factor
 
-    return (jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @
-            jnp.einsum("sx,sx->s", transition_pi.T, reward_pi))
+        Returns:
+            QType: Cumulative discounted reward of each state-action pair
 
+        """
+        mc_state_values = policy_evaluation.v(mdp, policy, gamma)
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return (reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
 
-@register_as("q")
-def policy_evaluation(mdp: MDP, policy: PiType, gamma: float) -> QType:
-    r"""
-    Evaluate the policy for each state-action pair using the true MDP
+    @staticmethod
+    def v(mdp: MDP, policy: PiType, gamma: float) -> VType:
+        r"""
+        Evaluate the policy for each state using the true MDP
 
-    .. math::
-        \eta(\pi)(s_i, a_j) = \big[r^{a_j} + \gamma P^\pi (\mathrm{I}_n - \gamma P^\pi)r^\pi\big]_i
+        .. math::
+            \eta(\pi)(s_i) = \big[(\mathrm{I}_n - \gamma P^\pi)r^\pi\big]_i
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        policy (PiType): Policy distribution
-        gamma (float): Discount factor
+        Args:
+            mdp (MDP): Markov Decision Process
+            policy (PiType): Policy distribution
+            gamma (float): Discount factor
 
-    Returns:
-        QType: Cumulative discounted reward of each state-action pair
+        Returns:
+            VType: Cumulative discounted reward of each state
 
-    """
-    mc_state_values = policy_evaluation.v(mdp, policy, gamma)
-    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-    return (reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
+        """
+        transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
 
+        return (jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @
+                jnp.einsum("sx,sx->s", transition_pi.T, reward_pi))
 
-@register_as("v")
-def bellman_operator(mdp: MDP, policy: PiType, value: VType, gamma: float) -> VType:
-    r"""
-    Evaluate the Bellman policy operator for each state
 
-    .. math::
-        \mathcal{B}(V)(s_i) = \big[r^{a_j} + \gamma 
-            \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
+class bellman_operator(metaclass=StaticMeta):
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        policy (PiType): Policy distribution
-        value (Float[Array,"S"]): State value array
-        gamma (float): Discount factor
+    @staticmethod
+    def q(mdp: MDP, policy: PiType, value: QType, gamma: float) -> QType:
+        r"""
+        Evaluate the Bellman policy operator for each state-action pair
 
-    Returns:
-        VType: Target value
+        .. math::
+            \mathcal{B}(Q)(s_i, a_j) = \big[r^{a_j} + \gamma 
+                \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
 
-    """
-    # TODO: Update docstring
-    # TODO: Add test
-    target_values = jnp.einsum("axs,x,x->as",
-                               mdp.transition, value, (1 - mdp.terminal))
-    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-    return jnp.einsum("as,as->s", reward + gamma * target_values, policy)
+        Args:
+            mdp (MDP): Markov Decision Process
+            policy (PiType): Policy distribution
+            value (QType): Q Value array
+            gamma (float): Discount factor
 
+        Returns:
+            QType: Target value
 
-@register_as("q")
-def bellman_operator(mdp: MDP, policy: PiType, value: QType, gamma: float) -> QType:
-    r"""
-    Evaluate the Bellman policy operator for each state-action pair
+        """
+        target_values = jnp.einsum("axs,ux,ux,x->as",
+                                   mdp.transition, value, policy, (1 - mdp.terminal))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return reward + gamma * target_values
 
-    .. math::
-        \mathcal{B}(Q)(s_i, a_j) = \big[r^{a_j} + \gamma 
-            \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
+    @staticmethod
+    def v(mdp: MDP, policy: PiType, value: VType, gamma: float) -> VType:
+        r"""
+        Evaluate the Bellman policy operator for each state
 
-    Args:
-        mdp (MDP): Markov Decision Process
-        policy (PiType): Policy distribution
-        value (QType): Q Value array
-        gamma (float): Discount factor
+        .. math::
+            \mathcal{B}(V)(s_i) = \big[r^{a_j} + \gamma 
+                \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
 
-    Returns:
-        QType: Target value
+        Args:
+            mdp (MDP): Markov Decision Process
+            policy (PiType): Policy distribution
+            value (Float[Array,"S"]): State value array
+            gamma (float): Discount factor
 
-    """
-    target_values = jnp.einsum("axs,ux,ux,x->as",
-                               mdp.transition, value, policy, (1 - mdp.terminal))
-    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-    return reward + gamma * target_values
+        Returns:
+            VType: Target value
 
+        """
+        # TODO: Update docstring
+        # TODO: Add test
+        target_values = jnp.einsum("axs,x,x->as",
+                                   mdp.transition, value, (1 - mdp.terminal))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return jnp.einsum("as,as->s", reward + gamma * target_values, policy)
 
-@register_as("q")
-def bellman_optimality_operator(mdp: MDP, value: QType, gamma: float) -> QType:
-    # TODO: Update docstring
-    # TODO: Add test
-    target_values = jnp.einsum("axs,x->as", mdp.transition, jnp.max(value, axis=0, keepdims=False))
-    rewards = jnp.einsum("axs,asx->as", mdp.transition, mdp.reward)
-    return rewards + gamma * target_values
+
+class bellman_optimality_operator(metaclass=StaticMeta):
+
+    @staticmethod
+    def q(mdp: MDP, value: QType, gamma: float) -> QType:
+        # TODO: Update docstring
+        # TODO: Add test
+        target_values = jnp.einsum("axs,x->as", mdp.transition,
+                                   jnp.max(value, axis=0, keepdims=False))
+        rewards = jnp.einsum("axs,asx->as", mdp.transition, mdp.reward)
+        return rewards + gamma * target_values
 
 
 def to_greedy_state_value(value: QType) -> VType:
