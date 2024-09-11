@@ -48,15 +48,15 @@ class q_learning(metaclass=StaticMeta):
 
 class speedy_q_learning(metaclass=StaticMeta):
 
-    class update(metaclass=StaticMeta):
+    class synchronous(metaclass=StaticMeta):
 
         @staticmethod
-        def synchronous(sample: SyncSample,
-                        value: QType,
-                        past_value: QType,
-                        gamma: float,
-                        alpha: float,
-                        ) -> Tuple[QType, QType]:
+        def update(sample: SyncSample,
+                   value: QType,
+                   past_value: QType,
+                   gamma: float,
+                   alpha: float,
+                   ) -> Tuple[QType, QType]:
             batch_q_target = jax.vmap(
                 jax.vmap(q_learning.target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
             bellman_op = batch_q_target(sample.next_state, sample.reward,
@@ -67,25 +67,23 @@ class speedy_q_learning(metaclass=StaticMeta):
             return (value + alpha * (past_bellman_op - value) + (1 - alpha) * (bellman_op - past_bellman_op),
                     value)
 
-    class init(metaclass=StaticMeta):
-
         @staticmethod
-        def synchronous(init_value: QType, gamma: float, key: KeyType) -> QType:
+        def init(init_value: QType, gamma: float, key: KeyType) -> QType:
             return jnp.zeros_like(init_value)
 
 
 class zap_q_learning(metaclass=StaticMeta):
 
-    class update(metaclass=StaticMeta):
+    class synchronous(metaclass=StaticMeta):
 
         @staticmethod
-        def synchronous(sample: SyncSample,
-                        value: QType,
-                        matrix_gain: F["AS AS"],
-                        gamma: float,
-                        alpha: float,
-                        beta: float,
-                        ) -> Tuple[QType, F["AS AS"]]:
+        def update(sample: SyncSample,
+                   value: QType,
+                   matrix_gain: F["AS AS"],
+                   gamma: float,
+                   alpha: float,
+                   beta: float,
+                   ) -> Tuple[QType, F["AS AS"]]:
             act_size, state_size = value.shape
             batch_q_target = jax.vmap(
                 jax.vmap(q_learning.target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
@@ -101,9 +99,7 @@ class zap_q_learning(metaclass=StaticMeta):
             return (value + alpha * (jnp.linalg.inv(matrix_gain) @ delta.flatten()).reshape(act_size, state_size),
                     matrix_gain)
 
-    class init(metaclass=StaticMeta):
-
         @staticmethod
-        def synchronous(init_value: QType, gamma: float, key: KeyType) -> QType:
+        def init(init_value: QType, gamma: float, key: KeyType) -> QType:
             state_size, action_size = init_value.shape
             return jnp.eye((state_size * action_size))
