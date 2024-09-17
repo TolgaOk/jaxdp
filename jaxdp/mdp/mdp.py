@@ -45,7 +45,7 @@ class MDP():
 
     def init_state(self, key: KeyType) -> F["... S"]:
         return distrax.OneHotCategorical(
-            probs=self.initial, dtype=jnp.float32).sample(seed=key)
+            probs=self.initial, dtype="float").sample(seed=key)
 
     def validate(self) -> None:
         """ Validate the MDP matrices and vectors
@@ -125,7 +125,7 @@ class MDP():
         array_data = {}
         for array_name in MDP.array_names():
             array_data[array_name] = jnp.array(
-                mdp_data.pop(array_name)).astype("float32")
+                mdp_data.pop(array_name)).astype("float")
 
         return MDP(**array_data, **mdp_data)
 

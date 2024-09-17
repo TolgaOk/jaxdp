@@ -104,7 +104,7 @@ class anderson_vi(metaclass=StaticMeta):
             delta_numerator = jnp.einsum("as,as->", value_diff, bellman_value - value)
             delta_denumerator = jnp.einsum("as,as->", value_diff, bellman_value_diff - value_diff)
 
-            condition = jnp.isclose(delta_denumerator, 0, atol=1e-2).astype("float32")
+            condition = jnp.isclose(delta_denumerator, 0, atol=1e-2).astype("float")
             delta = (delta_numerator * (1 - condition)) / (delta_denumerator + condition)
 
             return (1 - delta) * bellman_value + delta * bellman_prev_value, value

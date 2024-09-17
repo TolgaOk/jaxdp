@@ -100,7 +100,7 @@ class sample_from(metaclass=StaticMeta):
             F["A S"]: Sampled actions in the one-hot vector form for each state.
 
         """
-        return distrax.OneHotCategorical(probs=policy.T, dtype=jnp.float32).sample(seed=key).T
+        return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
 
 
 class expected_value(metaclass=StaticMeta):
@@ -333,7 +333,7 @@ def sync_sample(mdp: MDP, key: KeyType) -> Tuple[F["A S"], F["A S S"], F["A S"]]
 
     """
     next_state = distrax.OneHotCategorical(
-        probs=jnp.einsum("axs->asx", mdp.transition), dtype=jnp.float32).sample(seed=key)
+        probs=jnp.einsum("axs->asx", mdp.transition), dtype="float").sample(seed=key)
     terminal = jnp.einsum("asx,x->as", next_state, mdp.terminal)
     reward = jnp.einsum("asx,asx->as", mdp.reward, next_state)
 
@@ -379,7 +379,7 @@ def async_sample_step(mdp: MDP,
     next_state_p = jnp.einsum(
         "a,axs,s->x", action, mdp.transition, state)
     next_state = distrax.OneHotCategorical(
-        probs=next_state_p, dtype=jnp.float32).sample(seed=state_key)
+        probs=next_state_p, dtype="float").sample(seed=state_key)
     reward = jnp.einsum("asx,a,s,x->", mdp.reward, action, state, next_state)
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
 
@@ -389,7 +389,7 @@ def async_sample_step(mdp: MDP,
     done = jnp.logical_or(terminal, timeout)
 
     init_state = distrax.OneHotCategorical(
-        probs=mdp.initial, dtype=jnp.float32).sample(seed=init_key)
+        probs=mdp.initial, dtype="float").sample(seed=init_key)
     state = next_state * (1 - done) + init_state * done
     episode_step = episode_step * (1 - done)
 

@@ -25,7 +25,7 @@ def _numerical_board(board):
 
 
 def _flatten_state(board, indices, char):
-    return (board[indices[:, 0], indices[:, 1]] == char_map[char]).astype("float32")
+    return (board[indices[:, 0], indices[:, 1]] == char_map[char]).astype("float")
 
 
 def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
