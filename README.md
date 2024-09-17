@@ -1,33 +1,67 @@
 # Jaxdp
 
-> :warning: Under Development
 
-**Jaxdp** is a Python package that provides simple functional implementation of dynamic programming (DP) algorithms for discrete state-action Markov decision processes (MDP) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. Using the JAX transformations, you can accelerate (even using GPUs) DP algorithms by running multiple MDPs, initial values etc. in a vectorized form.
+**Jaxdp** is a Python package that provides simple functional implementation of algorithms and commonly used functions in dynamic programming (DP) for finite state-action Markov decision processes (MDP) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. Using the JAX transformations, you can accelerate (even using GPUs) DP algorithms by running multiple MDPs, initial values, seeds, etc. in a vectorized form.
+
+# Vectorization
+
+The functions in **jaxdp** are fully compatible with <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> transformations. They are memoryless, and the memory is explicitly provided to the functions. This design pattern does not hide information for the cost of being verbose. Therefore, **jaxdp** rely on [currying](https://docs.python.org/3/library/functools.html) whenever possible.
+
+## Training Loop
+
+**Jaxdp** provides vectorizable training functions for both planning and learning settings. Below is an abstract view of how currying and JAX transforms are used in a training loop:
+
+<img width="80%" src="doc/training_loop.gif"/>
+
+## MDPs
+
+Similarly, in **jaxdp**, MDPs are Pytrees and therefore compatible with JAX transforms.
 
 ```Python
-from jaxdp.iterations.iteration import value_iteration_update
-from jax import vmap
+import jax.numpy as jnp
+import jax.tree_util
 
-...
+from jaxdp.mdp.garnet import garnet_mdp as make_garnet
 
-# Regular VI step
-regular_vi_step = value_iteration_update(value, mdp, gamma)
 
-# Multiple values VI step
-mv_vi_step = vmap(value_iteration_update, in_axes=(0, None, None))(values, mdp, gamma)
+n_mdp = 8
+key = jax.random.PRNGKey(42)
 
-# Multiple values multiple MDPs VI step
-mvmm_vi_step = vmap(mv_vi_step, in_axes=(None, 0, None))(values, mdps, gamma)
+# List of random MDPs with different seeds
+mdps = [make_garnet(state_size=300, action_size=10, key=key,
+                    branch_size=4, min_reward=-1, max_reward=1)
+        for key in jrd.split(key, n_mdp)]
+
+# Stacked MDP
+stacked_mdp = jax.tree_map(lambda *mdps: jnp.stack(mdps), *mdps)
 ```
 
-### List of Algorithms
+Once stacked, an MDP can be provided to a vectorized function such as training loop.
 
-|Iteration Algorithms  |                  |
+```Python
+> mdps[0].transition.shape
+> (10, 300, 300)
+
+> stacked_mdp.transition.shape
+> (8, 10, 300, 300)
+```
+
+> [!warning]
+> The shapes of the components in the list of MDPs need to match to vectorize. Hence, we may not have a vectorized MDP with varying action or state sizes.
+
+# Algorithms
+
+Besides the common functions used in Dynamic Programming, **jaxdp** provides a list of value update algorithms.
+
+|Planning Algorithms   |                  |
 |:--------------------:|:----------------:|
 |  VI                  |:heavy_check_mark:|
 |  PI                  |:heavy_check_mark:|
 |  Nesterov VI         |:heavy_check_mark:|
 |  Accelerated VI      |:heavy_check_mark:|
+
+> [!note]
+> **jaxdp** makes a distinction between synchronous and asynchronous sampling.
 
 |Learning Algorithms |Sync sampled      |Async sampled     |
 |:------------------:|:----------------:|:----------------:|
@@ -37,35 +71,7 @@ mvmm_vi_step = vmap(mv_vi_step, in_axes=(None, 0, None))(values, mdps, gamma)
 |  Speedy QL         |:heavy_check_mark:|:x:               |
 |  Zap QL            |:heavy_check_mark:|:x:               |
 
-
-### Typehint
-
-Jaxdp extensively uses typehints and annotations from [jaxtyping](https://github.com/google/jaxtyping#jaxtyping).
-
-### Vectorize MDPs
-
-Jaxdp provides a Pytree definition for MDPs, which allows Jax to vectorize different MDPs to be used in a DP step.
-
-```Python
-import jax.numpy as jnp
-import jax.tree_util
-
-from jaxdp.mdp.garnet import garnet_mdp as make_garnet
-
-
-n_mdp = 10
-key = jax.random.PRNGKey(42)
-
-mdps = [make_garnet(state_size=1000, action_size=10, key=key,
-                    branch_size=4, min_reward=-1, max_reward=1)
-        for key in jrd.split(key, n_mdp)]
-
-# Stacked MDP
-stacked_mdp = jax.tree_map(lambda *mdps: jnp.stack(mdps), *mdps)
-
-```
-
-## Installation
+# Installation
 
 Recommended: Python 3.9+
 

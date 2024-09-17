@@ -63,7 +63,7 @@ class soft_policy(metaclass=StaticMeta):
 class e_greedy_policy(metaclass=StaticMeta):
 
     @staticmethod
-    def q(value: QType, epsilon: float, ) -> PiType:
+    def q(value: QType, epsilon: float) -> PiType:
         r"""
         Epsilon greedy policy distribution.
 
