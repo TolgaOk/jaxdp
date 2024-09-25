@@ -85,24 +85,6 @@ class e_greedy_policy(metaclass=StaticMeta):
         raise NotImplementedError
 
 
-class sample_from(metaclass=StaticMeta):
-
-    @staticmethod
-    def q(policy: QType, key: KeyType) -> F["A S"]:
-        r"""
-        Sample from a policy. The samples will be one-hot vectors.
-
-        Args:
-            policy (PiType): Policy distribution
-            key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
-
-        Returns:
-            F["A S"]: Sampled actions in the one-hot vector form for each state.
-
-        """
-        return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
-
-
 class expected_value(metaclass=StaticMeta):
 
     @staticmethod
@@ -253,6 +235,30 @@ class bellman_optimality_operator(metaclass=StaticMeta):
         return rewards + gamma * target_values
 
 
+class stationary_distribution(metaclass=StaticMeta):
+
+    @staticmethod
+    def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["A S"]:
+        distribution = jnp.einsum(
+            "s,as->as",
+            mdp.initial,
+            policy)
+        return jax.lax.fori_loop(
+            0,
+            iterations,
+            lambda i, d: jnp.einsum(
+                "axs,ux,as->ux",
+                mdp.transition,
+                policy,
+                d
+            ),
+            distribution)
+
+    @staticmethod
+    def v(mdp: MDP, policy: PiType, iterations: int = 10) -> F["S"]:
+        raise NotImplementedError
+
+
 def to_greedy_state_value(value: QType) -> VType:
     # TODO: Add docstring
     # TODO: Add test
@@ -286,6 +292,21 @@ def _markov_chain_pi(mdp: MDP, policy: PiType) -> Tuple[F["S S"], F["S S"]]:
     transition_pi = jnp.einsum("as,axs->xs", policy, mdp.transition)
     reward_pi = jnp.einsum("as,asx->sx", policy, mdp.reward)
     return transition_pi, reward_pi
+
+
+def sample_from(policy: PiType, key: KeyType) -> F["A S"]:
+    r"""
+    Sample from a policy. The samples will be one-hot vectors.
+
+    Args:
+        policy (PiType): Policy distribution
+        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+
+    Returns:
+        F["A S"]: Sampled actions in the one-hot vector form for each state.
+
+    """
+    return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
 
 
 def sample_based_policy_evaluation(mdp: MDP,

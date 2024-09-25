@@ -9,6 +9,7 @@ from jax.typing import ArrayLike as KeyType
 
 def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType,
                min_reward: float = 0, max_reward: float = 1.0) -> MDP:
+    # TODO: Make key the first argument
     # TODO: Add test
     # TODO: Add documentation
     branch_key, transition_key, reward_key = jrd.split(key, 3)
@@ -37,4 +38,4 @@ def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType
                          minval=min_reward, maxval=max_reward)
 
     return MDP(transition, reward, initial, terminal,
-               name=f"GarnetMDP(#branch={branch_size})")
+               name=f"GarnetMDP[#branch={branch_size}]")
