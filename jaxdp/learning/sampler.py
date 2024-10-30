@@ -1,24 +1,23 @@
 from typing import Any, Dict, Union, List, NamedTuple, Tuple, Optional
-from functools import partial
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
-from jaxtyping import Array, Float
-from jax.typing import ArrayLike
+from jax.typing import ArrayLike as KeyType
 import distrax
 
 import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
+from jaxdp.typehints import F, PiType
 
 
 class RolloutSample(NamedTuple):
-    state: Float[Array, "... T S"]
-    next_state: Float[Array, "... T S"]
-    action: Float[Array, "... T A"]
-    reward: Float[Array, "... T"]
-    terminal: Float[Array, "... T"]
-    timeout: Float[Array, "... T"]
+    state: F["... T S"]
+    next_state: F["... T S"]
+    action: F["... T A"]
+    reward: F["... T"]
+    terminal: F["... T"]
+    timeout: F["... T"]
 
     def __getitem__(self, key) -> "RolloutSample":
         return RolloutSample(
@@ -44,49 +43,48 @@ class RolloutSample(NamedTuple):
 
 
 class StepSample(NamedTuple):
-    state: Float[Array, "S"]
-    next_state: Float[Array, "S"]
-    action: Float[Array, "A"]
-    reward: Float[Array, ""]
-    terminal: Float[Array, ""]
-    timeout: Float[Array, ""]
+    state: F["S"]
+    next_state: F["S"]
+    action: F["A"]
+    reward: F[""]
+    terminal: F[""]
+    timeout: F[""]
 
 
 class SyncSample(NamedTuple):
-    next_state: Float[Array, "A S S"]
-    reward: Float[Array, "A S"]
-    terminal: Float[Array, "A S"]
+    next_state: F["A S S"]
+    reward: F["A S"]
+    terminal: F["A S"]
 
 
 class EpisodeStats(NamedTuple):
-    rewards: Float[Array, ""]
-    lengths: Float[Array, ""]
-    episode_reward_queue: Float[Array, "K"]
-    episode_length_queue: Float[Array, "K"]
+    rewards: F[""]
+    lengths: F[""]
+    episode_reward_queue: F["K"]
+    episode_length_queue: F["K"]
 
 
 class SamplerState(NamedTuple):
-    last_state: Float[Array, "S"]
-    episode_step: Float[Array, ""]
-    rewards: Float[Array, ""]
-    lengths: Float[Array, ""]
-    episode_reward_queue: Float[Array, "K"]
-    episode_length_queue: Float[Array, "K"]
+    last_state: F["S"]
+    episode_step: F[""]
+    rewards: F[""]
+    lengths: F[""]
+    episode_reward_queue: F["K"]
+    episode_length_queue: F["K"]
 
     @staticmethod
     def initialize_rollout_state(mdp: MDP,
-                                 batch_size: int,
                                  queue_size: int,
-                                 init_state_key: ArrayLike
+                                 init_state_key: KeyType
                                  ) -> "SamplerState":
-        init_state = jax.vmap(mdp.init_state, (0,))(jrd.split(init_state_key, batch_size))
+        init_state = mdp.init_state(init_state_key)
         return SamplerState(
             init_state,
-            jnp.zeros((batch_size,)),
-            jnp.zeros((batch_size,)),
-            jnp.zeros((batch_size,)),
-            jnp.full((batch_size, queue_size,), jnp.nan),
-            jnp.full((batch_size, queue_size,), jnp.nan),
+            jnp.array(0.0),
+            jnp.array(0.0),
+            jnp.array(0.0),
+            jnp.full((queue_size,), jnp.nan),
+            jnp.full((queue_size,), jnp.nan),
         )
 
     def refresh_queues(self) -> "SamplerState":
@@ -102,14 +100,14 @@ class SamplerState(NamedTuple):
 
 def _rollout_sample(length: int,
                     mdp: MDP,
-                    policy: Float[Array, "A S"],
-                    state: Float[Array, "S"],
-                    episode_step: Float[Array, ""],
+                    policy: F["A S"],
+                    state: F["S"],
+                    episode_step: F[""],
                     max_episode_step: int,
-                    key: ArrayLike
+                    key: KeyType
                     ) -> Tuple[RolloutSample,
-                               Float[Array, "S"],
-                               Float[Array, ""]]:
+                               F["S"],
+                               F[""]]:
     state_size = mdp.state_size
     action_size = mdp.action_size
     rollout = dict(
@@ -139,13 +137,13 @@ def _rollout_sample(length: int,
     return RolloutSample(**rollout), state, episode_step
 
 
-def record_episode_stats(episode_stat: EpisodeStats,
-                         rollout_data: RolloutSample
-                         ) -> EpisodeStats:
-    rewards = episode_stat.rewards
-    lengths = episode_stat.lengths
-    eps_rewards = episode_stat.episode_reward_queue
-    eps_lengths = episode_stat.episode_length_queue
+def update_sampler_records(rollout_data: RolloutSample,
+                           sampler_state: SamplerState,
+                           ) -> EpisodeStats:
+    rewards = sampler_state.rewards
+    lengths = sampler_state.lengths
+    eps_rewards = sampler_state.episode_reward_queue
+    eps_lengths = sampler_state.episode_length_queue
 
     done = jnp.logical_or(rollout_data.terminal, rollout_data.timeout)
 
@@ -159,7 +157,6 @@ def record_episode_stats(episode_stat: EpisodeStats,
         rewards, lengths, eps_rewards, eps_lengths = step_data
         rewards = rollout_data.reward[index] + rewards
         lengths = 1 + lengths
-
         eps_rewards = queue_push(eps_rewards, rewards, done[index])
         eps_lengths = queue_push(eps_lengths, lengths, done[index])
 
@@ -171,18 +168,13 @@ def record_episode_stats(episode_stat: EpisodeStats,
                                                    eps_rewards,
                                                    eps_lengths))
 
-    return EpisodeStats(
-        rewards,
-        lengths,
-        eps_rewards,
-        eps_lengths
-    )
+    return rewards, lengths, eps_rewards, eps_lengths
 
 
-def rollout_sample(mdp: MDP,
+def rollout_sample(key: KeyType,
+                   mdp: MDP,
                    sampler_state: SamplerState,
-                   policy: Float[Array, "A S"],
-                   key: ArrayLike,
+                   policy: PiType,
                    max_episode_length: int,
                    rollout_len: int,
                    ) -> Tuple[RolloutSample, SamplerState]:
@@ -190,18 +182,8 @@ def rollout_sample(mdp: MDP,
         rollout_len, mdp, policy, sampler_state.last_state,
         sampler_state.episode_step, max_episode_length, key)
 
-    episode_stats = record_episode_stats(rollout, EpisodeStats(
-        rewards=sampler_state.rewards,
-        lengths=sampler_state.lengths,
-        eps_rewards=sampler_state.eps_rewards,
-        eps_lengths=sampler_state.eps_lengths,
-    ))
-
     return rollout, SamplerState(
         last_state,
         episode_step,
-        episode_stats.rewards,
-        episode_stats.lengths,
-        episode_stats.eps_rewards,
-        episode_stats.eps_lengths
+        *update_sampler_records(rollout, sampler_state)
     )

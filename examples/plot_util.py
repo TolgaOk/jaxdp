@@ -1,106 +1,116 @@
-
 import plotly.graph_objects as go
-import jax.numpy as jnp
+from plotly.subplots import make_subplots
+from IPython.display import display, HTML
 
 
-def make_data_table(results, percentile: int = 25):
-    table = []
-
-    for name, info in results.items():
-        for metric in info["metric"]._fields:
-            values = getattr(info["metric"], metric)
-            percentiles = jnp.nanpercentile(
-                values, q=jnp.array([percentile, 50, 100 - percentile]), axis=0)
-            not_nan_indices = jnp.argwhere(1 - jnp.isnan(percentiles.sum(0))).flatten()
-
-            table.append(
-                {"algo": name,
-                 "env": "",
-                 "metric": metric,
-                 "x": jnp.arange(values.shape[-1])[not_nan_indices].tolist(),
-                 "y_low": percentiles[0][not_nan_indices].tolist(),
-                 "y_median": percentiles[1][not_nan_indices].tolist(),
-                 "y_high": percentiles[2][not_nan_indices].tolist(),
-                 "color": info["color"],
-                 }
-            )
-    return table
+display(
+    HTML(
+        """<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_SVG"></script>"""
+    )
+)
 
 
-def figure(title, table):
-    metrics = set([(item["metric"], item["env"]) for item in table])
-    metric_map = {name: index for index, name in enumerate(metrics)}
-    buttons = [
-        {
-            "label": metric,
-            "method": "update",
-            "args": [{"visible": [False] * (len(table) * 3)},
-                     {"yaxis": {"title": metric.replace("_", " "), "showgrid": True}},
-                     {"title": {"text": env, "x": 0.5}}]
-        }
-        for metric, env in metric_map.keys()
-    ]
+def add_traces(fig, name, df, color, row, col, showlegend):
+    x_axis = df.index.get_level_values("STEP").values
+
+    non_nan = df.low.notna().values
+
+    fig.add_trace(
+        go.Scatter(
+            x=x_axis[non_nan],
+            y=df.low.values[non_nan],
+            mode="lines",
+            showlegend=False,
+            visible=True,
+            legendgroup=name,
+            opacity=0.75,
+            line={"color": color, "width": 0}
+        ),
+        row=row,
+        col=col
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_axis[non_nan],
+            y=df.high.values[non_nan],
+            mode="lines",
+            showlegend=False,
+            visible=True,
+            fill="tonexty",
+            legendgroup=name,
+            opacity=0.75,
+            line={"color": color, "width": 0}
+        ),
+        row=row,
+        col=col
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_axis[non_nan],
+            y=df.med.values[non_nan],
+            mode="lines",
+            name=name,
+            showlegend=showlegend,
+            visible=True,
+            legendgroup=name,
+            marker={"color": color},
+            line={"color": color}
+        ),
+        row=row,
+        col=col
+    )
+
+
+def make_figure(df):
+    algos = df.index.get_level_values("ALG").unique()
 
     fig = go.FigureWidget()
-    for index, data in enumerate(table):
-        buttons[metric_map[(data["metric"], data["env"])]]["args"][0]["visible"][(
-            index * 3):(index * 3) + 3] = [True] * 3
+    metrics = df.columns.get_level_values("METRIC").unique().values
+    fig = make_subplots(rows=1, cols=len(metrics))
 
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_low"],
-                mode="lines",
-                showlegend=False,
-                visible=False,
-                legendgroup=data["algo"],
-                opacity=0.75,
-                line={"color": data["color"], "width": 1}
+    for algo in algos:
+        for grid_x, metric in enumerate(metrics):
+            add_traces(fig, algo, getattr(df.loc[algo], metric),
+                       "blue", row=1, col=grid_x + 1, showlegend=(grid_x == 0))
+            fig.update_yaxes(
+                title=metric.replace("_", " ").capitalize(),
+                type="linear",
+                row=1,
+                col=1 + grid_x,
             )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_high"],
-                mode="lines",
-                showlegend=False,
-                visible=False,
-                fill="tonexty",
-                legendgroup=data["algo"],
-                opacity=0.75,
-                line={"color": data["color"], "width": 1}
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=data["x"],
-                y=data["y_median"],
-                mode="lines",
-                name=data["algo"],
-                showlegend=True,
-                visible=False,
-                legendgroup=data["algo"],
-                marker={"color": data["color"]},
-                line={"color": data["color"], "dash": "dash"}
-            )
-        )
+
+    fig.update_yaxes(
+        type="linear",
+        exponentformat="power",
+        showline=True,
+        linecolor="gray",
+        linewidth=2,
+        mirror=True,
+        gridcolor="white",
+        gridwidth=3,
+    )
+    fig.update_xaxes(
+        type="linear",
+        exponentformat="power",
+        showline=True,
+        linecolor="gray",
+        linewidth=2,
+        mirror=True,
+        title="Iteration",
+        gridcolor="white",
+        gridwidth=3,
+    )
     fig.update_layout(
-        template="simple_white",
-        width=700,
+        legend={
+            "x": 0.025,
+            "y": 1.25,
+            "font": {"size": 25},
+            "orientation": "h",
+            "visible": True,
+        },
+        font=dict(size=15, color="black"),
+        plot_bgcolor="#f5f6f7",
+        width=550 * len(metrics),
         height=500,
-        title={"text": title, "x": 0.5},
-        xaxis={"title": "Iteration", "showgrid": True},
-        yaxis={"title": "", "showgrid": True},
-        showlegend=True,
-        updatemenus=[go.layout.Updatemenu(
-            active=1,
-            buttons=buttons,
-            pad={"r": 10, "t": 10},
-            showactive=True,
-            x=0,
-            xanchor="left",
-            y=1.2,
-            yanchor="top")
-        ]
     )
     return fig

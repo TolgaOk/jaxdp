@@ -6,7 +6,6 @@ from functools import partial
 import jax.numpy as jnp
 import jax.random as jrd
 import jax
-from jaxtyping import Float, Array
 
 from jaxdp.mdp import MDP
 

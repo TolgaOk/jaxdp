@@ -1,34 +1,34 @@
-from typing import Tuple, Any, Dict, Optional, Union, TypeVar
+from typing import Tuple, Any, Dict, Optional, Union
 import json
 import jax.numpy as jnp
 import jax
-from dataclasses import dataclass
-from jax.typing import ArrayLike
-from jaxtyping import Array, Float
+from jax.typing import ArrayLike as KeyType
 import distrax
+
+from jaxdp.typehints import F
 
 
 class MDP():
     """ Base Markov Decision Process (MDP) class
 
     Args:
-        transition (Float[Array, "... A S S"]): Column stochastic matrix that
+        transition (F["... A S S"]): Column stochastic matrix that
             describes the transition dynamics of the MDP
-        reward (Float[Array, "... A S S"]): Reward matrix
-        initial (Float[Array, "... S"]): Stochastic vector for the initial state distribution
-        terminal (Float[Array, "... S"]): A boolean-valued vector for terminal states
-        features (Float[Array, "... S F"]): State features
+        reward (F["... A S S"]): Reward matrix
+        initial (F["... S"]): Stochastic vector for the initial state distribution
+        terminal (F["... S"]): A boolean-valued vector for terminal states
+        features (F["... S F"]): State features
         name (str, optional): Name of the MDP. Defaults to "MDP".
         validate (bool, optional): If true, validate the input matrices and vectors. Defaults to 
             True.
     """
 
     def __init__(self,
-                 transition: Float[Array, "... A S S"],
-                 reward: Float[Array, "... A S S"],
-                 initial: Float[Array, "... S"],
-                 terminal: Float[Array, "... S"],
-                 features: Optional[Float[Array, "... S F"]] = None,
+                 transition: F["... A S S"],
+                 reward: F["... A S S"],
+                 initial: F["... S"],
+                 terminal: F["... S"],
+                 features: Optional[F["... S F"]] = None,
                  name: str = "MDP",
                  validate: bool = True):
         self.name = name
@@ -43,9 +43,9 @@ class MDP():
         if validate:
             self.validate()
 
-    def init_state(self, key: ArrayLike) -> Float[Array, "... S"]:
+    def init_state(self, key: KeyType) -> F["... S"]:
         return distrax.OneHotCategorical(
-            probs=self.initial, dtype=jnp.float32).sample(seed=key)
+            probs=self.initial, dtype="float").sample(seed=key)
 
     def validate(self) -> None:
         """ Validate the MDP matrices and vectors
@@ -85,7 +85,7 @@ class MDP():
     @property
     def state_size(self) -> int:
         return self.transition.shape[-2]
-    
+
     @property
     def feature_size(self) -> int:
         return self.features.shape[-1]
@@ -125,7 +125,7 @@ class MDP():
         array_data = {}
         for array_name in MDP.array_names():
             array_data[array_name] = jnp.array(
-                mdp_data.pop(array_name)).astype("float32")
+                mdp_data.pop(array_name)).astype("float")
 
         return MDP(**array_data, **mdp_data)
 
@@ -142,7 +142,7 @@ class MDP():
             }, fobj)
 
 
-def flatten_mdp(container) -> Tuple[Float[Array, ""], Dict[str, Any]]:
+def flatten_mdp(container) -> Tuple[F[""], Dict[str, Any]]:
     """Returns an iterable over container contents for registering as a Pytree"""
     flat_contents = [
         container.transition,
@@ -157,6 +157,6 @@ def flatten_mdp(container) -> Tuple[Float[Array, ""], Dict[str, Any]]:
     }
 
 
-def unflatten_mdp(aux_data: Dict[str, Any], flat_contents: Float[Array, ""]) -> MDP:
+def unflatten_mdp(aux_data: Dict[str, Any], flat_contents: F[""]) -> MDP:
     """Converts flat contents into a MDP for registering as a Pytree"""
     return MDP(*flat_contents, **aux_data)

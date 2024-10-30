@@ -6,7 +6,6 @@ import jax.random as jrd
 import jax
 
 from jaxdp.mdp import MDP
-from jaxtyping import Float, Array
 
 
 def sequential_mdp(state_size: int) -> MDP:

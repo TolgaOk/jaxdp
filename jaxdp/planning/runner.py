@@ -1,54 +1,49 @@
 from typing import Dict, NamedTuple, Union, List, Tuple, Callable, Type, Any
-from abc import abstractmethod
 import jax.numpy as jnp
 import jax.random as jrd
-from jaxtyping import Array, Float
-from jax.typing import ArrayLike
 import jax
 from jax.experimental.host_callback import call
 
 import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
+from jaxdp.typehints import QType, VType, F
 
 
-class IterationMetrics(NamedTuple):
-    expected_value: Float[Array, "N"]
-    policy_evaluation: Float[Array, "N"]
-    bellman_error: Float[Array, "N"]
-    value_delta: Float[Array, "N"]
-    policy_delta: Float[Array, "N"]
-    value_error: Float[Array, "N"]
+class PlanningMetrics(NamedTuple):
+    expected_value: F["N"]
+    policy_evaluation: F["N"]
+    bellman_error: F["N"]
+    value_delta: F["N"]
+    policy_delta: F["N"]
+    value_error: F["N"]
 
     @staticmethod
-    def initialize(step_size: int) -> "IterationMetrics":
-        return IterationMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
+    def initialize(step_size: int) -> "PlanningMetrics":
+        return PlanningMetrics(*[jnp.full((step_size,), jnp.nan) for _ in range(6)])
 
-    def write(self, index: int, values: Dict[str, float]) -> "IterationMetrics":
+    def write(self, index: int, values: Dict[str, float]) -> "PlanningMetrics":
         self_dict = self._asdict()
-        return IterationMetrics(
+        return PlanningMetrics(
             *[self_dict[name].at[index].set(value)
               for name, value in values.items()]
         )
 
 
-ValueArray = Float[Array, "A S"]
-
-
 def train(mdp: MDP,
-          init_value: ValueArray,
-          value_star: ValueArray,
+          init_value: QType,
+          update_state: Any,
+          value_star: QType,
           n_iterations: int,
           gamma: float,
-          update_fn: Callable[[MDP, ValueArray, Any, float], Tuple[ValueArray, Any]],
-          update_state: Any,
+          update_fn: Callable[[MDP, QType, Any, float], Tuple[QType, Any]],
           verbose: bool = True
-          ) -> Tuple[IterationMetrics, ValueArray]:
+          ) -> Tuple[PlanningMetrics, QType, Any]:
     # TODO: Add docstring
 
-    metrics = IterationMetrics.initialize(n_iterations)
+    metrics = PlanningMetrics.initialize(n_iterations)
     value = init_value
-    policy = jaxdp.greedy_policy(value)
+    policy = jaxdp.greedy_policy.q(value)
 
     def print_log(data):
         step, info = data
@@ -58,12 +53,12 @@ def train(mdp: MDP,
         metrics, value, policy, update_state = step_data
 
         next_value, update_state = update_fn(mdp, value, update_state, gamma)
-        next_policy = jaxdp.greedy_policy(next_value)
+        next_policy = jaxdp.greedy_policy.q(next_value)
 
         step_info = {
-            "expected_value": jaxdp.expected_q_value(mdp, value),
-            "policy_evaluation": (jaxdp.policy_evaluation(mdp, policy, gamma) * mdp.initial).sum(),
-            "bellman_error": jnp.abs(value - jaxdp.bellman_q_operator(mdp, policy, value, gamma)).max(),
+            "expected_value": jaxdp.expected_value.q(mdp, value),
+            "policy_evaluation": (jaxdp.policy_evaluation.v(mdp, policy, gamma) * mdp.initial).sum(),
+            "bellman_error": jnp.abs(value - jaxdp.bellman_operator.q(mdp, policy, value, gamma)).max(),
             "value_delta": jnp.max(jnp.abs(next_value - value)),
             "policy_delta": (1 - jnp.all(jnp.isclose(next_policy, policy), axis=0)).sum(),
             "value_error": jnp.abs(value - value_star).max(),

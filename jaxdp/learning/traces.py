@@ -59,7 +59,7 @@ def td_lambda_learning_update(rollout: RolloutSample,
     max_values = jnp.argmax(jnp.einsum(
         "bx,ux->bu", rollout.next_state[:, -1], value), axis=-1, keepdims=True)
     last_action = (max_values == jnp.arange(
-        rollout.action.shape[-1]).reshape(1, -1)).astype("float32")
+        rollout.action.shape[-1]).reshape(1, -1)).astype("float")
     target_values = batch_td_lambda_update(rollout, value, last_action, gamma, lambda_)
     reduced_values = jnp.einsum("bts,bta,bt->as", rollout.state, rollout.action, target_values)
     count = jnp.clip(jnp.einsum(
