@@ -1,21 +1,21 @@
 # Jaxdp
 
 
-**Jaxdp** is a Python package that provides simple functional implementation of algorithms and commonly used functions in dynamic programming (DP) for finite state-action Markov decision processes (MDP) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. Using the JAX transformations, you can accelerate (even using GPUs) DP algorithms by running multiple MDPs, initial values, seeds, etc. in a vectorized form.
+**Jaxdp** is a Python package that provides a functional implementation of algorithms and commonly used functions for dynamic programming (DP) on finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (even using GPUs) by running multiple MDPs, initial values, seeds, etc., in a vectorized manner.
 
 # Vectorization
 
-The functions in **jaxdp** are fully compatible with <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> transformations. They are memoryless, and the memory is explicitly provided to the functions. This design pattern does not hide information for the cost of being verbose. Therefore, **jaxdp** rely on [currying](https://docs.python.org/3/library/functools.html) whenever possible.
+The functions in **jaxdp** are fully compatible with <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> transformations.  They are stateless, with memory explicitly provided to the functions. This design pattern avoids hiding information at the cost of being more verbose. Therefore, **jaxdp** relies on [currying](https://docs.python.org/3/library/functools.html) whenever possible.
 
 ## Training Loop
 
-**Jaxdp** provides vectorizable training functions for both planning and learning settings. Below is an abstract view of how currying and JAX transforms are used in a training loop:
+**Jaxdp** provides vectorizable training functions for both planning and learning settings. Below is an abstract view of how currying and JAX transformations are used in a training loop:
 
 <img width="80%" src="doc/training_loop.gif"/>
 
 ## MDPs
 
-Similarly, in **jaxdp**, MDPs are Pytrees and therefore compatible with JAX transforms.
+In jaxdp, MDPs are Pytrees and are therefore compatible with JAX transformations.
 
 ```Python
 import jax.numpy as jnp
