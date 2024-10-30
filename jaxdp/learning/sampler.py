@@ -80,9 +80,9 @@ class SamplerState(NamedTuple):
         init_state = mdp.init_state(init_state_key)
         return SamplerState(
             init_state,
-            jnp.array(1.0),
-            jnp.array(1.0),
-            jnp.array(1.0),
+            jnp.array(0.0),
+            jnp.array(0.0),
+            jnp.array(0.0),
             jnp.full((queue_size,), jnp.nan),
             jnp.full((queue_size,), jnp.nan),
         )

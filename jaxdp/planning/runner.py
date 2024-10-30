@@ -33,9 +33,9 @@ class PlanningMetrics(NamedTuple):
 def train(mdp: MDP,
           init_value: QType,
           update_state: Any,
+          value_star: QType,
           n_iterations: int,
           gamma: float,
-          value_star: QType,
           update_fn: Callable[[MDP, QType, Any, float], Tuple[QType, Any]],
           verbose: bool = True
           ) -> Tuple[PlanningMetrics, QType, Any]:

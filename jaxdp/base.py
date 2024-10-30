@@ -1,4 +1,3 @@
-import stat
 from typing import Optional, Callable, Tuple, Dict, Union, Any
 import jax.numpy as jnp
 import jax.random as jrd
@@ -447,7 +446,7 @@ def async_sample_step_pi(mdp: MDP,
     """
     act_key, step_key = jrd.split(key, num=2)
     policy_p = jnp.einsum("as,s->a", policy, state)
-    action = sample_from.q(policy_p, key=act_key)
+    action = sample_from(policy_p, key=act_key)
 
     return action, *async_sample_step(mdp=mdp,
                                       action=action,
