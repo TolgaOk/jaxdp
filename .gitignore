@@ -1,10 +1,13 @@
 *.pyc
 *.egg-info
 *.DS_Store
-./mypy_cache
+*./mypy_cache
 .vscode
 *.ipynb
 documents/
 logs/
 examples/data
 examples/figures
+doc
+dev
+TODO.md
