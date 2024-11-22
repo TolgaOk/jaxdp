@@ -1,4 +1,3 @@
-from turtle import update
 from typing import Callable, Dict, Union, List, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
@@ -6,7 +5,7 @@ import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
 
 from jaxdp.typehints import QType, F
-from jaxdp.learning.sampler import RolloutSample, StepSample, SyncSample
+from jaxdp.mdp.sampler import RolloutSample, StepSample, SyncSample
 from jaxdp.utils import StaticMeta
 
 

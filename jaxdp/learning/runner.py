@@ -7,7 +7,7 @@ import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
 from jax.experimental.host_callback import call
 
-from jaxdp.learning.sampler import RolloutSample, SamplerState, SyncSample, rollout_sample
+from jaxdp.mdp.sampler import RolloutSample, SamplerState, SyncSample, rollout_sample
 from jaxdp.mdp.mdp import MDP
 from jaxdp.typehints import QType, VType, PiType, F, I
 import jaxdp
