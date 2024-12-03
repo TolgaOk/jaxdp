@@ -5,13 +5,15 @@ class StaticMeta(type):
 
         included_method_names = []
         for key, value in attrs.items():
+            if isinstance(value, staticmethod):
+                raise ValueError(f"staticmethod is not allowed! Method: {value}")
             if callable(value):
-                attrs[key] = staticmethod(value)
+                attrs[key] = value
             if type(value) is StaticMeta:
                 getattr(value, "__inherited_names").insert(0, name)
                 for sub_method_name in getattr(value, "__included_method_names"):
                     included_method_names.append(".".join([key, sub_method_name]))
-            elif callable(value) or isinstance(value, staticmethod):
+            elif callable(value):
                 included_method_names.append(key)
 
         options_string = ", ".join(f"{fn_name}" for fn_name in included_method_names)

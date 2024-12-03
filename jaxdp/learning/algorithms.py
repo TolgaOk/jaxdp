@@ -112,3 +112,17 @@ class zap_q_learning(metaclass=StaticMeta):
         def init(init_value: QType, gamma: float, key: KeyType) -> QType:
             state_size, action_size = init_value.shape
             return jnp.eye((state_size * action_size))
+
+
+class reducer(metaclass=StaticMeta):
+
+    def every_visit(rollout: sampler.RolloutData,
+                    value: QType,
+                    ) -> QType:
+        count = jnp.clip(jnp.einsum(
+            "...s,...a->as", rollout.state, rollout.action), 1.0, None)
+        return jnp.einsum("...,...s,...a,as->as",
+                          value,
+                          rollout.state,
+                          rollout.action,
+                          1 / count)
