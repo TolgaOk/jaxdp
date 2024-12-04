@@ -4,21 +4,19 @@ import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
 from jax.typing import ArrayLike as KeyType
-from gymnax.environments.environment import Environment, EnvParams, EnvState
 
 import jaxdp
 from jaxdp import MDP
 from jaxdp.mdp import MDP
-from jaxdp.typehints import F, PiType
-from jaxdp.utils import StaticMeta
+from jaxdp.typehints import F, I, PiType
 
 
 @struct.dataclass
 class State:
     last_state: F["S"]
-    episode_step: F[""]
+    episode_step: I[""]
     rewards: F[""]
-    lengths: F[""]
+    lengths: I[""]
     episode_reward_queue: F["K"]
     episode_length_queue: F["K"]
 
@@ -61,6 +59,25 @@ def rollout(key: KeyType,
     return jax.lax.fori_loop(0, rollout_len, step_sample, (rollout, sampler_state))
 
 
+def _queue_push(queue_array, value, condition):
+    pushed_array = queue_array.at[1:].set(queue_array[:-1]).at[0].set(value)
+    no_nan_queue = jnp.nan_to_num(queue_array)
+    return (pushed_array * condition +
+            (no_nan_queue / (1 - jnp.isnan(queue_array) * (1 - condition))) * (1 - condition))
+
+
+def _update_state(state, step_data: RolloutData) -> State:
+    done = jnp.logical_or(step_data.terminal, step_data.timeout)
+    rewards = step_data.reward + state.rewards
+    lengths = 1 + state.lengths
+    return state.replace(
+        episode_reward_queue=_queue_push(state.episode_reward_queue, rewards, done),
+        episode_length_queue=_queue_push(state.episode_length_queue, lengths, done),
+        rewards=rewards * (1 - done),
+        lengths=lengths * (1 - done),
+    )
+
+
 def step(key: KeyType,
          sampler_state: State,
          policy: PiType,
@@ -84,28 +101,8 @@ def step(key: KeyType,
                       zip(names, (*sample_data, sampler_state.last_state))}
     step_data = RolloutData(**step_data_dict)
 
-    def queue_push(queue_array, value, condition):
-        pushed_array = queue_array.at[1:].set(queue_array[:-1]).at[0].set(value)
-        no_nan_queue = jnp.nan_to_num(queue_array)
-        return (pushed_array * condition +
-                (no_nan_queue / (1 - jnp.isnan(queue_array) * (1 - condition))) * (1 - condition))
-
-    def update_state(state, step_data: RolloutData) -> State:
-        done = jnp.logical_or(step_data.terminal, step_data.timeout)
-        rewards = step_data.reward + state.rewards
-        lengths = 1 + state.lengths
-        return state.replace(
-            episode_reward_queue=queue_push(state.episode_reward_queue, rewards, done),
-            episode_length_queue=queue_push(state.episode_length_queue, lengths, done),
-            rewards=rewards * (1 - done),
-            lengths=lengths * (1 - done),
-        )
-
-    sampler_state = update_state(
-        sampler_state, step_data
-    ).replace(
-        last_state=new_last_state,
-        episode_step=episode_step)
+    sampler_state = _update_state(sampler_state, step_data).replace(
+        last_state=new_last_state, episode_step=episode_step)
 
     return step_data, sampler_state
 
@@ -138,4 +135,3 @@ def refresh_queues(state: State) -> State:
         episode_reward_queue=jnp.full_like(state.episode_reward_queue, jnp.nan),
         episode_length_queue=jnp.full_like(state.episode_length_queue, jnp.nan),
     )
-

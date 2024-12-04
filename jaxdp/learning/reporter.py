@@ -6,7 +6,7 @@ from jax.typing import ArrayLike as KeyType
 from flax.struct import dataclass
 
 import jaxdp
-import jaxdp.mdp.sampler as sampler
+import jaxdp.mdp.sampler.mdp as sampler
 from jaxdp.mdp.mdp import MDP
 from jaxdp.learning.algorithms import SyncSample
 from jaxdp.typehints import QType, VType, PiType, F, I

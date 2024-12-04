@@ -5,7 +5,7 @@ import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
 from flax import struct
 
-import jaxdp.mdp.sampler as sampler
+import jaxdp.mdp.sampler.mdp as sampler
 from jaxdp.typehints import QType, F
 from jaxdp.utils import StaticMeta
 
@@ -116,7 +116,7 @@ class zap_q_learning(metaclass=StaticMeta):
 
 class reducer(metaclass=StaticMeta):
 
-    def every_visit(rollout: sampler.RolloutData,
+    def every_visit(rollout: StepSample,
                     value: QType,
                     ) -> QType:
         count = jnp.clip(jnp.einsum(
