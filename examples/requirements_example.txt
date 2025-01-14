@@ -1,7 +1,6 @@
-nestedtuple
-mjnax
 gmynax
 mujoco
 plotly
 mediapy
 pyarrow
+git+https://github.com/TolgaOk/nestedtuple
