@@ -12,7 +12,6 @@ from jaxdp.utils import StaticMeta
 
 class greedy_policy(metaclass=StaticMeta):
 
-    @staticmethod
     def q(value: QType) -> PiType:
         """
         Greedy policy distribution from Q values.
@@ -28,7 +27,6 @@ class greedy_policy(metaclass=StaticMeta):
                               num_classes=value.shape[0],
                               axis=0)
 
-    @staticmethod
     def v(mdp: MDP, value: VType, gamma: float) -> PiType:
         # TODO: Add docstring
         # TODO: Add test
@@ -37,7 +35,6 @@ class greedy_policy(metaclass=StaticMeta):
 
 class soft_policy(metaclass=StaticMeta):
 
-    @staticmethod
     def q(value: QType, temperature: float) -> PiType:
         r"""
         Softmax policy distribution.
@@ -54,14 +51,12 @@ class soft_policy(metaclass=StaticMeta):
         """
         return jax.nn.softmax(value * temperature, axis=0)
 
-    @staticmethod
     def v(value: VType, temperature: float) -> PiType:
         raise NotImplementedError
 
 
 class e_greedy_policy(metaclass=StaticMeta):
 
-    @staticmethod
     def q(value: QType, epsilon: float) -> PiType:
         r"""
         Epsilon greedy policy distribution.
@@ -79,14 +74,12 @@ class e_greedy_policy(metaclass=StaticMeta):
         greedy_policy.p = greedy_policy.q(value)
         return greedy_policy.p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
-    @staticmethod
     def v(value: VType, epsilon: float, ) -> PiType:
         raise NotImplementedError
 
 
 class expected_value(metaclass=StaticMeta):
 
-    @staticmethod
     def q(mdp: MDP, value: QType) -> F[""]:
         r"""
         Expected value of the state-action values (Q) over initial distribution.
@@ -104,7 +97,6 @@ class expected_value(metaclass=StaticMeta):
         """
         return expected_value.v(mdp, jnp.max(value, axis=0))
 
-    @staticmethod
     def v(mdp: MDP, value: VType) -> F[""]:
         r"""
         Expected value of the state-values over initial distribution.
@@ -125,7 +117,6 @@ class expected_value(metaclass=StaticMeta):
 
 class policy_evaluation(metaclass=StaticMeta):
 
-    @staticmethod
     def q(mdp: MDP, policy: PiType, gamma: float) -> QType:
         r"""
         Evaluate the policy for each state-action pair using the true MDP
@@ -146,7 +137,6 @@ class policy_evaluation(metaclass=StaticMeta):
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
         return (reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
 
-    @staticmethod
     def v(mdp: MDP, policy: PiType, gamma: float) -> VType:
         r"""
         Evaluate the policy for each state using the true MDP
@@ -171,7 +161,6 @@ class policy_evaluation(metaclass=StaticMeta):
 
 class bellman_operator(metaclass=StaticMeta):
 
-    @staticmethod
     def q(mdp: MDP, policy: PiType, value: QType, gamma: float) -> QType:
         r"""
         Evaluate the Bellman policy operator for each state-action pair
@@ -195,7 +184,6 @@ class bellman_operator(metaclass=StaticMeta):
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
         return reward + gamma * target_values
 
-    @staticmethod
     def v(mdp: MDP, policy: PiType, value: VType, gamma: float) -> VType:
         r"""
         Evaluate the Bellman policy operator for each state
@@ -224,7 +212,6 @@ class bellman_operator(metaclass=StaticMeta):
 
 class bellman_optimality_operator(metaclass=StaticMeta):
 
-    @staticmethod
     def q(mdp: MDP, value: QType, gamma: float) -> QType:
         # TODO: Update docstring
         # TODO: Add test
@@ -236,7 +223,6 @@ class bellman_optimality_operator(metaclass=StaticMeta):
 
 class stationary_distribution(metaclass=StaticMeta):
 
-    @staticmethod
     def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["A S"]:
         distribution = jnp.einsum(
             "s,as->as",
@@ -253,7 +239,6 @@ class stationary_distribution(metaclass=StaticMeta):
             ),
             distribution)
 
-    @staticmethod
     def v(mdp: MDP, policy: PiType, iterations: int = 10) -> F["S"]:
         raise NotImplementedError
 

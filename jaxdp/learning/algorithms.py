@@ -1,18 +1,34 @@
-from turtle import update
 from typing import Callable, Dict, Union, List, NamedTuple, Tuple
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
 from jax.typing import ArrayLike as KeyType
+from flax import struct
 
+import jaxdp.mdp.sampler.mdp as sampler
 from jaxdp.typehints import QType, F
-from jaxdp.learning.sampler import RolloutSample, StepSample, SyncSample
 from jaxdp.utils import StaticMeta
+
+
+@struct.dataclass
+class StepSample:
+    state: F["S"]
+    next_state: F["S"]
+    action: F["A"]
+    reward: F[""]
+    terminal: F[""]
+    timeout: F[""]
+
+
+@struct.dataclass
+class SyncSample:
+    next_state: F["A S S"]
+    reward: F["A S"]
+    terminal: F["A S"]
 
 
 class q_learning(metaclass=StaticMeta):
 
-    @staticmethod
     def target(next_state: F["S"],
                reward: F[""],
                terminal: F[""],
@@ -23,21 +39,18 @@ class q_learning(metaclass=StaticMeta):
                                            value, (1 - terminal)), axis=0)
                 + reward)
 
-    @staticmethod
     def update(value: QType, next_value: QType, alpha: float) -> QType:
         return value + alpha * next_value
 
     class asynchronous(metaclass=StaticMeta):
 
-        @staticmethod
-        def step(transition: StepSample, value: QType, gamma: float) -> F[""]:
-            return (q_learning.target(transition.next_state, transition.reward,
-                                      transition.terminal, value, gamma) -
-                    jnp.einsum("s,a,as->", transition.state, transition.action, value))
+        def step(sample: StepSample, value: QType, gamma: float) -> F[""]:
+            return (q_learning.target(sample.next_state, sample.reward,
+                                      sample.terminal, value, gamma) -
+                    jnp.einsum("s,a,as->", sample.state, sample.action, value))
 
     class synchronous(metaclass=StaticMeta):
 
-        @staticmethod
         def step(sample: SyncSample, value: QType, gamma: float) -> QType:
             batch_q_target = jax.vmap(
                 jax.vmap(q_learning.target, (0, 0, 0, None, None)), (0, 0, 0, None, None))
@@ -50,7 +63,6 @@ class speedy_q_learning(metaclass=StaticMeta):
 
     class synchronous(metaclass=StaticMeta):
 
-        @staticmethod
         def update(sample: SyncSample,
                    value: QType,
                    past_value: QType,
@@ -67,7 +79,6 @@ class speedy_q_learning(metaclass=StaticMeta):
             return (value + alpha * (past_bellman_op - value) + (1 - alpha) * (bellman_op - past_bellman_op),
                     value)
 
-        @staticmethod
         def init(init_value: QType, gamma: float, key: KeyType) -> QType:
             return jnp.zeros_like(init_value)
 
@@ -76,7 +87,6 @@ class zap_q_learning(metaclass=StaticMeta):
 
     class synchronous(metaclass=StaticMeta):
 
-        @staticmethod
         def update(sample: SyncSample,
                    value: QType,
                    matrix_gain: F["AS AS"],
@@ -99,7 +109,20 @@ class zap_q_learning(metaclass=StaticMeta):
             return (value + alpha * (jnp.linalg.inv(matrix_gain) @ delta.flatten()).reshape(act_size, state_size),
                     matrix_gain)
 
-        @staticmethod
         def init(init_value: QType, gamma: float, key: KeyType) -> QType:
             state_size, action_size = init_value.shape
             return jnp.eye((state_size * action_size))
+
+
+class reducer(metaclass=StaticMeta):
+
+    def every_visit(rollout: StepSample,
+                    value: QType,
+                    ) -> QType:
+        count = jnp.clip(jnp.einsum(
+            "...s,...a->as", rollout.state, rollout.action), 1.0, None)
+        return jnp.einsum("...,...s,...a,as->as",
+                          value,
+                          rollout.state,
+                          rollout.action,
+                          1 / count)
