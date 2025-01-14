@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     # Metadata
@@ -12,7 +12,7 @@ setup(
     license="MIT",
 
     # Package info
-    packages=["jaxdp"],
+    packages=find_packages(include=["jaxdp", "jaxdp.*"]),
     install_requires=[
     ],
     zip_safe=False
