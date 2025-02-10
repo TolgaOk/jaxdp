@@ -1,4 +1,4 @@
-""" From the paper: "Fastest Convergence for Q-Learning"
+""" From the paper: `Fastest Convergence for Q-Learning`
     https://arxiv.org/pdf/1707.03770.pdf#page=21.79
 """
 from typing import Dict, Tuple, Any, Union, Type, List
@@ -15,7 +15,27 @@ _state_size = 6
 
 
 def _graph_mdp(state_size: int, edge_info: Dict[str, Tuple[int]]) -> MDP:
-
+    """
+    Constructs a Graph MDP from a given state size and edge information.
+    
+    In this environment:
+      - The state space consists of a fixed number of states (state_size).
+      - Transition dynamics are defined using edge_info where each state maps to a set
+        of feasible actions (edges). For each state, transitions for specified actions are 
+        computed by averaging a primary action with alternative actions.
+      - Rewards are structured to assign a high reward to the terminal state (last state)
+        and a penalty for specific transitions.
+      - The initial state distribution is uniform.
+      - The terminal state is indicated by specific conditions in the transition dynamics.
+      
+    Args:
+        state_size (int): Number of states in the MDP.
+        edge_info (Dict[str, Tuple[int]]): Mapping from state index to a tuple containing 
+            feasible edge indices defining allowed transitions.
+    
+    Returns:
+        MDP: The constructed Graph MDP.
+    """
     transition = jnp.zeros((state_size, state_size, state_size))
 
     reward = (jnp.eye(state_size) - jnp.ones((state_size, state_size))) * 5

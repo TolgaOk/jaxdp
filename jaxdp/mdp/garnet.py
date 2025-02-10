@@ -9,9 +9,28 @@ from jax.typing import ArrayLike as KeyType
 
 def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType,
                min_reward: float = 0, max_reward: float = 1.0) -> MDP:
+    """
+    Constructs a Garnet MDP.
+
+    Garnet MDPs are randomly generated MDPs characterized by:
+      - A specified number of states (state_size) and actions (action_size).
+      - Each state-action pair has a fixed number of successor states defined by branch_size.
+      - Transitions are stochastic and generated using the provided random key.
+      - Rewards are assigned randomly within the interval [min_reward, max_reward].
+      
+    Args:
+        state_size (int): Number of states.
+        action_size (int): Number of actions.
+        branch_size (int): Number of successor states per state-action pair.
+        key (KeyType): JAX random key for generating transitions and rewards.
+        min_reward (float): Minimum reward value.
+        max_reward (float): Maximum reward value.
+        
+    Returns:
+        MDP: The constructed Garnet MDP.
+    """
     # TODO: Make key the first argument
     # TODO: Add test
-    # TODO: Add documentation
     branch_key, transition_key, reward_key = jrd.split(key, 3)
     transition = jnp.zeros((action_size, state_size, state_size))
 
