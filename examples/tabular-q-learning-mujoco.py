@@ -422,6 +422,6 @@ if __name__ == "__main__":
     script_name = __file__.split("/")[-1].split(".py")[0]
     save_run(script_name, arg, final_state.report)
 
-    # TODO: Make a rendering in possible
+    # TODO: Make a rendering if possible
     # TODO: (Maybe) Save final state instead of df
     # TODO: (Low priority) Add CLI for args
