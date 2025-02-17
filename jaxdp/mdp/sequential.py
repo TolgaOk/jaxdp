@@ -1,5 +1,6 @@
-# MDP from: A First-Order Approach to Accelerated Value Iteration
-#           Vineet Goyal, Julien Grand-Clément
+""" From the paper: First-Order Approach to Accelerated Value Iteration
+    https://arxiv.org/abs/1905.09963
+"""
 from typing import Tuple, Any, Union, Type
 import jax.numpy as jnp
 import jax.random as jrd
