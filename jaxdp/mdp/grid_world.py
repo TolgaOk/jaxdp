@@ -17,7 +17,7 @@ board = [
     "#####"
 ]
 
-char_map = {item: ord(item) for item in "# P@X+"}
+char_map = {item: ord(item) for item in "# P@X+="}
 
 
 def _numerical_board(board):
@@ -41,6 +41,7 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
       - "#" represents impassable cells.
       - "P" marks the initial (agent) state.
       - "@" marks terminal/goal cells (with positive reward).
+      - "=" marks absorbing cells (with positive reward).
       - "+" marks cells with a positive reward.
       - "X" marks cells with a penalty.
       - " " represents regular passable space.
@@ -94,11 +95,11 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
 
     _transition = jnp.zeros((action_size, state_size, state_size))
     terminal = _flatten_state(board, passable_index, "@")
+    absorbing = _flatten_state(board, passable_index, "=")
     initial = _flatten_state(board, passable_index, "P")
     reward_state = _flatten_state(board, passable_index, "+")
-    goal = _flatten_state(board, passable_index, "@")
     penalty = _flatten_state(board, passable_index, "X")
-    _reward = ((goal + reward_state - penalty)
+    _reward = ((terminal + reward_state + absorbing - penalty)
                .reshape(1, 1, -1)
                .repeat(action_size, 0)
                .repeat(state_size, 1))
@@ -111,7 +112,7 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
         move_index = passable_index + jnp.array(move).reshape(1, -1)
         violations = (jnp.logical_or(
             _flatten_state(board, move_index, "#"),
-            terminal  # To make sure terminal state is a sink state
+            jnp.logical_or(terminal, absorbing)  # To make sure terminal state is a sink state
         ).reshape(-1, 1))
         move_index = ((1 - violations) * move_index +
                       violations * passable_index).astype("int32")
