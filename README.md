@@ -7,11 +7,6 @@
 
 The functions in **jaxdp** are fully compatible with <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> transformations.  They are stateless, with memory explicitly provided to the functions. This design pattern avoids hiding information at the cost of being more verbose. Therefore, **jaxdp** relies on [currying](https://docs.python.org/3/library/functools.html) whenever possible.
 
-## Training Loop
-
-**Jaxdp** provides vectorizable training functions for both planning and learning settings. Below is an abstract view of how currying and JAX transformations are used in a training loop:
-
-<img width="80%" src="doc/training_loop.gif"/>
 
 ## MDPs
 
@@ -48,28 +43,6 @@ Once stacked, an MDP can be provided to a vectorized function such as training l
 
 > [!warning]
 > The shapes of the components in the list of MDPs need to match to vectorize. Hence, we may not have a vectorized MDP with varying action or state sizes.
-
-# Algorithms
-
-Besides the common functions used in Dynamic Programming, **jaxdp** provides a list of value update algorithms.
-
-|Planning Algorithms   |                  |
-|:--------------------:|:----------------:|
-|  VI                  |:heavy_check_mark:|
-|  PI                  |:heavy_check_mark:|
-|  Nesterov VI         |:heavy_check_mark:|
-|  Accelerated VI      |:heavy_check_mark:|
-
-> [!note]
-> **jaxdp** makes a distinction between synchronous and asynchronous sampling.
-
-|Learning Algorithms |Sync sampled      |Async sampled     |
-|:------------------:|:----------------:|:----------------:|
-|  TD($\lambda$)     |:x:               |:heavy_check_mark:|
-|  Q-learning (QL)   |:heavy_check_mark:|:heavy_check_mark:|
-|  Momentum QL       |:x:               |:x:               |
-|  Speedy QL         |:heavy_check_mark:|:x:               |
-|  Zap QL            |:heavy_check_mark:|:x:               |
 
 # Installation
 
