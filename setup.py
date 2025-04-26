@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
     # Metadata
     name="jaxdp",
-    version="0.2.0",
+    version="0.3.0",
     author="Tolga Ok",
     author_email="T.Ok@tudelft.nl",
     url="",

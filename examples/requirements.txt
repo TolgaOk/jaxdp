@@ -1,0 +1,17 @@
+jax[cuda12]==0.4.37
+mujoco-mjx==3.2.7
+mediapy==1.2.2
+distrax==0.1.5
+jaxtyping==0.2.19
+pandas==2.2.1
+ipykernel==6.29.2
+mujoco-mjx
+gymnax
+nbformat
+kaleido
+plotly
+sacred
+pyarrow
+fastparquet
+git+https://github.com/TolgaOk/nestedtuple
+git+https://github.com/TolgaOk/mjnax

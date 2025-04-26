@@ -40,7 +40,7 @@ class MDP():
             features = jnp.eye(self.state_size)
         self.features = features
 
-        if validate:
+        if validate and not isinstance(self.transition, jax.core.Tracer):
             self.validate()
 
     def init_state(self, key: KeyType) -> F["... S"]:

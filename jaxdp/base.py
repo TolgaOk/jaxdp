@@ -243,6 +243,23 @@ class stationary_distribution(metaclass=StaticMeta):
         raise NotImplementedError
 
 
+def markov_chain_eigen_values(mdp: MDP, policy: PiType) -> F["S"]:
+    r"""
+    Eigen values of the Markov Chain of the MDP by fixing the policy.
+
+    Args:
+        mdp (MDP): Markov Decision Process
+        policy (PiType): Policy distribution
+
+    Returns:
+        F["S"]: Eigen values
+
+    """
+    # TODO: Add test
+    transition_pi, _ = _markov_chain_pi(mdp, policy)
+    return jnp.linalg.eigvals(transition_pi.T)
+
+
 def to_greedy_state_value(value: QType) -> VType:
     # TODO: Add docstring
     # TODO: Add test
