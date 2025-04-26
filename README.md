@@ -1,7 +1,12 @@
 # Jaxdp
 
 
-**Jaxdp** is a Python package that provides a functional implementation of algorithms and commonly used functions for dynamic programming (DP) on finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (even using GPUs) by running multiple MDPs, initial values, seeds, etc., in a vectorized manner.
+**jaxdp** is a Python package that provides a functional implementation of algorithms and commonly used functions for dynamic programming (DP) on finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (even using GPUs) by running multiple MDPs, initial values, seeds, etc., in a vectorized manner.
+
+# API
+
+jaxdp provides several functions useful for Dynamic Programming and Reinforcement Learning algorithms both for state values and state-action values. The list of functions can be in under `base.py`. Besides the common functions, jaxdp provides several MDPs under the `mdp` folder.
+
 
 # Vectorization
 
