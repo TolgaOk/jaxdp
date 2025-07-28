@@ -84,6 +84,10 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
     """
     # TODO: Add test
 
+    # Validate board dimensions
+    if not all(len(row) == len(board[0]) for row in board):
+        raise ValueError("All rows in the board must have the same length.")
+
     state_size = sum(item != "#" for item in chain(*board))
     action_size = 4
 
@@ -94,7 +98,7 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
     state_index_map = jnp.cumsum(board != char_map["#"]) - 1
 
     _transition = jnp.zeros((action_size, state_size, state_size))
-    terminal = _flatten_state(board, passable_index, "@")
+    terminal = _flatten_state(board, passable_index, "@") + _flatten_state(board, passable_index, "=")
     absorbing = _flatten_state(board, passable_index, "=")
     initial = _flatten_state(board, passable_index, "P")
     reward_state = _flatten_state(board, passable_index, "+")
