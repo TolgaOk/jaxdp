@@ -13,7 +13,7 @@ class StaticMeta(type):
                 getattr(value, "__inherited_names").insert(0, name)
                 for sub_method_name in getattr(value, "__included_method_names"):
                     included_method_names.append(".".join([key, sub_method_name]))
-            elif callable(value):
+            elif callable(value) and not key.startswith('_'):
                 included_method_names.append(key)
 
         options_string = ", ".join(f"{fn_name}" for fn_name in included_method_names)
