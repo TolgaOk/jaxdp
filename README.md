@@ -1,28 +1,74 @@
-# Jaxdp
+# jaxdp
+
+**jaxdp** is a Python package providing functional implementations of dynamic programming (DP) algorithms for finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (including GPU acceleration) through vectorized execution across multiple MDP instances, initial values, and parameters.
+
+## Vectorization
+
+**jaxdp** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
+
+### Algorithm Example
+
+The `examples` directory contains implementations and benchmarks of planning algorithms using **jaxdp**. Below is a code snippet for [Momentum accelerated Value Iteration](https://arxiv.org/pdf/1905.09963):
+
+```python
+"""
+◈─────────────────────────────────────────────────────────────────────────◈
+Momentum accelerated Value Iteration.
+◈─────────────────────────────────────────────────────────────────────────◈
+"""
+@struct.dataclass
+class State:
+    q_val: jnp.ndarray
+    prev_q_val: jnp.ndarray
+    gamma: jnp.ndarray
+    beta: jnp.ndarray
+    alpha: jnp.ndarray
 
 
-**jaxdp** is a Python package that provides a functional implementation of algorithms and commonly used functions for dynamic programming (DP) on finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (even using GPUs) by running multiple MDPs, initial values, seeds, etc., in a vectorized manner.
+def update(s: State, mdp: MDP, step: int) -> State:
+    diff = s.q_val - s.prev_q_val
+    b_residual = jaxdp.bellman_optimality_operator.q(mdp, s.q_val, s.gamma) - s.q_val
+    next_q = s.q_val + s.alpha * b_residual + s.beta * diff
+    
+    return s.replace(q_val=next_q, prev_q_val=s.q_val)
+```
 
-# API
+You can vectorize the update function to run across:
 
-jaxdp provides several functions useful for Dynamic Programming and Reinforcement Learning algorithms both for state values and state-action values. The list of functions can be in under `base.py`. Besides the common functions, jaxdp provides several MDPs under the `mdp` folder.
+- Multiple initial **values**
+- Multiple **gamma** or **beta** values  
+- Multiple **MDP** instances
+
+Example for multiple gamma values using `jax.vmap`:
 
 
-# Vectorization
+```python
+init_state = State(
+    q_val=init_q_vals,
+    prev_q_val=init_q_vals,
+    gamma=jnp.array([0.9, 0.95, 0.99, 0.999]),
+    beta=0.99,
+    alpha=0.1
+)
 
-The functions in **jaxdp** are fully compatible with <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> transformations.  They are stateless, with memory explicitly provided to the functions. This design pattern avoids hiding information at the cost of being more verbose. Therefore, **jaxdp** relies on [currying](https://docs.python.org/3/library/functools.html) whenever possible.
+final_state, all_states = jax.lax.scan(
+    jax.vmap(                     # vmapped update function
+        lambda s, ix: (update(s, mdp, ix), s),
+        in_axes=(State(0, 0, 0, None, None), None)
+    ),    
+    init_state,                   # initial state
+    jnp.arange(100)               # Number of iterations
+)
+```
 
+### MDPs
 
-## MDPs
+In jaxdp, MDPs are PyTrees and therefore compatible with JAX transformations.
 
-In jaxdp, MDPs are Pytrees and are therefore compatible with JAX transformations.
-
-```Python
+```python
+import jax
 import jax.numpy as jnp
-import jax.tree_util
-
 from jaxdp.mdp.garnet import garnet_mdp as make_garnet
-
 
 n_mdp = 8
 key = jax.random.PRNGKey(42)
@@ -30,13 +76,13 @@ key = jax.random.PRNGKey(42)
 # List of random MDPs with different seeds
 mdps = [make_garnet(state_size=300, action_size=10, key=key,
                     branch_size=4, min_reward=-1, max_reward=1)
-        for key in jrd.split(key, n_mdp)]
+        for key in jax.random.split(key, n_mdp)]
 
 # Stacked MDP
 stacked_mdp = jax.tree_map(lambda *mdps: jnp.stack(mdps), *mdps)
 ```
 
-Once stacked, an MDP can be provided to a vectorized function such as training loop.
+Once stacked, MDPs can be provided to vectorized functions:
 
 ```Python
 > mdps[0].transition.shape
@@ -46,14 +92,11 @@ Once stacked, an MDP can be provided to a vectorized function such as training l
 > (8, 10, 300, 300)
 ```
 
-> [!warning]
-> The shapes of the components in the list of MDPs need to match to vectorize. Hence, we may not have a vectorized MDP with varying action or state sizes.
+> **Warning:** MDP components must have matching shapes for vectorization. Variable action or state sizes are not supported.
 
-# Installation
+## Installation
 
-Recommended: Python 3.9+
-
-Install the package in development mode via:
+Requires Python 3.11+
 
 ```bash
 pip install -r requirements.txt
