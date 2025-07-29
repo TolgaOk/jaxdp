@@ -3,9 +3,9 @@
 This directory contains example implementations and benchmarks for dynamic programming algorithms using JAX.
 
 ## Planning Algorithms
-- **Value Iteration** (`vi`) - Standard value iteration algorithm for solving MDPs
-- **Nesterov Accelerated Value Iteration** (`nesterov_vi`) - Accelerated value iteration using Nesterov momentum ([Nesterov, 1983](https://link.springer.com/article/10.1007/BF01065553))
-- **Policy Iteration** (`pi`) - Classic policy iteration algorithm
+- **Value Iteration** (`vi`)
+- **[Nesterov Accelerated Value Iteration](https://pubsonline.informs.org/doi/abs/10.1287/opre.2022.2269?casa_token=Pn5-2vDJXSsAAAAA:dZoGqfnlSbdOf4PXuNcn6g-NYXJrDLQzrZHsegktTRrKbyQd_K6r0SFlP8Wy8r5r_jsgpQ8)** (`nesterov_vi`)
+- **Policy Iteration** (`pi`)
 
 ### `benchmark.py`
 Run the example planning algorithms on simple MDPs via:
@@ -21,4 +21,4 @@ python benchmark.py benchmark          # Full algorithm comparison
 > ```python
 > class vi(metaclass=StaticMeta)
 > ```
-> With that we can call `vi.update` function for example.
+> With that you can call any attribute via `vi.` notation.
