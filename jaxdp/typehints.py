@@ -1,26 +1,48 @@
-from typing import NewType, Union
-import jax
-from jaxtyping import Array, Float32, Int32, Bool
+"""Type hints for jaxdp using chex for array types."""
+from typing import Annotated, TypeAlias
+import chex
 
 
-class F(type):
-    def __class_getitem__(cls, dim_str: str):
-        type_var = Union[jax.core.Tracer, Float32[Array, dim_str]]
-        return NewType(f"{cls.__name__}[{dim_str}]", type_var)
+class _F_Array:
+    def __getitem__(self, shape):
+        return Annotated[chex.Array, shape]
+
+F = _F_Array()
+
+QType: TypeAlias = F["AS"]
+VType: TypeAlias = F["S"]
+PiType: TypeAlias = F["AS"]
 
 
-class I(type):
-    def __class_getitem__(cls, dim_str: str):
-        type_var = Union[jax.core.Tracer, Int32[Array, dim_str]]
-        return NewType(f"{cls.__name__}[{dim_str}]", type_var)
+class StaticMeta(type):
+    """Metaclass for creating utility classes with static methods."""
+    def __new__(cls, name, bases, attrs):
 
+        included_method_names = []
+        for key, value in attrs.items():
+            if isinstance(value, staticmethod):
+                raise ValueError(f"staticmethod is not allowed! Method: {value}")
+            if callable(value):
+                attrs[key] = value
+            if type(value) is StaticMeta:
+                getattr(value, "__inherited_names").insert(0, name)
+                for sub_method_name in getattr(value, "__included_method_names"):
+                    included_method_names.append(".".join([key, sub_method_name]))
+            elif callable(value) and not key.startswith('_'):
+                included_method_names.append(key)
 
-class B(type):
-    def __class_getitem__(cls, dim_str: str):
-        type_var = Union[jax.core.Tracer, Bool[Array, dim_str]]
-        return NewType(f"{cls.__name__}[{dim_str}]", type_var)
+        options_string = ", ".join(f"{fn_name}" for fn_name in included_method_names)
+        attrs["__doc__"] = f"Main object for {name}. Usable attributes are {options_string}"
+        attrs["__inherited_names"] = [name]
+        attrs["__included_method_names"] = included_method_names
 
+        def _init_method_(self, *args, **kwargs):
+            main_name = ".".join(getattr(self, "__inherited_names"))
+            options_string = " or ".join(
+                f"{main_name}.{fn_name}" for fn_name in included_method_names)
+            raise AttributeError(
+                f"Attribute required! Call {options_string}, instead of {name}.")
 
-QType = NewType("QType", F["A S"])
-VType = NewType("VType", F["S"])
-PiType = NewType("PiType", F["A S"])
+        attrs["__init__"] = _init_method_
+
+        return super().__new__(cls, name, bases, attrs)

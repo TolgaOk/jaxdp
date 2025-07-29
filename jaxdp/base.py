@@ -1,13 +1,11 @@
-from typing import Optional, Callable, Tuple, Dict, Union, Any
+import chex
+import distrax
+import jax
 import jax.numpy as jnp
 import jax.random as jrd
-from jax.typing import ArrayLike as KeyType
-import jax
-import distrax
 
 from jaxdp.mdp.mdp import MDP
-from jaxdp.typehints import QType, VType, PiType, F
-from jaxdp.utils import StaticMeta
+from jaxdp.typehints import F, PiType, QType, StaticMeta, VType
 
 
 class greedy_policy(metaclass=StaticMeta):
@@ -63,8 +61,8 @@ class e_greedy_policy(metaclass=StaticMeta):
 
         Args:
             value (QType): Q Value array
-            epsilon (float): Epsilon parameter. The policy takes the greedy action with 
-                (1 - epsilon + epsilon/|A|) probability while take a non-greedy action with 
+            epsilon (float): Epsilon parameter. The policy takes the greedy action with
+                (1 - epsilon + epsilon/|A|) probability while take a non-greedy action with
                 (epsilon / |A|) probability where |A| is the dimension of the action space.
 
         Returns:
@@ -80,7 +78,7 @@ class e_greedy_policy(metaclass=StaticMeta):
 
 class expected_value(metaclass=StaticMeta):
 
-    def q(mdp: MDP, value: QType) -> F[""]:
+    def q(mdp: MDP, value: QType) -> chex.Scalar:
         r"""
         Expected value of the state-action values (Q) over initial distribution.
 
@@ -92,12 +90,12 @@ class expected_value(metaclass=StaticMeta):
             value (QType): Q Value array
 
         Returns:
-            F[""]: Expected value
+            Scalar: Expected value
 
         """
         return expected_value.v(mdp, jnp.max(value, axis=0))
 
-    def v(mdp: MDP, value: VType) -> F[""]:
+    def v(mdp: MDP, value: VType) -> chex.Scalar:
         r"""
         Expected value of the state-values over initial distribution.
 
@@ -106,10 +104,10 @@ class expected_value(metaclass=StaticMeta):
 
         Args:
             mdp (MDP): Markov Decision Process
-            value (F[S"]): Value array
+            value (VType): Value array
 
         Returns:
-            F[""]: Expected value
+            Scalar: Expected value
 
         """
         return (value * mdp.initial).sum()
@@ -122,7 +120,8 @@ class policy_evaluation(metaclass=StaticMeta):
         Evaluate the policy for each state-action pair using the true MDP
 
         .. math::
-            \eta(\pi)(s_i, a_j) = \big[r^{a_j} + \gamma P^\pi (\mathrm{I}_n - \gamma P^\pi)r^\pi\big]_i
+            \\eta(\\pi)(s_i, a_j) = \\big[r^{a_j} + \\gamma P^\\pi
+            (\\mathrm{I}_n - \\gamma P^\\pi)r^\\pi\\big]_i
 
         Args:
             mdp (MDP): Markov Decision Process
@@ -166,8 +165,8 @@ class bellman_operator(metaclass=StaticMeta):
         Evaluate the Bellman policy operator for each state-action pair
 
         .. math::
-            \mathcal{B}(Q)(s_i, a_j) = \big[r^{a_j} + \gamma 
-                \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
+            \\mathcal{B}(Q)(s_i, a_j) = \\big[r^{a_j} + \\gamma
+                \\underset{s^+ \\sim P^{a_j}}{\\mathbb{E}}[Q(s^+, a_j)]\\big]_i - Q(s_i, a_j))
 
         Args:
             mdp (MDP): Markov Decision Process
@@ -189,13 +188,13 @@ class bellman_operator(metaclass=StaticMeta):
         Evaluate the Bellman policy operator for each state
 
         .. math::
-            \mathcal{B}(V)(s_i) = \big[r^{a_j} + \gamma 
-                \underset{s^+ \sim P^{a_j}}{\mathbb{E}}[Q(s^+, a_j)]\big]_i - Q(s_i, a_j))
+            \\mathcal{B}(V)(s_i) = \\big[r^{a_j} + \\gamma
+                \\underset{s^+ \\sim P^{a_j}}{\\mathbb{E}}[Q(s^+, a_j)]\\big]_i - Q(s_i, a_j))
 
         Args:
             mdp (MDP): Markov Decision Process
             policy (PiType): Policy distribution
-            value (Float[Array,"S"]): State value array
+            value (VType): State value array
             gamma (float): Discount factor
 
         Returns:
@@ -223,7 +222,7 @@ class bellman_optimality_operator(metaclass=StaticMeta):
 
 class stationary_distribution(metaclass=StaticMeta):
 
-    def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["A S"]:
+    def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["AS"]:
         distribution = jnp.einsum(
             "s,as->as",
             mdp.initial,
@@ -252,7 +251,7 @@ def markov_chain_eigen_values(mdp: MDP, policy: PiType) -> F["S"]:
         policy (PiType): Policy distribution
 
     Returns:
-        F["S"]: Eigen values
+        Array: Eigen values
 
     """
     # TODO: Add test
@@ -273,7 +272,7 @@ def to_state_action_value(mdp: MDP, value: VType, gamma: float) -> QType:
             gamma * jnp.einsum("axs,x->as", mdp.transition, value))
 
 
-def _markov_chain_pi(mdp: MDP, policy: PiType) -> Tuple[F["S S"], F["S S"]]:
+def _markov_chain_pi(mdp: MDP, policy: PiType) -> tuple[F["SS"], F["SS"]]:
     r"""
     Make Markov Chain of an MDP by fixing the policy.
 
@@ -286,8 +285,7 @@ def _markov_chain_pi(mdp: MDP, policy: PiType) -> Tuple[F["S S"], F["S S"]]:
         policy (PiType): Policy distribution
 
     Returns:
-        F["S S"]: Transition matrix
-        F["S S"]: Reward matrix
+        tuple[chex.Array, chex.Array]: Transition matrix, Reward matrix
 
     """
     transition_pi = jnp.einsum("as,axs->xs", policy, mdp.transition)
@@ -295,16 +293,16 @@ def _markov_chain_pi(mdp: MDP, policy: PiType) -> Tuple[F["S S"], F["S S"]]:
     return transition_pi, reward_pi
 
 
-def sample_from(policy: PiType, key: KeyType) -> F["A S"]:
+def sample_from(policy: PiType, key: chex.PRNGKey) -> F["AS"]:
     r"""
     Sample from a policy. The samples will be one-hot vectors.
 
     Args:
         policy (PiType): Policy distribution
-        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+        key (chex.PRNGKey): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        F["A S"]: Sampled actions in the one-hot vector form for each state.
+        Array: Sampled actions in the one-hot vector form for each state.
 
     """
     return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
@@ -312,10 +310,10 @@ def sample_from(policy: PiType, key: KeyType) -> F["A S"]:
 
 def sample_based_policy_evaluation(mdp: MDP,
                                    policy: PiType,
-                                   key: KeyType,
+                                   key: chex.PRNGKey,
                                    gamma: float,
                                    max_episode_length: int
-                                   ) -> F[""]:
+                                   ) -> chex.Scalar:
     # TODO: Add test
     # TODO: Add docstring
     episode_step = jnp.zeros((1,))
@@ -335,23 +333,22 @@ def sample_based_policy_evaluation(mdp: MDP,
 
         return _episode_step, _key, _episode_rewards, _state, _is_terminated
 
-    _, _, episode_rewards, _, _ = jax.lax.fori_loop(0, max_episode_length, _step,
-                                                    (episode_step, key, episode_rewards, state, is_terminated))
+    _, _, episode_rewards, _, _ = jax.lax.fori_loop(
+        0, max_episode_length, _step,
+        (episode_step, key, episode_rewards, state, is_terminated))
     return episode_rewards.sum()
 
 
-def sync_sample(mdp: MDP, key: KeyType) -> Tuple[F["A S"], F["A S S"], F["A S"]]:
+def sync_sample(mdp: MDP, key: chex.PRNGKey) -> tuple[F["AS"], F["ASS"], F["AS"]]:
     r"""
     Synchronously sample starting from each state action pair in the given MDP
 
     Args:
         mdp (MDP): Markov Decision Process
-        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+        key (chex.PRNGKey): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        VType: Rewards
-        F["S S"]: Next states
-        VType]: Termination condition (either 0 or 1)
+        tuple[chex.Array, chex.Array, chex.Array]: Rewards, Next states, Termination condition
 
     """
     next_state = distrax.OneHotCategorical(
@@ -365,10 +362,11 @@ def sync_sample(mdp: MDP, key: KeyType) -> Tuple[F["A S"], F["A S S"], F["A S"]]
 def async_sample_step(mdp: MDP,
                       action: F["A"],
                       state: F["S"],
-                      episode_step: F[""],
+                      episode_step: chex.Scalar,
                       episode_length: int,
-                      key: KeyType
-                      ) -> Tuple[F["S"], F[""], F[""], F[""], F["S"], F[""]]:
+                      key: chex.PRNGKey
+                      ) -> tuple[F["S"], chex.Scalar, chex.Scalar,
+                                 chex.Scalar, F["S"], chex.Scalar]:
     r"""
     Asynchronously sample from the given MDP by following the given action. The starting state
     is given by the <state> argument. Similar to stateless version of the env.step() function
@@ -376,24 +374,24 @@ def async_sample_step(mdp: MDP,
     and the stepped MDP states (state & episode_length). The <episode_length> argument limits
     the maximum episode length (artificially). If an episode is terminated by reaching the maximum
     episodic length, this function sets <timeout> value to "True" while <terminal> may leave as
-    "False". 
+    "False".
         Note that: The terminated MDP state is automatically set to initial state.
 
     Args:
         mdp (MDP): Markov Decision Process
-        action (F["A"]): One hot action
-        state (F["S"]): Current state of the MDP
-        episode_step (F[""]): Step count of the MDP
+        action (Array): One hot action
+        state (Array): Current state of the MDP
+        episode_step (Scalar): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+        key (chex.PRNGKey): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        VType: Next states of the transition (not necessarily equal to stepped State)
-        F[""]: Rewards of the transition
-        F[""]]: termination condition (either 0 or 1) of the transition
-        F[""]]: timeout condition (either 0 or 1) of the transition
-        VType: Stepped state
-        F[""]]: Stepped step count
+        chex.Array: Next states of the transition (not necessarily equal to stepped State)
+        chex.Scalar: Rewards of the transition
+        chex.Scalar: termination condition (either 0 or 1) of the transition
+        chex.Scalar: timeout condition (either 0 or 1) of the transition
+        chex.Array: Stepped state
+        chex.Scalar: Stepped step count
 
     """
     state_key, init_key = jrd.split(key, num=2)
@@ -421,29 +419,30 @@ def async_sample_step(mdp: MDP,
 def async_sample_step_pi(mdp: MDP,
                          policy: PiType,
                          state: F["S"],
-                         episode_step: F[""],
+                         episode_step: chex.Scalar,
                          episode_length: int,
-                         key: KeyType
-                         ) -> Tuple[F["S"], F["A"], F[""], F[""], F[""], F["S"], F[""]]:
+                         key: chex.PRNGKey
+                         ) -> tuple[F["A"], F["S"], chex.Scalar,
+                                    chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
     r"""
     Asynchronously sample from the given MDP by following the given policy.
 
     Args:
         mdp (MDP): Markov Decision Process
         policy (PiType): Policy distribution
-        state (F["S"]): Current state of the MDP
-        episode_step (F[""]): Step count of the MDP
+        state (Array): Current state of the MDP
+        episode_step (Scalar): Step count of the MDP
         episode_length (int): Maximum allowed episode length
-        key (KeyType): State of the JAX pseudorandom number generators (PRNGs)
+        key (chex.PRNGKey): State of the JAX pseudorandom number generators (PRNGs)
 
     Returns:
-        F["A"]: Action of the transition
-        VType: Next states of the transition (not necessarily equal to stepped State)
-        F[""]: Rewards of the transition
-        F[""]]: termination condition (either 0 or 1) of the transition
-        F[""]]: timeout condition (either 0 or 1) of the transition
-        VType: Stepped state
-        F[""]]: Stepped step count
+        chex.Array: Action of the transition
+        chex.Array: Next states of the transition (not necessarily equal to stepped State)
+        chex.Scalar: Rewards of the transition
+        chex.Scalar: termination condition (either 0 or 1) of the transition
+        chex.Scalar: timeout condition (either 0 or 1) of the transition
+        chex.Array: Stepped state
+        chex.Scalar: Stepped step count
 
     """
     act_key, step_key = jrd.split(key, num=2)
@@ -458,6 +457,6 @@ def async_sample_step_pi(mdp: MDP,
                                       key=step_key)
 
 
-def sg(array: F["..."]) -> F["..."]:
+def sg(array: chex.Array) -> chex.Array:
     """Stop Gradient function"""
     return jax.lax.stop_gradient(array)

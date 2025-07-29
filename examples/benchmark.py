@@ -1,20 +1,19 @@
+import argparse
+from dataclasses import dataclass
+from typing import Any
+
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
+from algorithms import nesterov_vi, pi, vi
 from flax import struct
-from typing import Callable, Optional, Tuple, Any
-import argparse
+from utils import log_comprehensive_benchmark, log_multi_gamma_results, log_results
 
-from dataclasses import dataclass
-
-from jaxdp.mdp.grid_world import grid_world
-from jaxdp.mdp.garnet import garnet_mdp
-from jaxdp.mdp.simple_graph import graph_mdp
-from jaxdp.mdp import MDP
 from jaxdp.base import bellman_optimality_operator as bellman_op
-
-from algorithms import vi, nesterov_vi, pi
-from utils import log_results, log_multi_gamma_results, log_comprehensive_benchmark
+from jaxdp.mdp import MDP
+from jaxdp.mdp.garnet import garnet_mdp
+from jaxdp.mdp.grid_world import grid_world
+from jaxdp.mdp.simple_graph import graph_mdp
 
 jax.config.update("jax_enable_x64", True)
 
@@ -62,10 +61,10 @@ def loop(mdp: MDP,
          args: LoopArgs,
          update_fn: Callable[[Any, MDP, jnp.ndarray], Any],
          metrics_fn: Callable[[Any, Any, MDP, jnp.ndarray], Any],
-         callback: Optional[Callable[[int, Any], None]] = None,
-         ) -> Tuple[Any, Any]:
+         callback: Callable[[int, Any], None] | None = None,
+         ) -> tuple[Any, Any]:
 
-    def scan_body(state: Any, iter_idx: jnp.ndarray) -> Tuple[Any, Any]:
+    def scan_body(state: Any, iter_idx: jnp.ndarray) -> tuple[Any, Any]:
         prev_state = state
         new_state = update_fn(state, mdp, iter_idx)
 
@@ -96,8 +95,15 @@ def grid_mdp_factory() -> MDP:
     return grid_world(board=board, p_slip=0.0)
 
 
-def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int, action_size: int, branch_size: int) -> MDP:
-    return garnet_mdp(state_size=state_size, action_size=action_size, branch_size=branch_size, key=key)
+def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int,
+                       action_size: int, branch_size: int
+                       ) -> MDP:
+    return garnet_mdp(
+        state_size=state_size,
+        action_size=action_size,
+        branch_size=branch_size,
+        key=key
+    )
 
 
 def graph_mdp_factory() -> MDP:
@@ -230,20 +236,20 @@ def benchmark() -> dict:
     all_results = {}
 
     for alg_name, alg_module in algs.items():
-        
+
         alg_results = {}
-        
+
         for mdp_name, mdp in mdps.items():
             keys = jrd.split(jrd.PRNGKey(loop_args.seed), loop_args.n_seed)
-            
+
             vmap_init = jax.vmap(alg_module.init, in_axes=(None, 0, None))
             init_states = vmap_init(mdp, keys, gamma)
-            
+
             update_fn = alg_module.update
             vmap_update = jax.vmap(update_fn, in_axes=(0, None, None))
-            
+
             vmap_metrics = jax.vmap(compute_metrics, in_axes=(0, 0, None, None))
-            
+
             final_states, metrics = loop(
                 mdp=mdp,
                 alg_state=init_states,
@@ -251,19 +257,19 @@ def benchmark() -> dict:
                 update_fn=vmap_update,
                 metrics_fn=vmap_metrics
             )
-            
+
             avg_metrics = jax.tree.map(
                 lambda x: jnp.mean(x, axis=1) if x.ndim > 1 else x,
                 metrics
             )
-            
+
             alg_results[mdp_name] = (avg_metrics, None)
-        
+
         all_results[alg_name] = alg_results
-    
+
     settings = f"{loop_args.n_seed} seeds, {loop_args.n_iters} iterations, gamma={gamma}"
     log_comprehensive_benchmark(all_results, settings)
-    
+
     return all_results
 
 
@@ -274,9 +280,9 @@ if __name__ == "__main__":
         choices=["vi", "multi_seed_vi", "multi_gamma_vi", "benchmark"],
         help="Type of benchmark to run"
     )
-    
+
     args = parser.parse_args()
-    
+
     if args.benchmark_type == "vi":
         value_iteration_grid_world()
     elif args.benchmark_type == "multi_seed_vi":
