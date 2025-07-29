@@ -8,7 +8,7 @@ def log_results(results, alg_name):
     console = Console()
     
     table = Table(
-        title=f"[bold]{alg_name.upper()} BENCHMARK RESULTS[/bold]",
+        title=f"[bold]{alg_name.upper()} [/bold]",
         show_header=True,
         header_style="bold white",
         border_style="white",
@@ -16,16 +16,13 @@ def log_results(results, alg_name):
     )
     table.add_column("MDP", style="bold white", width=20)
     table.add_column("Bellman Error", justify="right", style="white")
-    table.add_column("Value Error", justify="right", style="white")
     
     for mdp_name, (metrics, _) in results.items():
         bellman_err = float(metrics.bellman_err[-1])
-        value_err = float(metrics.linf[-1])
         
         table.add_row(
             mdp_name,
-            f"{bellman_err:.6f}",
-            f"{value_err:.6f}"
+            f"{bellman_err:.6f}"
         )
     
     console.print()
@@ -37,7 +34,7 @@ def log_multi_gamma_results(results, alg_name):
     console = Console()
 
     table = Table(
-        title=f"[bold]{alg_name.upper()} BENCHMARK RESULTS[/bold]",
+        title=f"[bold]{alg_name.upper()} [/bold]",
         show_header=True,
         header_style="bold white",
         border_style="white",

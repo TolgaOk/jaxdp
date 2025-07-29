@@ -3,9 +3,8 @@ import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
 from typing import Callable, Optional, Tuple, Any
-from functools import partial
-from rich.console import Console
-from rich.table import Table
+import argparse
+
 from dataclasses import dataclass
 
 from jaxdp.mdp.grid_world import grid_world
@@ -14,7 +13,7 @@ from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.mdp import MDP
 from jaxdp.base import bellman_optimality_operator as bellman_op
 
-from algorithms import vi, nesterov_vi, policy_iteration
+from algorithms import vi, nesterov_vi, pi
 from utils import log_results, log_multi_gamma_results, log_comprehensive_benchmark
 
 jax.config.update("jax_enable_x64", True)
@@ -30,8 +29,8 @@ class Metrics:
 
 
 def compute_metrics(prev_state, new_state, mdp, step):
-    new_q = new_state.q_values
-    prev_q = prev_state.q_values
+    new_q = new_state.q_vals
+    prev_q = prev_state.q_vals
     gamma = prev_state.gamma
 
     diff = new_q - prev_q
@@ -106,40 +105,43 @@ def graph_mdp_factory() -> MDP:
 
 
 def value_iteration_grid_world():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Single VI GridWorld
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
     mdp = grid_mdp_factory()
     alg_name = "Value Iteration"
-    alg_args = vi.Args()
     loop_args = LoopArgs(seed=42, n_iters=10)
 
-    display_arguments(loop_args, alg_args, alg_name)
-
     init_state = vi.init(mdp, jrd.PRNGKey(loop_args.seed), 0.9)
-    update_fn = partial(vi.update, args=alg_args)
+    update_fn = vi.update
 
     final_state, metrics = loop(
         mdp=mdp,
         alg_state=init_state,
         args=loop_args,
         update_fn=update_fn,
-        metrics_fn=compute_metrics,
-        callback=create_progress_callback("GridWorld", loop_args.n_iters)
+        metrics_fn=compute_metrics
     )
 
-    results = {"GridWorld": (metrics, final_state.q_values)}
+    results = {"GridWorld": (metrics, final_state.q_vals)}
     log_results(results, alg_name)
-    return final_state.q_values
+    return final_state.q_vals
 
 
 def value_iteration_multi_seed():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Multi-Seed VI
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
     alg_name = "Value Iteration (Multi-Seed)"
-    alg_args = vi.Args()
     loop_args = LoopArgs(seed=42, n_iters=100, n_seed=5)
-
-    display_arguments(loop_args, alg_args, alg_name)
 
     mdp = grid_mdp_factory()
 
-    update_fn = partial(vi.update, args=alg_args)
+    update_fn = vi.update
     vmap_update = jax.vmap(update_fn, in_axes=(0, None, None))
 
     seed_keys = jrd.split(jrd.PRNGKey(loop_args.seed), loop_args.n_seed)
@@ -156,9 +158,9 @@ def value_iteration_multi_seed():
         metrics_fn=vmap_metrics
     )
 
-    avg_q = jnp.mean(final_states.q_values, axis=0)
+    avg_q = jnp.mean(final_states.q_vals, axis=0)
     avg_metrics = jax.tree.map(
-        lambda x: jnp.mean(x, axis=1) if x.ndim > 1 else x,
+        lambda x: jnp.mean(x, axis=1),
         all_metrics
     )
     results = {"GridWorld": (avg_metrics, avg_q)}
@@ -168,6 +170,11 @@ def value_iteration_multi_seed():
 
 
 def value_iteration_multi_gamma():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Multi-Gamma VI
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
     alg_name = "Value Iteration (Multi-Gamma)"
     gammas = jnp.array([0.9, 0.95, 0.99, 0.995, 0.999])
     loop_args = LoopArgs(seed=42, n_iters=100, n_seed=1)
@@ -175,12 +182,11 @@ def value_iteration_multi_gamma():
     mdp = grid_mdp_factory()
 
     key = jrd.PRNGKey(loop_args.seed)
-    alg_args = vi.Args()
 
     vmap_init = jax.vmap(vi.init, in_axes=(None, None, 0))
     init_states = vmap_init(mdp, key, gammas)
 
-    update_fn = partial(vi.update, args=alg_args)
+    update_fn = vi.update
     vmap_update = jax.vmap(update_fn, in_axes=(0, None, None))
 
     vmap_metrics = jax.vmap(compute_metrics, in_axes=(0, 0, None, None))
@@ -193,31 +199,37 @@ def value_iteration_multi_gamma():
         metrics_fn=vmap_metrics
     )
 
-    results = {"GridWorld": (metrics, final_states.q_values, gammas)}
+    results = {"GridWorld": (metrics, final_states.q_vals, gammas)}
 
     log_multi_gamma_results(results, alg_name)
     return results
 
 
-def run_comprehensive_benchmark():
+def benchmark():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Comprehensive Benchmark
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
     loop_args = LoopArgs(seed=42, n_iters=100, n_seed=5)
     gamma = 0.99
 
     mdps = {
         "GridWorld": grid_mdp_factory(),
-        "GarnetMDP": garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
+        "GarnetMDP": garnet_mdp_factory(
+            jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
         "GraphMDP": graph_mdp_factory()
     }
 
     algs = {
-        "Value Iteration": (vi, vi.Args()),
-        "Nesterov VI": (nesterov_vi, nesterov_vi.Args()),
-        "Policy Iteration": (policy_iteration, policy_iteration.Args())
+        "Value Iteration": vi,
+        "Nesterov VI": nesterov_vi,
+        "Policy Iteration": pi
     }
 
     all_results = {}
 
-    for alg_name, (alg_module, alg_args) in algs.items():
+    for alg_name, alg_module in algs.items():
         
         alg_results = {}
         
@@ -227,7 +239,7 @@ def run_comprehensive_benchmark():
             vmap_init = jax.vmap(alg_module.init, in_axes=(None, 0, None))
             init_states = vmap_init(mdp, keys, gamma)
             
-            update_fn = partial(alg_module.update, args=alg_args)
+            update_fn = alg_module.update
             vmap_update = jax.vmap(update_fn, in_axes=(0, None, None))
             
             vmap_metrics = jax.vmap(compute_metrics, in_axes=(0, 0, None, None))
@@ -254,5 +266,22 @@ def run_comprehensive_benchmark():
     
     return all_results
 
+
 if __name__ == "__main__":
-    run_comprehensive_benchmark()
+    parser = argparse.ArgumentParser(description="Run JAX DP benchmarks")
+    parser.add_argument(
+        "benchmark_type",
+        choices=["vi", "multi_seed_vi", "multi_gamma_vi", "benchmark"],
+        help="Type of benchmark to run"
+    )
+    
+    args = parser.parse_args()
+    
+    if args.benchmark_type == "vi":
+        value_iteration_grid_world()
+    elif args.benchmark_type == "multi_seed_vi":
+        value_iteration_multi_seed()
+    elif args.benchmark_type == "multi_gamma_vi":
+        value_iteration_multi_gamma()
+    elif args.benchmark_type == "benchmark":
+        benchmark()
