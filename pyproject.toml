@@ -4,10 +4,58 @@ authors = [
     {name = "Tolga Ok", email = "T.Ok@tudelft.nl"}
 ]
 version = "0.3.0"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 readme = "README.md"
 description = "A Dynamic Programming package for discrete MDPs implemented in JAX"
 license = {text = "MIT License"}
 
-[tool.autopep8]
-max_line_length = 100
+
+[tool.ruff]
+# Set line length
+line-length = 100
+
+# Exclude directories
+exclude = [
+    ".git",
+    "__pycache__",
+    "build",
+    "dist",
+    ".venv",
+    "*.egg-info",
+]
+
+# Target Python 3.11+
+target-version = "py311"
+
+[tool.ruff.lint]
+# Enable specific rules
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings  
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+]
+
+# Ignore specific rules that contradict our design choices
+ignore = [
+    "N801",  # Class name should use CapWords convention - we use lowercase for algorithm classes (vi, pi, etc.)
+    "N805",  # First argument of a method should be named `self` - we use static methods with explicit typing
+    "N999",  # Invalid module name - allow files starting with underscore for private/experimental code
+    "F821",  # Undefined name - allow type variable names in type annotations (N, S, A, etc.)
+    "F722",  # Syntax error in forward annotation - our custom F["..."] type system
+    "C408",  # Unnecessary `dict()` call - sometimes explicit dict() is clearer
+]
+
+[tool.ruff.lint.isort]
+# Configure import sorting
+known-first-party = ["jaxdp"]
+
+[tool.ruff.format]
+# Use single quotes for strings
+quote-style = "double"
+# Indent with 4 spaces
+indent-style = "space"

@@ -1,5 +1,10 @@
 from setuptools import setup, find_packages
 
+# Read requirements from requirements.txt
+def read_requirements():
+    with open('requirements.txt', 'r') as f:
+        return [line.strip() for line in f if line.strip() and not line.startswith('#')]
+
 setup(
     # Metadata
     name="jaxdp",
@@ -10,10 +15,10 @@ setup(
     description="A Dynamic Programming package for discrete MDPs implemented in JAX",
     long_description=(""),
     license="MIT",
+    python_requires=">=3.11",
 
     # Package info
     packages=find_packages(include=["jaxdp", "jaxdp.*"]),
-    install_requires=[
-    ],
+    install_requires=read_requirements(),
     zip_safe=False
 )
