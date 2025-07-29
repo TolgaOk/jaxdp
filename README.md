@@ -1,21 +1,17 @@
 # jaxdp
 
-**jaxdp** is a Python package providing functional implementations of dynamic programming (DP) algorithms for finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (including GPU acceleration) through vectorized execution across multiple MDP instances, initial values, and parameters.
+**`jaxdp`** is a Python package providing functional implementations of dynamic programming (DP) algorithms for finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (including GPU acceleration) through vectorized execution across multiple MDP instances, initial values, and parameters.
 
 ## Vectorization
 
-**jaxdp** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
+**`jaxdp`** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
 
 ### Algorithm Example
 
 The `examples` directory contains implementations and benchmarks of planning algorithms using **jaxdp**. Below is a code snippet for [Momentum accelerated Value Iteration](https://arxiv.org/pdf/1905.09963):
 
 ```python
-"""
-◈─────────────────────────────────────────────────────────────────────────◈
-Momentum accelerated Value Iteration.
-◈─────────────────────────────────────────────────────────────────────────◈
-"""
+""" Momentum accelerated Value Iteration. """
 @struct.dataclass
 class State:
     q_val: jnp.ndarray
@@ -43,6 +39,7 @@ Example for multiple gamma values using `jax.vmap`:
 
 
 ```python
+# State Initialization
 init_state = State(
     q_val=init_q_vals,
     prev_q_val=init_q_vals,
@@ -51,10 +48,12 @@ init_state = State(
     alpha=0.1
 )
 
+# Iterations
 final_state, all_states = jax.lax.scan(
     jax.vmap(                     # vmapped update function
         lambda s, ix: (update(s, mdp, ix), s),
         in_axes=(State(0, 0, 0, None, None), None)
+        out_axes=(State(0, 0, 0, None, None), 0)
     ),    
     init_state,                   # initial state
     jnp.arange(100)               # Number of iterations
@@ -63,7 +62,7 @@ final_state, all_states = jax.lax.scan(
 
 ### MDPs
 
-In jaxdp, MDPs are PyTrees and therefore compatible with JAX transformations.
+In `jaxdp`, MDPs are PyTrees and therefore compatible with JAX transformations.
 
 ```python
 import jax
