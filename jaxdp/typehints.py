@@ -1,5 +1,6 @@
 """Type hints for jaxdp using chex for array types."""
 from typing import Annotated, TypeAlias
+
 import chex
 
 
