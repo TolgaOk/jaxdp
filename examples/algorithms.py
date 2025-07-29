@@ -9,6 +9,7 @@ from jaxdp.mdp import MDP
 from jaxdp import bellman_optimality_operator as bellman_op
 from jaxdp.base import policy_evaluation, greedy_policy
 from jaxdp.utils import StaticMeta
+from jaxdp.typehints import QType
 
 
 class vi(metaclass=StaticMeta):
@@ -20,7 +21,7 @@ class vi(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        q_vals: jnp.ndarray
+        q_vals: QType
         gamma: jnp.ndarray
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray) -> "vi.State":
@@ -42,8 +43,8 @@ class nesterov_vi(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        q_vals: jnp.ndarray
-        prev_q: jnp.ndarray
+        q_vals: QType
+        prev_q: QType
         gamma: jnp.ndarray
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray) -> "nesterov_vi.State":
@@ -76,7 +77,7 @@ class pi(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        q_vals: jnp.ndarray
+        q_vals: QType
         gamma: jnp.ndarray
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray) -> "pi.State":

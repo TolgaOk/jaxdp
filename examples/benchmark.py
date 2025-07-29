@@ -130,7 +130,7 @@ def value_iteration_grid_world():
     return final_state.q_vals
 
 
-def value_iteration_multi_seed():
+def value_iteration_multi_seed() -> dict:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Multi-Seed VI
@@ -169,7 +169,7 @@ def value_iteration_multi_seed():
     return results
 
 
-def value_iteration_multi_gamma():
+def value_iteration_multi_gamma() -> dict:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Multi-Gamma VI
@@ -205,7 +205,7 @@ def value_iteration_multi_gamma():
     return results
 
 
-def benchmark():
+def benchmark() -> dict:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Comprehensive Benchmark
