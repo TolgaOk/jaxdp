@@ -26,7 +26,18 @@ class greedy_policy(metaclass=StaticMeta):
                               axis=0)
 
     def v(mdp: MDP, value: VType, gamma: float) -> PiType:
-        # TODO: Add docstring
+        """
+        Greedy policy distribution from state values.
+
+        Args:
+            mdp (MDP): Markov Decision Process
+            value (VType): State value array
+            gamma (float): Discount factor
+
+        Returns:
+            PiType: Policy distribution as one hot vectors
+
+        """
         # TODO: Add test
         return greedy_policy.q(to_state_action_value(mdp, value, gamma))
 
@@ -185,11 +196,10 @@ class bellman_operator(metaclass=StaticMeta):
 
     def v(mdp: MDP, policy: PiType, value: VType, gamma: float) -> VType:
         r"""
-        Evaluate the Bellman policy operator for each state
+        Bellman policy operator for state values.
 
         .. math::
-            \\mathcal{B}(V)(s_i) = \\big[r^{a_j} + \\gamma
-                \\underset{s^+ \\sim P^{a_j}}{\\mathbb{E}}[Q(s^+, a_j)]\\big]_i - Q(s_i, a_j))
+            \mathcal{T}^\pi(V)(s) = \sum_a \pi(a|s) \left[ r(s, a) + \gamma \sum_{s'} P(s'|s, a) V(s') \right]
 
         Args:
             mdp (MDP): Markov Decision Process
@@ -198,10 +208,9 @@ class bellman_operator(metaclass=StaticMeta):
             gamma (float): Discount factor
 
         Returns:
-            VType: Target value
+            VType: Updated state values after applying Bellman policy operator
 
         """
-        # TODO: Update docstring
         # TODO: Add test
         target_values = jnp.einsum("axs,x,x->as",
                                    mdp.transition, value, (1 - mdp.terminal))
@@ -212,7 +221,21 @@ class bellman_operator(metaclass=StaticMeta):
 class bellman_optimality_operator(metaclass=StaticMeta):
 
     def q(mdp: MDP, value: QType, gamma: float) -> QType:
-        # TODO: Update docstring
+        r"""
+        Bellman optimality operator for Q-values.
+
+        .. math::
+            \mathcal{T}^*(Q)(s, a) = r(s, a) + \gamma \sum_{s'} P(s'|s, a) \max_{a'} Q(s', a')
+
+        Args:
+            mdp (MDP): Markov Decision Process
+            value (QType): Q Value array
+            gamma (float): Discount factor
+
+        Returns:
+            QType: Updated Q-values after applying Bellman optimality operator
+
+        """
         # TODO: Add test
         target_values = jnp.einsum("axs,x->as", mdp.transition,
                                    jnp.max(value, axis=0, keepdims=False))
@@ -223,6 +246,17 @@ class bellman_optimality_operator(metaclass=StaticMeta):
 class stationary_distribution(metaclass=StaticMeta):
 
     def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["AS"]:
+        """
+        Compute the stationary distribution of the Markov chain induced by the policy.
+
+        Args:
+            mdp (MDP): Markov Decision Process
+            policy (PiType): Policy distribution
+            iterations (int): Number of iterations for power method
+
+        Returns:
+            F["AS"]: Stationary distribution over states
+        """
         distribution = jnp.einsum(
             "s,as->as",
             mdp.initial,
@@ -255,18 +289,19 @@ def markov_chain_eigen_values(mdp: MDP, policy: PiType) -> F["S"]:
 
     """
     # TODO: Add test
+    # TODO: Add test
     transition_pi, _ = _markov_chain_pi(mdp, policy)
     return jnp.linalg.eigvals(transition_pi.T)
 
 
 def to_greedy_state_value(value: QType) -> VType:
-    # TODO: Add docstring
+    """Convert Q-values to greedy state values by taking the maximum over actions."""
     # TODO: Add test
     return jnp.max(value, axis=0)
 
 
 def to_state_action_value(mdp: MDP, value: VType, gamma: float) -> QType:
-    # TODO: Add docstring
+    """Convert state values to Q-values using the MDP dynamics."""
     # TODO: Add test
     return (jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) +
             gamma * jnp.einsum("axs,x->as", mdp.transition, value))
@@ -314,8 +349,21 @@ def sample_based_policy_evaluation(mdp: MDP,
                                    gamma: float,
                                    max_episode_length: int
                                    ) -> chex.Scalar:
+    """
+    Evaluate policy using sample-based Monte Carlo estimation.
+
+    Args:
+        mdp (MDP): Markov Decision Process
+        policy (PiType): Policy distribution
+        key (chex.PRNGKey): State of the JAX pseudorandom number generators (PRNGs)
+        gamma (float): Discount factor
+        max_episode_length (int): Maximum length of episode for sampling
+
+    Returns:
+        chex.Scalar: Estimated value of the policy
+
+    """
     # TODO: Add test
-    # TODO: Add docstring
     episode_step = jnp.zeros((1,))
     state = mdp.initial
     episode_rewards = jnp.full((max_episode_length,), jnp.nan)

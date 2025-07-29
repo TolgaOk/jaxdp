@@ -16,7 +16,23 @@ PiType: TypeAlias = F["AS"]
 
 
 class StaticMeta(type):
-    """Metaclass for creating utility classes with static methods."""
+    """
+    Metaclass for creating utility classes with static methods.
+    The main purpose is to allow the creation of namespaces.
+
+    Example:
+        >>> class bellman_operation(metaclass=StaticMeta):
+        ...
+        ...     def q(mdp: MDP, value: QType, gamma: float) -> QType:
+        ...         ...
+        ...     def v(mdp: MDP, value: VType, gamma: float) -> VType:
+        ...         ...
+
+        This will create a class `bellman_operation` (namespace) with static methods `q` and `v`.
+        You can then call one of the methods as follows:
+
+        >>> bellman_operation.q(mdp, value, gamma)
+    """
     def __new__(cls, name, bases, attrs):
 
         included_method_names = []
