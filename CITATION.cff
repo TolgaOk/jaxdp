@@ -1,5 +1,5 @@
 abstract: Fast detection of repackaged Android applications based on the comparison of resource files included into the package.
-version: 0.2.0
+version: 0.3.0
 authors:
   - family-names: Ok
     given-names: Tolga
