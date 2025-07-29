@@ -44,7 +44,7 @@ init_state = State(
     q_val=init_q_vals,
     prev_q_val=init_q_vals,
     gamma=jnp.array([0.9, 0.95, 0.99, 0.999]),
-    beta=0.99,
+    beta=0.01,
     alpha=0.1
 )
 
@@ -91,7 +91,8 @@ Once stacked, MDPs can be provided to vectorized functions:
 > (8, 10, 300, 300)
 ```
 
-> **Warning:** MDP components must have matching shapes for vectorization. Variable action or state sizes are not supported.
+> [!Warning]
+> MDP components must have matching shapes for vectorization. Variable action or state sizes are not supported.
 
 ## Installation
 

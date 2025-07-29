@@ -1,6 +1,6 @@
 import argparse
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 import jax
 import jax.numpy as jnp
@@ -28,6 +28,7 @@ class Metrics:
 
 
 def compute_metrics(prev_state, new_state, mdp, step):
+    """ Compute metrics for the current iteration """
     new_q = new_state.q_vals
     prev_q = prev_state.q_vals
     gamma = prev_state.gamma
@@ -63,6 +64,20 @@ def loop(mdp: MDP,
          metrics_fn: Callable[[Any, Any, MDP, jnp.ndarray], Any],
          callback: Callable[[int, Any], None] | None = None,
          ) -> tuple[Any, Any]:
+    """
+    Run the loop for a fixed number of iterations, updating the algorithm state and computing metrics.
+
+    Args:
+        mdp (MDP): Markov Decision Process
+        alg_state (Any): Initial state of the algorithm
+        args (LoopArgs): Loop arguments
+        update_fn (Callable[[Any, MDP, jnp.ndarray], Any]): Function to update the algorithm state
+        metrics_fn (Callable[[Any, Any, MDP, jnp.ndarray], Any]): Function to compute metrics
+        callback (Callable[[int, Any], None] | None): Optional callback function to be called at each iteration
+
+    Returns:
+        tuple[Any, Any]: Final algorithm state and all metrics collected during the loop
+    """
 
     def scan_body(state: Any, iter_idx: jnp.ndarray) -> tuple[Any, Any]:
         prev_state = state
@@ -85,6 +100,7 @@ def loop(mdp: MDP,
 
 
 def grid_mdp_factory() -> MDP:
+    """ Create a GridWorld MDP """
     board = [
         "#####",
         "#  @#",
@@ -98,6 +114,7 @@ def grid_mdp_factory() -> MDP:
 def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int,
                        action_size: int, branch_size: int
                        ) -> MDP:
+    """ Create a Garnet MDP """
     return garnet_mdp(
         state_size=state_size,
         action_size=action_size,
