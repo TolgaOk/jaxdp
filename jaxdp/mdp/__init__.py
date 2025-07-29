@@ -1,4 +1,4 @@
-from jaxdp.mdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP, flatten_mdp, unflatten_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.simple_graph import graph_mdp
@@ -16,4 +16,6 @@ __all__ = [
     "sequential_mdp",
     "tree_mdp",
     "forest_mdp",
+    "flatten_mdp",
+    "unflatten_mdp",
 ]

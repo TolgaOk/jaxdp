@@ -14,7 +14,7 @@ _edge_info = {0: [0, 4], 1: [1, 3, 5], 2: [2, 3], 3: [1, 2, 3, 4], 4: [0, 3, 4, 
 _state_size = 6
 
 
-def _graph_mdp(state_size: int, edge_info: Dict[str, Tuple[int]]) -> MDP:
+def _graph_mdp(state_size: int, edge_info: Dict[int, List[int]]) -> MDP:
     """
     Constructs a Graph MDP from a given state size and edge information.
     
@@ -30,7 +30,7 @@ def _graph_mdp(state_size: int, edge_info: Dict[str, Tuple[int]]) -> MDP:
       
     Args:
         state_size (int): Number of states in the MDP.
-        edge_info (Dict[str, Tuple[int]]): Mapping from state index to a tuple containing 
+        edge_info (Dict[int, List[int]]): Mapping from state index to a list containing 
             feasible edge indices defining allowed transitions.
     
     Returns:

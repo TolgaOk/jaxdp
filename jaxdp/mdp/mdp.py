@@ -138,7 +138,7 @@ class MDP():
         with open(file_path, "w") as fobj:
             json.dump({
                 "name": self.name,
-                **{getattr(self, array_name).tolist() for array_name in self.array_names()},
+                **{array_name: getattr(self, array_name).tolist() for array_name in self.array_names()},
             }, fobj)
 
 

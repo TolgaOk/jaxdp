@@ -41,15 +41,15 @@ class soft_policy(metaclass=StaticMeta):
 
         Args:
             value (QType): Q Value array
-            temperature (float): Temperature parameter of softmax. Lower values will result in
-                uniform policy distribution while higher values will result a distribution closed
+            temperature (float): Temperature parameter of softmax. Higher values will result in
+                uniform policy distribution while lower values will result a distribution closer
                 to greedy policy.
 
         Returns:
             PiType: Policy distribution
 
         """
-        return jax.nn.softmax(value * temperature, axis=0)
+        return jax.nn.softmax(value / temperature, axis=0)
 
     def v(value: VType, temperature: float) -> PiType:
         raise NotImplementedError
