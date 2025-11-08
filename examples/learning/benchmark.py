@@ -46,7 +46,7 @@ class metrics(metaclass=StaticMeta):
         eval_std_return: jnp.ndarray  # NaN if no evaluation this step
 
     def compute(prev: "loop.State", new: "loop.State", args: "loop.Args",
-                step: int, dones: jnp.ndarray, eval_results: dict) -> "metrics.State":
+                step: int, dones: jnp.ndarray, eval_results: "loop.EvalResult") -> "metrics.State":
         """Compute metrics for the current iteration
 
         Args:
@@ -55,7 +55,7 @@ class metrics(metaclass=StaticMeta):
             args: Loop arguments
             step: Current step number
             dones: Boolean array indicating which environments completed episodes [n_envs]
-            eval_results: Dictionary with evaluation results (mean_return, std_return)
+            eval_results: Evaluation results (loop.EvalResult dataclass)
 
         Returns:
             Metrics state with NaN values where no information is available
@@ -84,8 +84,8 @@ class metrics(metaclass=StaticMeta):
             iteration=step,
             ep_return=ep_return,
             ep_len=ep_len,
-            eval_mean_return=eval_results["mean_return"],
-            eval_std_return=eval_results["std_return"]
+            eval_mean_return=eval_results.mean_return,
+            eval_std_return=eval_results.std_return
         )
 
 
@@ -123,6 +123,14 @@ class loop(metaclass=StaticMeta):
         eval_period: int = 0  # Evaluate every N steps (0 = no evaluation)
         n_eval_episodes: int = 10  # Number of episodes for evaluation
         eval_seed: int = 42  # Seed for evaluation
+
+    @struct.dataclass
+    class EvalResult:
+        """Evaluation results"""
+        mean_return: jnp.ndarray
+        std_return: jnp.ndarray
+        mean_length: jnp.ndarray
+        std_length: jnp.ndarray
 
     def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states
@@ -211,12 +219,12 @@ class loop(metaclass=StaticMeta):
             eval_results = jax.lax.cond(
                 should_eval,
                 lambda s: loop.evaluate(s, args),
-                lambda s: {
-                    "mean_return": jnp.nan,
-                    "std_return": jnp.nan,
-                    "mean_length": jnp.nan,
-                    "std_length": jnp.nan
-                },
+                lambda s: loop.EvalResult(
+                    mean_return=jnp.nan,
+                    std_return=jnp.nan,
+                    mean_length=jnp.nan,
+                    std_length=jnp.nan
+                ),
                 new_state
             )
 
@@ -231,7 +239,7 @@ class loop(metaclass=StaticMeta):
         final_state, all_metrics = jax.lax.scan(step_fn, state, steps_and_keys)
         return final_state, all_metrics
 
-    def evaluate(state: "loop.State", args: "loop.Args") -> dict:
+    def evaluate(state: "loop.State", args: "loop.Args") -> "loop.EvalResult":
         """Evaluate the learned policy (greedy, no exploration)
 
         Args:
@@ -239,7 +247,7 @@ class loop(metaclass=StaticMeta):
             args: Loop arguments (includes mdp, max_ep_len, n_eval_episodes, eval_seed)
 
         Returns:
-            dict with keys: mean_return, std_return, mean_length, std_length
+            loop.EvalResult dataclass with evaluation statistics
         """
         from jaxdp.base import greedy_policy
 
@@ -269,12 +277,12 @@ class loop(metaclass=StaticMeta):
         keys = jrd.split(jrd.PRNGKey(args.eval_seed), args.n_eval_episodes)
         returns, lengths = jax.vmap(run_episode)(keys)
 
-        return {
-            "mean_return": jnp.mean(returns),
-            "std_return": jnp.std(returns),
-            "mean_length": jnp.mean(lengths),
-            "std_length": jnp.std(lengths)
-        }
+        return loop.EvalResult(
+            mean_return=jnp.mean(returns),
+            std_return=jnp.std(returns),
+            mean_length=jnp.mean(lengths),
+            std_length=jnp.std(lengths)
+        )
 
 
 def grid_mdp_factory() -> MDP:
