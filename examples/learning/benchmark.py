@@ -54,6 +54,9 @@ class loop(metaclass=StaticMeta):
         n_steps: int
         max_ep_len: int
         n_envs: int
+        eval_period: int = 0  # Evaluate every N steps (0 = no evaluation)
+        n_eval_episodes: int = 10  # Number of episodes for evaluation
+        eval_seed: int = 42  # Seed for evaluation
 
     @struct.dataclass
     class Metrics:
@@ -63,8 +66,10 @@ class loop(metaclass=StaticMeta):
         linf: jnp.ndarray
         bellman_err: jnp.ndarray
         iteration: jnp.ndarray
-        ep_return: jnp.ndarray
-        ep_len: jnp.ndarray
+        ep_return: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
+        ep_len: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
+        eval_mean_return: jnp.ndarray  # NaN if no evaluation this step
+        eval_std_return: jnp.ndarray  # NaN if no evaluation this step
 
     def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states
@@ -149,7 +154,21 @@ class loop(metaclass=StaticMeta):
                 last_return=last_returns
             )
 
-            metrics = metrics_fn(prev, new_state, args, step)
+            # Run evaluation periodically
+            should_eval = (args.eval_period > 0) & ((step + 1) % args.eval_period == 0)
+            eval_results = jax.lax.cond(
+                should_eval,
+                lambda s: loop.evaluate(s, args),
+                lambda s: {
+                    "mean_return": jnp.nan,
+                    "std_return": jnp.nan,
+                    "mean_length": jnp.nan,
+                    "std_length": jnp.nan
+                },
+                new_state
+            )
+
+            metrics = metrics_fn(prev, new_state, args, step, dones, eval_results)
             return new_state, metrics
 
         keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps * args.n_envs)
@@ -159,15 +178,12 @@ class loop(metaclass=StaticMeta):
         final_state, all_metrics = jax.lax.scan(step_fn, state, steps_and_keys)
         return final_state, all_metrics
 
-    def evaluate(state: "loop.State", args: "loop.Args",
-                 n_episodes: int = 10, seed: int = 42) -> dict:
+    def evaluate(state: "loop.State", args: "loop.Args") -> dict:
         """Evaluate the learned policy (greedy, no exploration)
 
         Args:
             state: Current loop state with learned Q-values
-            args: Loop arguments (includes mdp, max_ep_len)
-            n_episodes: Number of episodes to evaluate
-            seed: Random seed for evaluation
+            args: Loop arguments (includes mdp, max_ep_len, n_eval_episodes, eval_seed)
 
         Returns:
             dict with keys: mean_return, std_return, mean_length, std_length
@@ -195,7 +211,7 @@ class loop(metaclass=StaticMeta):
             )
             return final_return, final_ep_step
 
-        keys = jrd.split(jrd.PRNGKey(seed), n_episodes)
+        keys = jrd.split(jrd.PRNGKey(args.eval_seed), args.n_eval_episodes)
         returns, lengths = jax.vmap(run_episode)(keys)
 
         return {
@@ -206,8 +222,21 @@ class loop(metaclass=StaticMeta):
         }
 
 
-def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: int) -> loop.Metrics:
-    """Compute metrics for the current iteration"""
+def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: int,
+                    dones: jnp.ndarray, eval_results: dict) -> loop.Metrics:
+    """Compute metrics for the current iteration
+
+    Args:
+        prev: Previous loop state
+        new: New loop state
+        args: Loop arguments
+        step: Current step number
+        dones: Boolean array indicating which environments completed episodes [n_envs]
+        eval_results: Dictionary with evaluation results (mean_return, std_return)
+
+    Returns:
+        Metrics with NaN values where no information is available
+    """
     prev_alg = prev.alg_state
     new_alg = new.alg_state
 
@@ -219,10 +248,10 @@ def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: in
     bellman_target = bellman_op.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
     bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
 
-    # Episode completed when ep_step resets to 0
-    ep_done = (new.ep_step == 0) & (prev.ep_step > 0)
-    ep_return = jnp.where(ep_done, new.last_return, 0.0)
-    ep_len = jnp.where(ep_done, prev.ep_step, 0.0)
+    # Initialize episode metrics with NaN for each environment
+    # Only set actual values where episodes completed
+    ep_return = jnp.where(dones, new.last_return, jnp.nan)
+    ep_len = jnp.where(dones, prev.ep_step, jnp.nan)
 
     return loop.Metrics(
         l1=l1,
@@ -231,7 +260,9 @@ def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: in
         bellman_err=bellman_err,
         iteration=step,
         ep_return=ep_return,
-        ep_len=ep_len
+        ep_len=ep_len,
+        eval_mean_return=eval_results["mean_return"],
+        eval_std_return=eval_results["std_return"]
     )
 
 
@@ -364,7 +395,10 @@ def q_learning_grid_world():
         seed=0,
         n_steps=5000,
         max_ep_len=50,
-        n_envs=1
+        n_envs=1,
+        eval_period=1000,  # Evaluate every 1000 steps
+        n_eval_episodes=10,
+        eval_seed=42
     )
 
     # Initialize algorithm and policy states
