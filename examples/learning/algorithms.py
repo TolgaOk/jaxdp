@@ -33,8 +33,9 @@ class q_learning(metaclass=StaticMeta):
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray,
              alpha: jnp.ndarray, epsilon: jnp.ndarray,
-             eps_decay: jnp.ndarray = 0.995, eps_min: jnp.ndarray = 0.01) -> "q_learning.State":
-        q_vals = jnp.zeros((mdp.action_size, mdp.state_size))
+             eps_decay: jnp.ndarray = 0.995, eps_min: jnp.ndarray = 0.01,
+             init_q: jnp.ndarray = 0.0) -> "q_learning.State":
+        q_vals = jnp.full((mdp.action_size, mdp.state_size), init_q)
         init_state = mdp.init_state(key)
 
         return q_learning.State(
