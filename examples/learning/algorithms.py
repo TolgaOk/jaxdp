@@ -46,13 +46,16 @@ class q_learning(metaclass=StaticMeta):
 
         return q_learning.State(q_vals=q_vals, gamma=jnp.array(gamma), alpha=jnp.array(alpha))
 
-    def update(state: "q_learning.State", transition: Transition) -> "q_learning.State":
+    def _compute_delta(state: "q_learning.State", transition: Transition) -> F["A S"]:
         """
-        Update Q-values based on a single transition.
+        Compute Q-value update delta for a single transition.
 
         Args:
             state: Current algorithm state (Q-values and parameters)
             transition: Transition dataclass containing (s, a, r, s', done)
+
+        Returns:
+            Delta matrix to add to Q-values [n_actions, n_states]
         """
         curr_q = jnp.einsum("as,a,s->", state.q_vals, transition.action, transition.state)
 
@@ -63,9 +66,23 @@ class q_learning(metaclass=StaticMeta):
         td_error = td_target - curr_q
 
         update = jnp.einsum("a,s->as", transition.action, transition.state)
-        next_q = state.q_vals + state.alpha * td_error * update
+        delta = state.alpha * td_error * update
 
-        return state.replace(q_vals=next_q)
+        return delta
+
+    def update(state: "q_learning.State", transition: Transition) -> "q_learning.State":
+        """
+        Update Q-values based on a single transition.
+
+        Args:
+            state: Current algorithm state (Q-values and parameters)
+            transition: Transition dataclass containing (s, a, r, s', done)
+
+        Returns:
+            Updated algorithm state with new Q-values
+        """
+        delta = q_learning._compute_delta(state, transition)
+        return state.replace(q_vals=state.q_vals + delta)
 
     def batch_update(state: "q_learning.State", transitions: Transition) -> "q_learning.State":
         """
@@ -82,10 +99,9 @@ class q_learning(metaclass=StaticMeta):
         Returns:
             Updated algorithm state with properly normalized updates
         """
-        vmap_update = jax.vmap(lambda t: q_learning.update(state, t))
-        updated_states = vmap_update(transitions)
+        vmap_delta = jax.vmap(lambda t: q_learning._compute_delta(state, t))
+        deltas = vmap_delta(transitions)
 
-        deltas = updated_states.q_vals - state.q_vals
         total_delta = jnp.sum(deltas, axis=0)
 
         total_counts = jnp.einsum("ba,bs->as", transitions.action, transitions.state)
@@ -93,6 +109,4 @@ class q_learning(metaclass=StaticMeta):
         safe_counts = jnp.maximum(total_counts, 1.0)
         normalized_delta = total_delta / safe_counts
 
-        new_q_vals = state.q_vals + normalized_delta
-
-        return state.replace(q_vals=new_q_vals)
+        return state.replace(q_vals=state.q_vals + normalized_delta)
