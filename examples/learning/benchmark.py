@@ -311,7 +311,10 @@ def q_learning_parallel_envs():
         seed=0,
         n_steps=5000,
         max_ep_len=50,
-        n_envs=4
+        n_envs=16,  # Test with 16 parallel environments
+        eval_period=1000,
+        n_eval_episodes=10,
+        eval_seed=42
     )
 
     # Initialize algorithm and policy states
