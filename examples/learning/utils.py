@@ -15,16 +15,19 @@ def log_results(results, alg_name):
     )
     table.add_column("MDP", style="bold white", width=20)
     table.add_column("Bellman Error", justify="right", style="white")
-    table.add_column("Final L-inf", justify="right", style="white")
+    table.add_column("Max L-inf", justify="right", style="white")
+    table.add_column("Updates", justify="right", style="white")
 
     for mdp_name, (metrics, final_state) in results.items():
         bellman_err = float(metrics.bellman_err[-1])
-        final_linf = float(metrics.linf[-1])
+        max_linf = float(jnp.max(metrics.linf))
+        n_updates = int(jnp.sum(metrics.linf > 0))
 
         table.add_row(
             mdp_name,
             f"{bellman_err:.6f}",
-            f"{final_linf:.6f}"
+            f"{max_linf:.6f}",
+            f"{n_updates}"
         )
 
     console.print()

@@ -81,22 +81,21 @@ def loop(mdp: MDP,
     master_key = jrd.PRNGKey(args.seed)
     step_keys = jrd.split(master_key, args.n_steps)
 
-    def scan_body(state, inputs):
-        iter_idx, key = inputs
+    # Use Python for loop instead of jax.lax.scan
+    # (scan has issues with Q-learning state updates due to JAX tracing)
+    metrics_list = []
+    state = alg_state
+
+    for iter_idx in range(args.n_steps):
         prev_state = state
-        new_state = update_fn(state, mdp, iter_idx, args.max_episode_len, key)
+        state = update_fn(state, mdp, iter_idx, args.max_episode_len, step_keys[iter_idx])
+        metrics = metrics_fn(prev_state, state, mdp, iter_idx)
+        metrics_list.append(metrics)
 
-        metrics = metrics_fn(prev_state, new_state, mdp, iter_idx)
+    # Stack metrics into arrays
+    all_metrics = jax.tree.map(lambda *xs: jnp.stack(xs), *metrics_list)
 
-        return new_state, metrics
-
-    final_state, all_metrics = jax.lax.scan(
-        scan_body,
-        alg_state,
-        (jnp.arange(args.n_steps), step_keys)
-    )
-
-    return final_state, all_metrics
+    return state, all_metrics
 
 
 def grid_mdp_factory() -> MDP:
@@ -119,12 +118,12 @@ def q_learning_grid_world():
     """
     mdp = grid_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=42, n_steps=50000, max_episode_len=50)
+    loop_args = LoopArgs(seed=12345, n_steps=5000, max_episode_len=50)
 
     # Q-learning hyperparameters
     gamma = 0.99
-    alpha = 0.3  # Learning rate
-    epsilon = 0.2  # Exploration rate
+    alpha = 0.5  # Learning rate
+    epsilon = 0.4  # Exploration rate (higher for better exploration)
 
     init_state = q_learning.init(
         mdp, jrd.PRNGKey(loop_args.seed),
@@ -142,7 +141,7 @@ def q_learning_grid_world():
     )
 
     # Log learning progress
-    log_learning_progress(metrics, final_state, loop_args.n_steps, print_every=2000)
+    log_learning_progress(metrics, final_state, loop_args.n_steps, print_every=1000)
 
     # Log final results
     results = {"GridWorld": (metrics, final_state)}
