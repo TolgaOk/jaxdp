@@ -55,16 +55,17 @@ class q_learning(metaclass=StaticMeta):
                max_ep_len: int, key: jrd.PRNGKey) -> "q_learning.State":
         policy = e_greedy_policy.q(state.q_vals, state.epsilon)
 
-        action, next_s, reward, term, timeout, s, ep_step = async_sample_step_pi(
+        action, next_s, reward, term, timeout, stepped_s, ep_step = async_sample_step_pi(
             mdp, policy, state.state, state.ep_step, max_ep_len, key
         )
 
-        # Q-learning update
-        curr_q = jnp.sum(state.q_vals * action[:, None] * s[None, :])
+        # Q-learning update: Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s',a') - Q(s,a)]
+        # Use state.state (where we started) not stepped_s (where we ended up after potential reset)
+        curr_q = jnp.sum(state.q_vals * action[:, None] * state.state[None, :])
         max_next_q = jnp.max(jnp.sum(state.q_vals * next_s[None, :], axis=1))
         td_target = reward + state.gamma * max_next_q * (1.0 - term)
         td_error = td_target - curr_q
-        next_q = state.q_vals + state.alpha * td_error * action[:, None] * s[None, :]
+        next_q = state.q_vals + state.alpha * td_error * action[:, None] * state.state[None, :]
 
         # Track episode return
         new_return = state.ep_return + reward
@@ -79,7 +80,7 @@ class q_learning(metaclass=StaticMeta):
 
         return state.replace(
             q_vals=next_q,
-            state=s,
+            state=stepped_s,  # Update to next state (or reset state)
             ep_step=ep_step,
             ep_return=ep_return,
             last_return=last_return,
