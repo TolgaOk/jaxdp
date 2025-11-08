@@ -10,7 +10,9 @@ from utils import log_results
 
 from jaxdp.base import bellman_optimality_operator as bellman_op
 from jaxdp.mdp import MDP
+from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
+from jaxdp.mdp.simple_graph import graph_mdp
 
 jax.config.update("jax_enable_x64", True)
 
@@ -87,6 +89,22 @@ def grid_mdp_factory() -> MDP:
     return grid_world(board=board, p_slip=0.0)
 
 
+def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int,
+                       action_size: int, branch_size: int) -> MDP:
+    """ Create a Garnet MDP """
+    return garnet_mdp(
+        state_size=state_size,
+        action_size=action_size,
+        branch_size=branch_size,
+        key=key
+    )
+
+
+def graph_mdp_factory() -> MDP:
+    """ Create a Graph MDP """
+    return graph_mdp()
+
+
 def q_learning_grid_world():
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
@@ -113,11 +131,102 @@ def q_learning_grid_world():
     return final_state.q_vals
 
 
+def q_learning_garnet():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Q-Learning Garnet MDP
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+    mdp = garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2)
+    alg_name = "Q-Learning"
+    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
+
+    init_state = q_learning.init(
+        mdp, jrd.PRNGKey(loop_args.seed),
+        gamma=0.99, alpha=0.5, epsilon=1.0,
+        eps_decay=0.997, eps_min=0.1
+    )
+
+    final_state, metrics = loop(
+        mdp, init_state, loop_args,
+        q_learning.update, compute_metrics
+    )
+
+    results = {"GarnetMDP": (metrics, final_state.q_vals)}
+    log_results(results, alg_name)
+    return final_state.q_vals
+
+
+def q_learning_graph():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Q-Learning Graph MDP
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+    mdp = graph_mdp_factory()
+    alg_name = "Q-Learning"
+    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
+
+    init_state = q_learning.init(
+        mdp, jrd.PRNGKey(loop_args.seed),
+        gamma=0.99, alpha=0.5, epsilon=1.0,
+        eps_decay=0.997, eps_min=0.1
+    )
+
+    final_state, metrics = loop(
+        mdp, init_state, loop_args,
+        q_learning.update, compute_metrics
+    )
+
+    results = {"GraphMDP": (metrics, final_state.q_vals)}
+    log_results(results, alg_name)
+    return final_state.q_vals
+
+
+def q_learning_benchmark():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Q-Learning Comprehensive Benchmark
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+    alg_name = "Q-Learning"
+    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
+    gamma = 0.99
+    alpha = 0.5
+    epsilon = 1.0
+    eps_decay = 0.997
+    eps_min = 0.1
+
+    mdps = {
+        "GridWorld": grid_mdp_factory(),
+        "GarnetMDP": garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
+        "GraphMDP": graph_mdp_factory()
+    }
+
+    results = {}
+    for mdp_name, mdp in mdps.items():
+        init_state = q_learning.init(
+            mdp, jrd.PRNGKey(loop_args.seed),
+            gamma=gamma, alpha=alpha, epsilon=epsilon,
+            eps_decay=eps_decay, eps_min=eps_min
+        )
+
+        final_state, metrics = loop(
+            mdp, init_state, loop_args,
+            q_learning.update, compute_metrics
+        )
+
+        results[mdp_name] = (metrics, final_state.q_vals)
+
+    log_results(results, alg_name)
+    return results
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run JAX Learning benchmarks")
     parser.add_argument(
         "benchmark_type",
-        choices=["q_learning"],
+        choices=["q_learning", "q_learning_garnet", "q_learning_graph", "benchmark"],
         help="Type of benchmark to run"
     )
 
@@ -125,3 +234,9 @@ if __name__ == "__main__":
 
     if args.benchmark_type == "q_learning":
         q_learning_grid_world()
+    elif args.benchmark_type == "q_learning_garnet":
+        q_learning_garnet()
+    elif args.benchmark_type == "q_learning_graph":
+        q_learning_graph()
+    elif args.benchmark_type == "benchmark":
+        q_learning_benchmark()
