@@ -8,7 +8,12 @@ class _F_Array:
     def __getitem__(self, shape):
         return Annotated[chex.Array, shape]
 
+class _I_Array:
+    def __getitem__(self, shape):
+        return Annotated[chex.Array, shape]
+
 F = _F_Array()
+I = _I_Array()
 
 QType: TypeAlias = F["AS"]
 VType: TypeAlias = F["S"]
