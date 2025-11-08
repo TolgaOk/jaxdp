@@ -7,7 +7,7 @@ from flax import struct
 from jaxdp import async_sample_step_pi
 from jaxdp.base import e_greedy_policy
 from jaxdp.mdp import MDP
-from jaxdp.typehints import QType, StaticMeta
+from jaxdp.typehints import F, QType, StaticMeta
 
 
 @struct.dataclass
@@ -17,11 +17,11 @@ class Transition:
 
     Contains all information about a single transition (s, a, r, s', done).
     """
-    state: jnp.ndarray  # Current state (one-hot, shape: [n_states])
-    action: jnp.ndarray  # Action taken (one-hot, shape: [n_actions])
-    reward: jnp.ndarray  # Reward received
-    next_state: jnp.ndarray  # Next state reached (one-hot, shape: [n_states])
-    terminal: jnp.ndarray  # Terminal flag
+    state: F["S"]  # Current state (one-hot)
+    action: F["A"]  # Action taken (one-hot)
+    reward: F[""]  # Reward received (scalar)
+    next_state: F["S"]  # Next state reached (one-hot)
+    terminal: F[""]  # Terminal flag (scalar)
 
 
 class q_learning(metaclass=StaticMeta):
@@ -35,18 +35,18 @@ class q_learning(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        q_vals: QType
-        gamma: jnp.ndarray
-        alpha: jnp.ndarray
+        q_vals: QType  # Q-values [A, S]
+        gamma: F[""]  # Discount factor (scalar)
+        alpha: F[""]  # Learning rate (scalar)
 
-    def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray,
-             alpha: jnp.ndarray, init_q: jnp.ndarray = 0.0) -> "q_learning.State":
+    def init(mdp: MDP, key: jrd.PRNGKey, gamma: float,
+             alpha: float, init_q: float = 0.0) -> "q_learning.State":
         q_vals = jnp.full((mdp.action_size, mdp.state_size), init_q)
 
         return q_learning.State(
             q_vals=q_vals,
-            gamma=gamma,
-            alpha=alpha
+            gamma=jnp.array(gamma),
+            alpha=jnp.array(alpha)
         )
 
     def update(state: "q_learning.State", transition: Transition) -> "q_learning.State":

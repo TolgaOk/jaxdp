@@ -20,7 +20,7 @@ from jaxdp.mdp.simple_graph import graph_mdp
 jax.config.update("jax_enable_x64", True)
 
 
-from jaxdp.typehints import StaticMeta
+from jaxdp.typehints import F, StaticMeta
 
 
 class metrics(metaclass=StaticMeta):
@@ -35,18 +35,18 @@ class metrics(metaclass=StaticMeta):
     @struct.dataclass
     class State:
         """Metrics collected during training"""
-        l1: jnp.ndarray
-        l2: jnp.ndarray
-        linf: jnp.ndarray
-        bellman_err: jnp.ndarray
-        iteration: jnp.ndarray
-        ep_return: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
-        ep_len: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
-        eval_mean_return: jnp.ndarray  # NaN if no evaluation this step
-        eval_std_return: jnp.ndarray  # NaN if no evaluation this step
+        l1: F[""]  # L1 norm of Q-value change (scalar)
+        l2: F[""]  # L2 norm of Q-value change (scalar)
+        linf: F[""]  # L-infinity norm of Q-value change (scalar)
+        bellman_err: F[""]  # Bellman error (scalar)
+        iteration: F[""]  # Iteration number (scalar)
+        ep_return: F["..."]  # Episode returns [n_envs] - NaN if episode not complete
+        ep_len: F["..."]  # Episode lengths [n_envs] - NaN if episode not complete
+        eval_mean_return: F[""]  # Mean evaluation return (scalar) - NaN if no eval
+        eval_std_return: F[""]  # Std evaluation return (scalar) - NaN if no eval
 
     def compute(prev: "loop.State", new: "loop.State", args: "loop.Args",
-                step: int, dones: jnp.ndarray, eval_results: "loop.EvalResult") -> "metrics.State":
+                step: int, dones: F["..."], eval_results: "loop.EvalResult") -> "metrics.State":
         """Compute metrics for the current iteration
 
         Args:
@@ -105,10 +105,10 @@ class loop(metaclass=StaticMeta):
         """Training loop state - manages MDP interaction and episode tracking"""
         alg_state: Any  # q_learning.State
         policy_state: Any  # epsilon_greedy.State or soft_policy.State, etc.
-        mdp_state: jnp.ndarray
-        ep_step: jnp.ndarray
-        ep_return: jnp.ndarray
-        last_return: jnp.ndarray
+        mdp_state: F["... S"]  # MDP states [n_envs, n_states]
+        ep_step: F["..."]  # Episode step counters [n_envs]
+        ep_return: F["..."]  # Current episode returns [n_envs]
+        last_return: F["..."]  # Last completed episode returns [n_envs]
 
     @struct.dataclass
     class Args:
@@ -127,10 +127,10 @@ class loop(metaclass=StaticMeta):
     @struct.dataclass
     class EvalResult:
         """Evaluation results"""
-        mean_return: jnp.ndarray
-        std_return: jnp.ndarray
-        mean_length: jnp.ndarray
-        std_length: jnp.ndarray
+        mean_return: F[""]  # Mean return across eval episodes (scalar)
+        std_return: F[""]  # Std return across eval episodes (scalar)
+        mean_length: F[""]  # Mean episode length (scalar)
+        std_length: F[""]  # Std episode length (scalar)
 
     def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states

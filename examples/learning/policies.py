@@ -4,7 +4,7 @@ import jax.random as jrd
 from flax import struct
 
 from jaxdp.base import e_greedy_policy
-from jaxdp.typehints import QType, StaticMeta
+from jaxdp.typehints import F, PiType, QType, StaticMeta
 
 
 class epsilon_greedy(metaclass=StaticMeta):
@@ -19,9 +19,9 @@ class epsilon_greedy(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        epsilon: jnp.ndarray
-        eps_decay: jnp.ndarray
-        eps_min: jnp.ndarray
+        epsilon: F[""]  # Exploration rate (scalar)
+        eps_decay: F[""]  # Decay factor (scalar)
+        eps_min: F[""]  # Minimum epsilon (scalar)
 
     def init(epsilon: float = 1.0, eps_decay: float = 0.997,
              eps_min: float = 0.1) -> "epsilon_greedy.State":
@@ -31,13 +31,13 @@ class epsilon_greedy(metaclass=StaticMeta):
             eps_min=jnp.array(eps_min)
         )
 
-    def update(state: "epsilon_greedy.State", done: jnp.ndarray) -> "epsilon_greedy.State":
+    def update(state: "epsilon_greedy.State", done: F[""]) -> "epsilon_greedy.State":
         """Decay epsilon after each episode"""
         new_epsilon = jnp.maximum(state.epsilon * state.eps_decay, state.eps_min)
         epsilon = jnp.where(done, new_epsilon, state.epsilon)
         return state.replace(epsilon=epsilon)
 
-    def get_policy(q_vals: QType, state: "epsilon_greedy.State"):
+    def get_policy(q_vals: QType, state: "epsilon_greedy.State") -> PiType:
         """Get epsilon-greedy policy from Q-values"""
         return e_greedy_policy.q(q_vals, state.epsilon)
 
@@ -54,9 +54,9 @@ class soft_policy(metaclass=StaticMeta):
 
     @struct.dataclass
     class State:
-        temperature: jnp.ndarray
-        temp_decay: jnp.ndarray
-        temp_min: jnp.ndarray
+        temperature: F[""]  # Temperature parameter (scalar)
+        temp_decay: F[""]  # Decay factor (scalar)
+        temp_min: F[""]  # Minimum temperature (scalar)
 
     def init(temperature: float = 1.0, temp_decay: float = 0.995,
              temp_min: float = 0.01) -> "soft_policy.State":
@@ -66,13 +66,13 @@ class soft_policy(metaclass=StaticMeta):
             temp_min=jnp.array(temp_min)
         )
 
-    def update(state: "soft_policy.State", done: jnp.ndarray) -> "soft_policy.State":
+    def update(state: "soft_policy.State", done: F[""]) -> "soft_policy.State":
         """Decay temperature after each episode"""
         new_temp = jnp.maximum(state.temperature * state.temp_decay, state.temp_min)
         temperature = jnp.where(done, new_temp, state.temperature)
         return state.replace(temperature=temperature)
 
-    def get_policy(q_vals: QType, state: "soft_policy.State"):
+    def get_policy(q_vals: QType, state: "soft_policy.State") -> PiType:
         """Get soft policy from Q-values"""
         # Compute softmax probabilities: exp(Q/T) / sum(exp(Q/T))
         # Q-values shape: (n_actions, n_states)
