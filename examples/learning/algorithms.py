@@ -48,14 +48,14 @@ class q_learning(metaclass=StaticMeta):
 
     def _compute_delta(state: "q_learning.State", transition: Transition) -> F["A S"]:
         """
-        Compute Q-value update delta for a single transition.
+        Compute Q-value update delta for a single transition without alpha scaling.
 
         Args:
             state: Current algorithm state (Q-values and parameters)
             transition: Transition dataclass containing (s, a, r, s', done)
 
         Returns:
-            Delta matrix to add to Q-values [n_actions, n_states]
+            Delta matrix before alpha multiplication [n_actions, n_states]
         """
         curr_q = jnp.einsum("as,a,s->", state.q_vals, transition.action, transition.state)
 
@@ -66,7 +66,7 @@ class q_learning(metaclass=StaticMeta):
         td_error = td_target - curr_q
 
         update = jnp.einsum("a,s->as", transition.action, transition.state)
-        delta = state.alpha * td_error * update
+        delta = td_error * update
 
         return delta
 
@@ -82,7 +82,7 @@ class q_learning(metaclass=StaticMeta):
             Updated algorithm state with new Q-values
         """
         delta = q_learning._compute_delta(state, transition)
-        return state.replace(q_vals=state.q_vals + delta)
+        return state.replace(q_vals=state.q_vals + state.alpha * delta)
 
     def batch_update(state: "q_learning.State", transitions: Transition) -> "q_learning.State":
         """
@@ -109,4 +109,4 @@ class q_learning(metaclass=StaticMeta):
         safe_counts = jnp.maximum(total_counts, 1.0)
         normalized_delta = total_delta / safe_counts
 
-        return state.replace(q_vals=state.q_vals + normalized_delta)
+        return state.replace(q_vals=state.q_vals + state.alpha * normalized_delta)
