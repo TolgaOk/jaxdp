@@ -28,6 +28,9 @@ class LoopState:
     ep_step: jnp.ndarray
     ep_return: jnp.ndarray
     last_return: jnp.ndarray
+    epsilon: jnp.ndarray
+    eps_decay: jnp.ndarray
+    eps_min: jnp.ndarray
 
 
 @struct.dataclass
@@ -41,10 +44,10 @@ class Metrics:
     ep_len: jnp.ndarray
 
 
-def compute_metrics(prev_loop_state: LoopState, new_loop_state: LoopState, mdp: MDP, step: int):
+def compute_metrics(prev: LoopState, new: LoopState, mdp: MDP, step: int):
     """ Compute metrics for the current iteration """
-    prev_alg = prev_loop_state.alg_state
-    new_alg = new_loop_state.alg_state
+    prev_alg = prev.alg_state
+    new_alg = new.alg_state
 
     diff = new_alg.q_vals - prev_alg.q_vals
     l1 = jnp.sum(jnp.abs(diff))
@@ -55,9 +58,9 @@ def compute_metrics(prev_loop_state: LoopState, new_loop_state: LoopState, mdp: 
     bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
 
     # Episode completed when ep_step resets to 0
-    ep_done = (new_loop_state.ep_step == 0) & (prev_loop_state.ep_step > 0)
-    ep_return = jnp.where(ep_done, new_loop_state.last_return, 0.0)
-    ep_len = jnp.where(ep_done, prev_loop_state.ep_step, 0.0)
+    ep_done = (new.ep_step == 0) & (prev.ep_step > 0)
+    ep_return = jnp.where(ep_done, new.last_return, 0.0)
+    ep_len = jnp.where(ep_done, prev.ep_step, 0.0)
 
     return Metrics(
         l1=l1,
@@ -77,45 +80,52 @@ class LoopArgs:
     max_ep_len: int = 50
 
 
-def loop(mdp: MDP, init_loop_state: LoopState, args: LoopArgs, metrics_fn):
+def loop(mdp: MDP, init: LoopState, args: LoopArgs, metrics_fn):
     """Run Q-learning loop for n_steps"""
-    keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps)
-
-    loop_state = init_loop_state
-    metrics_list = []
-
-    for i in range(args.n_steps):
-        prev_loop_state = loop_state
+    def step_fn(state: LoopState, step_and_key):
+        step, key = step_and_key
+        prev = state
 
         # Sample from MDP using epsilon-greedy policy
-        policy = e_greedy_policy.q(loop_state.alg_state.q_vals, loop_state.alg_state.epsilon)
+        policy = e_greedy_policy.q(state.alg_state.q_vals, state.epsilon)
         action, next_s, reward, term, timeout, stepped_s, ep_step = async_sample_step_pi(
-            mdp, policy, loop_state.mdp_state, loop_state.ep_step, args.max_ep_len, keys[i]
+            mdp, policy, state.mdp_state, state.ep_step, args.max_ep_len, key
         )
 
         # Update algorithm state (Q-values)
-        done = term + timeout > 0
         new_alg_state = q_learning.update(
-            loop_state.alg_state, loop_state.mdp_state, action, next_s, reward, term, done
+            state.alg_state, state.mdp_state, action, next_s, reward, term
         )
 
-        # Update loop state (MDP state, episode tracking)
-        new_return = loop_state.ep_return + reward
-        last_return = jnp.where(done, new_return, loop_state.last_return)
+        # Update loop state (MDP state, episode tracking, exploration)
+        done = term + timeout > 0
+        new_return = state.ep_return + reward
+        last_return = jnp.where(done, new_return, state.last_return)
         ep_return = jnp.where(done, 0.0, new_return)
 
-        loop_state = LoopState(
+        # Decay epsilon after each episode
+        new_epsilon = jnp.maximum(state.epsilon * state.eps_decay, state.eps_min)
+        epsilon = jnp.where(done, new_epsilon, state.epsilon)
+
+        new_state = LoopState(
             alg_state=new_alg_state,
             mdp_state=stepped_s,
             ep_step=ep_step,
             ep_return=ep_return,
-            last_return=last_return
+            last_return=last_return,
+            epsilon=epsilon,
+            eps_decay=state.eps_decay,
+            eps_min=state.eps_min
         )
 
-        metrics_list.append(metrics_fn(prev_loop_state, loop_state, mdp, i))
+        metrics = metrics_fn(prev, new_state, mdp, step)
+        return new_state, metrics
 
-    all_metrics = jax.tree.map(lambda *x: jnp.stack(x), *metrics_list)
-    return loop_state, all_metrics
+    keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps)
+    steps_and_keys = (jnp.arange(args.n_steps), keys)
+
+    final_state, all_metrics = jax.lax.scan(step_fn, init, steps_and_keys)
+    return final_state, all_metrics
 
 
 def grid_mdp_factory() -> MDP:
@@ -159,20 +169,20 @@ def q_learning_grid_world():
     key = jrd.PRNGKey(loop_args.seed)
     key, init_key = jrd.split(key)
 
-    alg_state = q_learning.init(
-        mdp, init_key, gamma=0.99, alpha=0.5, epsilon=1.0,
-        eps_decay=0.997, eps_min=0.1
-    )
+    alg_state = q_learning.init(mdp, init_key, gamma=0.99, alpha=0.5)
 
-    init_loop_state = LoopState(
+    state = LoopState(
         alg_state=alg_state,
         mdp_state=mdp.init_state(key),
         ep_step=jnp.array(0.0),
         ep_return=jnp.array(0.0),
-        last_return=jnp.array(0.0)
+        last_return=jnp.array(0.0),
+        epsilon=jnp.array(1.0),
+        eps_decay=jnp.array(0.997),
+        eps_min=jnp.array(0.1)
     )
 
-    final_state, metrics = loop(mdp, init_loop_state, loop_args, compute_metrics)
+    final_state, metrics = loop(mdp, state, loop_args, compute_metrics)
 
     results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -192,20 +202,20 @@ def q_learning_garnet():
     key = jrd.PRNGKey(loop_args.seed)
     key, init_key = jrd.split(key)
 
-    alg_state = q_learning.init(
-        mdp, init_key, gamma=0.99, alpha=0.3, epsilon=1.0,
-        eps_decay=0.9995, eps_min=0.05
-    )
+    alg_state = q_learning.init(mdp, init_key, gamma=0.99, alpha=0.3)
 
-    init_loop_state = LoopState(
+    state = LoopState(
         alg_state=alg_state,
         mdp_state=mdp.init_state(key),
         ep_step=jnp.array(0.0),
         ep_return=jnp.array(0.0),
-        last_return=jnp.array(0.0)
+        last_return=jnp.array(0.0),
+        epsilon=jnp.array(1.0),
+        eps_decay=jnp.array(0.9995),
+        eps_min=jnp.array(0.05)
     )
 
-    final_state, metrics = loop(mdp, init_loop_state, loop_args, compute_metrics)
+    final_state, metrics = loop(mdp, state, loop_args, compute_metrics)
 
     results = {"GarnetMDP": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -225,20 +235,20 @@ def q_learning_graph():
     key = jrd.PRNGKey(loop_args.seed)
     key, init_key = jrd.split(key)
 
-    alg_state = q_learning.init(
-        mdp, init_key, gamma=0.99, alpha=0.5, epsilon=1.0,
-        eps_decay=0.9996, eps_min=0.05
-    )
+    alg_state = q_learning.init(mdp, init_key, gamma=0.99, alpha=0.5)
 
-    init_loop_state = LoopState(
+    state = LoopState(
         alg_state=alg_state,
         mdp_state=mdp.init_state(key),
         ep_step=jnp.array(0.0),
         ep_return=jnp.array(0.0),
-        last_return=jnp.array(0.0)
+        last_return=jnp.array(0.0),
+        epsilon=jnp.array(1.0),
+        eps_decay=jnp.array(0.9996),
+        eps_min=jnp.array(0.05)
     )
 
-    final_state, metrics = loop(mdp, init_loop_state, loop_args, compute_metrics)
+    final_state, metrics = loop(mdp, state, loop_args, compute_metrics)
 
     results = {"GraphMDP": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -289,21 +299,20 @@ def q_learning_benchmark():
         key = jrd.PRNGKey(loop_args.seed)
         key, init_key = jrd.split(key)
 
-        alg_state = q_learning.init(
-            config["mdp"], init_key,
-            gamma=0.99, alpha=config["alpha"], epsilon=config["epsilon"],
-            eps_decay=config["eps_decay"], eps_min=config["eps_min"]
-        )
+        alg_state = q_learning.init(config["mdp"], init_key, gamma=0.99, alpha=config["alpha"])
 
-        init_loop_state = LoopState(
+        state = LoopState(
             alg_state=alg_state,
             mdp_state=config["mdp"].init_state(key),
             ep_step=jnp.array(0.0),
             ep_return=jnp.array(0.0),
-            last_return=jnp.array(0.0)
+            last_return=jnp.array(0.0),
+            epsilon=jnp.array(config["epsilon"]),
+            eps_decay=jnp.array(config["eps_decay"]),
+            eps_min=jnp.array(config["eps_min"])
         )
 
-        final_state, metrics = loop(config["mdp"], init_loop_state, loop_args, compute_metrics)
+        final_state, metrics = loop(config["mdp"], state, loop_args, compute_metrics)
 
         results[mdp_name] = (metrics, final_state.alg_state.q_vals)
 
