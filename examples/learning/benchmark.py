@@ -93,26 +93,16 @@ class loop(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    def init(value_fn, policy_ns, mdp: MDP, args: LoopArgs,
-             alg_params: dict, policy_params: dict) -> LoopState:
-        """Initialize loop state with algorithm and policy parameters
+    def init(alg_state: Any, policy_state: Any, mdp: MDP, args: LoopArgs) -> LoopState:
+        """Initialize loop state with algorithm and policy states
 
         Args:
-            value_fn: Algorithm namespace (e.g., q_learning)
-            policy_ns: Policy namespace (e.g., epsilon_greedy)
+            alg_state: Initialized algorithm state (e.g., q_learning.State)
+            policy_state: Initialized policy state (e.g., epsilon_greedy.State)
             mdp: MDP environment
-            args: Loop arguments (seed, n_steps, etc.)
-            alg_params: Parameters for algorithm init (gamma, alpha, etc.)
-            policy_params: Parameters for policy init (epsilon, etc.)
+            args: Loop arguments (seed, n_steps, n_envs, etc.)
         """
         key = jrd.PRNGKey(args.seed)
-        key, init_key = jrd.split(key)
-
-        # Initialize algorithm state
-        alg_state = value_fn.init(mdp, init_key, **alg_params)
-
-        # Initialize policy state
-        policy_state = policy_ns.init(**policy_params)
 
         # Initialize environment state(s) - always use vmap
         env_keys = jrd.split(key, args.n_envs)
@@ -289,12 +279,13 @@ def q_learning_parallel_envs():
     alg_name = "Q-Learning (Parallel Envs)"
     loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50, n_envs=4)
 
+    # Initialize algorithm and policy states
+    key = jrd.PRNGKey(loop_args.seed)
+    alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
+    policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
+
     # Initialize loop state
-    state = loop.init(
-        q_learning, epsilon_greedy, mdp, loop_args,
-        alg_params={"gamma": 0.99, "alpha": 0.5},
-        policy_params={"epsilon": 1.0, "eps_decay": 0.997, "eps_min": 0.1}
-    )
+    state = loop.init(alg_state, policy_state, mdp, loop_args)
 
     # Train
     final_state, metrics = loop.train(
@@ -320,12 +311,13 @@ def q_learning_multi_seed():
     def run_one_seed(seed):
         loop_args = LoopArgs(seed=seed, n_steps=5000, max_ep_len=50, n_envs=1)
 
+        # Initialize algorithm and policy states
+        key = jrd.PRNGKey(seed)
+        alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
+        policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
+
         # Initialize loop state
-        state = loop.init(
-            q_learning, epsilon_greedy, mdp, loop_args,
-            alg_params={"gamma": 0.99, "alpha": 0.5},
-            policy_params={"epsilon": 1.0, "eps_decay": 0.997, "eps_min": 0.1}
-        )
+        state = loop.init(alg_state, policy_state, mdp, loop_args)
 
         # Train
         final_state, metrics = loop.train(
@@ -357,12 +349,13 @@ def q_learning_grid_world():
     alg_name = "Q-Learning"
     loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50, n_envs=1)
 
+    # Initialize algorithm and policy states
+    key = jrd.PRNGKey(loop_args.seed)
+    alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
+    policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
+
     # Initialize loop state
-    state = loop.init(
-        q_learning, epsilon_greedy, mdp, loop_args,
-        alg_params={"gamma": 0.99, "alpha": 0.5},
-        policy_params={"epsilon": 1.0, "eps_decay": 0.997, "eps_min": 0.1}
-    )
+    state = loop.init(alg_state, policy_state, mdp, loop_args)
 
     # Train
     final_state, metrics = loop.train(
@@ -384,12 +377,13 @@ def q_learning_garnet():
     alg_name = "Q-Learning"
     loop_args = LoopArgs(seed=0, n_steps=30000, max_ep_len=50, n_envs=1)
 
+    # Initialize algorithm and policy states
+    key = jrd.PRNGKey(loop_args.seed)
+    alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.3)
+    policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.9995, eps_min=0.05)
+
     # Initialize loop state
-    state = loop.init(
-        q_learning, epsilon_greedy, mdp, loop_args,
-        alg_params={"gamma": 0.99, "alpha": 0.3},
-        policy_params={"epsilon": 1.0, "eps_decay": 0.9995, "eps_min": 0.05}
-    )
+    state = loop.init(alg_state, policy_state, mdp, loop_args)
 
     # Train
     final_state, metrics = loop.train(
@@ -411,12 +405,13 @@ def q_learning_graph():
     alg_name = "Q-Learning"
     loop_args = LoopArgs(seed=0, n_steps=40000, max_ep_len=50, n_envs=1)
 
+    # Initialize algorithm and policy states
+    key = jrd.PRNGKey(loop_args.seed)
+    alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
+    policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.9996, eps_min=0.05)
+
     # Initialize loop state
-    state = loop.init(
-        q_learning, epsilon_greedy, mdp, loop_args,
-        alg_params={"gamma": 0.99, "alpha": 0.5},
-        policy_params={"epsilon": 1.0, "eps_decay": 0.9996, "eps_min": 0.05}
-    )
+    state = loop.init(alg_state, policy_state, mdp, loop_args)
 
     # Train
     final_state, metrics = loop.train(
@@ -469,16 +464,17 @@ def q_learning_benchmark():
     for mdp_name, config in mdp_configs.items():
         loop_args = LoopArgs(seed=0, n_steps=config["n_steps"], max_ep_len=max_ep_len, n_envs=1)
 
-        # Initialize loop state
-        state = loop.init(
-            q_learning, epsilon_greedy, config["mdp"], loop_args,
-            alg_params={"gamma": 0.99, "alpha": config["alpha"]},
-            policy_params={
-                "epsilon": config["epsilon"],
-                "eps_decay": config["eps_decay"],
-                "eps_min": config["eps_min"]
-            }
+        # Initialize algorithm and policy states
+        key = jrd.PRNGKey(loop_args.seed)
+        alg_state = q_learning.init(config["mdp"], key, gamma=0.99, alpha=config["alpha"])
+        policy_state = epsilon_greedy.init(
+            epsilon=config["epsilon"],
+            eps_decay=config["eps_decay"],
+            eps_min=config["eps_min"]
         )
+
+        # Initialize loop state
+        state = loop.init(alg_state, policy_state, config["mdp"], loop_args)
 
         # Train
         final_state, metrics = loop.train(
