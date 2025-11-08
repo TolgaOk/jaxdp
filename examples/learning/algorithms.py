@@ -103,9 +103,8 @@ class q_learning(metaclass=StaticMeta):
         total_delta = jnp.sum(deltas, axis=0)  # Shape: [n_actions, n_states]
 
         # Count how many times each (s,a) pair appears in the batch
-        # Use einsum to compute outer product for each transition in batch
-        counts = jnp.einsum('ba,bs->bas', transitions.action, transitions.state)
-        total_counts = jnp.sum(counts, axis=0)  # Shape: [n_actions, n_states]
+        # Use einsum: sum over batch dimension to get occurrence counts
+        total_counts = jnp.einsum('ba,bs->as', transitions.action, transitions.state)
 
         # Divide summed updates by occurrence count for each (s,a)
         # Avoid division by zero (where count=0, delta should also be 0)
