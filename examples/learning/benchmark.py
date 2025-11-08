@@ -20,65 +20,6 @@ from jaxdp.mdp.simple_graph import graph_mdp
 jax.config.update("jax_enable_x64", True)
 
 
-@struct.dataclass
-class LoopState:
-    """Training loop state - manages MDP interaction and episode tracking"""
-    alg_state: Any  # q_learning.State
-    policy_state: Any  # epsilon_greedy.State or softmax.State, etc.
-    mdp_state: jnp.ndarray
-    ep_step: jnp.ndarray
-    ep_return: jnp.ndarray
-    last_return: jnp.ndarray
-
-
-@struct.dataclass
-class Metrics:
-    l1: jnp.ndarray
-    l2: jnp.ndarray
-    linf: jnp.ndarray
-    bellman_err: jnp.ndarray
-    iteration: jnp.ndarray
-    ep_return: jnp.ndarray
-    ep_len: jnp.ndarray
-
-
-def compute_metrics(prev: LoopState, new: LoopState, mdp: MDP, step: int):
-    """ Compute metrics for the current iteration """
-    prev_alg = prev.alg_state
-    new_alg = new.alg_state
-
-    diff = new_alg.q_vals - prev_alg.q_vals
-    l1 = jnp.sum(jnp.abs(diff))
-    l2 = jnp.sqrt(jnp.sum(diff**2))
-    linf = jnp.max(jnp.abs(diff))
-
-    bellman_target = bellman_op.q(mdp, prev_alg.q_vals, prev_alg.gamma)
-    bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
-
-    # Episode completed when ep_step resets to 0
-    ep_done = (new.ep_step == 0) & (prev.ep_step > 0)
-    ep_return = jnp.where(ep_done, new.last_return, 0.0)
-    ep_len = jnp.where(ep_done, prev.ep_step, 0.0)
-
-    return Metrics(
-        l1=l1,
-        l2=l2,
-        linf=linf,
-        bellman_err=bellman_err,
-        iteration=step,
-        ep_return=ep_return,
-        ep_len=ep_len
-    )
-
-
-@dataclass(frozen=True)
-class LoopArgs:
-    seed: int
-    n_steps: int
-    max_ep_len: int = 50
-    n_envs: int = 1  # Number of parallel environments
-
-
 from jaxdp.typehints import StaticMeta
 
 
@@ -93,25 +34,56 @@ class loop(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    def init(alg_state: Any, policy_state: Any, mdp: MDP, args: LoopArgs) -> LoopState:
+    @struct.dataclass
+    class State:
+        """Training loop state - manages MDP interaction and episode tracking"""
+        alg_state: Any  # q_learning.State
+        policy_state: Any  # epsilon_greedy.State or soft_policy.State, etc.
+        mdp_state: jnp.ndarray
+        ep_step: jnp.ndarray
+        ep_return: jnp.ndarray
+        last_return: jnp.ndarray
+
+    @struct.dataclass
+    class Args:
+        """Training loop arguments - static configuration"""
+        value_fn: Any  # Algorithm namespace (e.g., q_learning)
+        policy_ns: Any  # Policy namespace (e.g., epsilon_greedy)
+        mdp: MDP
+        seed: int
+        n_steps: int
+        max_ep_len: int
+        n_envs: int
+
+    @struct.dataclass
+    class Metrics:
+        """Metrics collected during training"""
+        l1: jnp.ndarray
+        l2: jnp.ndarray
+        linf: jnp.ndarray
+        bellman_err: jnp.ndarray
+        iteration: jnp.ndarray
+        ep_return: jnp.ndarray
+        ep_len: jnp.ndarray
+
+    def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states
 
         Args:
             alg_state: Initialized algorithm state (e.g., q_learning.State)
             policy_state: Initialized policy state (e.g., epsilon_greedy.State)
-            mdp: MDP environment
-            args: Loop arguments (seed, n_steps, n_envs, etc.)
+            args: Loop arguments (includes mdp, seed, n_steps, n_envs, etc.)
         """
         key = jrd.PRNGKey(args.seed)
 
         # Initialize environment state(s) - always use vmap
         env_keys = jrd.split(key, args.n_envs)
-        mdp_state = jax.vmap(mdp.init_state)(env_keys)
+        mdp_state = jax.vmap(args.mdp.init_state)(env_keys)
         ep_step = jnp.zeros(args.n_envs)
         ep_return = jnp.zeros(args.n_envs)
         last_return = jnp.zeros(args.n_envs)
 
-        return LoopState(
+        return loop.State(
             alg_state=alg_state,
             policy_state=policy_state,
             mdp_state=mdp_state,
@@ -120,16 +92,12 @@ class loop(metaclass=StaticMeta):
             last_return=last_return
         )
 
-    def train(value_fn, policy_ns, mdp: MDP, state: LoopState,
-              args: LoopArgs, metrics_fn) -> tuple[LoopState, Any]:
+    def train(state: "loop.State", args: "loop.Args", metrics_fn) -> tuple["loop.State", Any]:
         """Run training loop for n_steps with specified value function and policy
 
         Args:
-            value_fn: Algorithm namespace (e.g., q_learning)
-            policy_ns: Policy namespace (e.g., epsilon_greedy)
-            mdp: MDP environment
             state: Initial loop state
-            args: Loop arguments (n_steps, max_ep_len, n_envs)
+            args: Loop arguments (includes value_fn, policy_ns, mdp, n_steps, etc.)
             metrics_fn: Function to compute metrics at each step
 
         Returns:
@@ -137,16 +105,16 @@ class loop(metaclass=StaticMeta):
 
         Note: Uses vmap to handle n_envs environments in parallel at each step.
         """
-        def step_fn(state: LoopState, step_and_keys):
+        def step_fn(state: loop.State, step_and_keys):
             step, keys = step_and_keys  # keys shape: [n_envs, 2]
             prev = state
 
             # Sample from all environments in parallel
-            policy = policy_ns.get_policy(state.alg_state.q_vals, state.policy_state)
+            policy = args.policy_ns.get_policy(state.alg_state.q_vals, state.policy_state)
 
             # Vmap over environments
             vmap_sample = jax.vmap(
-                lambda s, ep, k: async_sample_step_pi(mdp, policy, s, ep, args.max_ep_len, k),
+                lambda s, ep, k: async_sample_step_pi(args.mdp, policy, s, ep, args.max_ep_len, k),
                 in_axes=(0, 0, 0)
             )
             actions, next_states, rewards, terms, timeouts, stepped_states, ep_steps = vmap_sample(
@@ -154,7 +122,7 @@ class loop(metaclass=StaticMeta):
             )
 
             # Update Q-values for each transition in parallel, then average
-            vmap_update = jax.vmap(value_fn.update, in_axes=(None, 0, 0, 0, 0, 0))
+            vmap_update = jax.vmap(args.value_fn.update, in_axes=(None, 0, 0, 0, 0, 0))
             updated_states = vmap_update(
                 state.alg_state, state.mdp_state, actions, next_states, rewards, terms
             )
@@ -165,14 +133,14 @@ class loop(metaclass=StaticMeta):
             # Update policy state (use any episode completion signal)
             dones = terms + timeouts > 0
             any_done = jnp.any(dones)
-            new_policy_state = policy_ns.update(state.policy_state, any_done)
+            new_policy_state = args.policy_ns.update(state.policy_state, any_done)
 
             # Update loop state (track all environments)
             new_returns = state.ep_return + rewards
             last_returns = jnp.where(dones, new_returns, state.last_return)
             ep_returns = jnp.where(dones, 0.0, new_returns)
 
-            new_state = LoopState(
+            new_state = loop.State(
                 alg_state=new_alg_state,
                 policy_state=new_policy_state,
                 mdp_state=stepped_states,
@@ -181,7 +149,7 @@ class loop(metaclass=StaticMeta):
                 last_return=last_returns
             )
 
-            metrics = metrics_fn(prev, new_state, mdp, step)
+            metrics = metrics_fn(prev, new_state, args, step)
             return new_state, metrics
 
         keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps * args.n_envs)
@@ -191,17 +159,14 @@ class loop(metaclass=StaticMeta):
         final_state, all_metrics = jax.lax.scan(step_fn, state, steps_and_keys)
         return final_state, all_metrics
 
-    def evaluate(value_fn, policy_ns, mdp: MDP, state: LoopState,
-                 n_episodes: int = 10, max_ep_len: int = 50, seed: int = 42) -> dict:
+    def evaluate(state: "loop.State", args: "loop.Args",
+                 n_episodes: int = 10, seed: int = 42) -> dict:
         """Evaluate the learned policy (greedy, no exploration)
 
         Args:
-            value_fn: Algorithm namespace (not used in evaluation, but kept for consistency)
-            policy_ns: Policy namespace (not used in evaluation)
-            mdp: MDP environment
             state: Current loop state with learned Q-values
+            args: Loop arguments (includes mdp, max_ep_len)
             n_episodes: Number of episodes to evaluate
-            max_ep_len: Maximum episode length
             seed: Random seed for evaluation
 
         Returns:
@@ -210,7 +175,7 @@ class loop(metaclass=StaticMeta):
         from jaxdp.base import greedy_policy
 
         def run_episode(key):
-            mdp_state = mdp.init_state(key)
+            mdp_state = args.mdp.init_state(key)
             ep_step = jnp.array(0.0)
             ep_return = jnp.array(0.0)
 
@@ -219,14 +184,14 @@ class loop(metaclass=StaticMeta):
                 # Use greedy policy for evaluation
                 policy = greedy_policy.q(state.alg_state.q_vals)
                 action, next_s, reward, term, timeout, stepped_s, new_ep_step = async_sample_step_pi(
-                    mdp, policy, mdp_state, ep_step, max_ep_len, key
+                    args.mdp, policy, mdp_state, ep_step, args.max_ep_len, key
                 )
                 new_return = ep_return + reward
                 done = term + timeout > 0
                 return (stepped_s, new_ep_step, new_return), done
 
             (final_mdp_state, final_ep_step, final_return), _ = jax.lax.scan(
-                step_fn, (mdp_state, ep_step, ep_return), None, length=max_ep_len
+                step_fn, (mdp_state, ep_step, ep_return), None, length=args.max_ep_len
             )
             return final_return, final_ep_step
 
@@ -239,6 +204,35 @@ class loop(metaclass=StaticMeta):
             "mean_length": jnp.mean(lengths),
             "std_length": jnp.std(lengths)
         }
+
+
+def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: int) -> loop.Metrics:
+    """Compute metrics for the current iteration"""
+    prev_alg = prev.alg_state
+    new_alg = new.alg_state
+
+    diff = new_alg.q_vals - prev_alg.q_vals
+    l1 = jnp.sum(jnp.abs(diff))
+    l2 = jnp.sqrt(jnp.sum(diff**2))
+    linf = jnp.max(jnp.abs(diff))
+
+    bellman_target = bellman_op.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
+    bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
+
+    # Episode completed when ep_step resets to 0
+    ep_done = (new.ep_step == 0) & (prev.ep_step > 0)
+    ep_return = jnp.where(ep_done, new.last_return, 0.0)
+    ep_len = jnp.where(ep_done, prev.ep_step, 0.0)
+
+    return loop.Metrics(
+        l1=l1,
+        l2=l2,
+        linf=linf,
+        bellman_err=bellman_err,
+        iteration=step,
+        ep_return=ep_return,
+        ep_len=ep_len
+    )
 
 
 def grid_mdp_factory() -> MDP:
@@ -277,20 +271,28 @@ def q_learning_parallel_envs():
     """
     mdp = grid_mdp_factory()
     alg_name = "Q-Learning (Parallel Envs)"
-    loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50, n_envs=4)
+
+    # Create loop arguments with all configuration
+    args = loop.Args(
+        value_fn=q_learning,
+        policy_ns=epsilon_greedy,
+        mdp=mdp,
+        seed=0,
+        n_steps=5000,
+        max_ep_len=50,
+        n_envs=4
+    )
 
     # Initialize algorithm and policy states
-    key = jrd.PRNGKey(loop_args.seed)
+    key = jrd.PRNGKey(args.seed)
     alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
     policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
 
     # Initialize loop state
-    state = loop.init(alg_state, policy_state, mdp, loop_args)
+    state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(
-        q_learning, epsilon_greedy, mdp, state, loop_args, compute_metrics
-    )
+    final_state, metrics = loop.train(state, args, compute_metrics)
 
     results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -309,7 +311,15 @@ def q_learning_multi_seed():
 
     # Run independent training loops with different seeds
     def run_one_seed(seed):
-        loop_args = LoopArgs(seed=seed, n_steps=5000, max_ep_len=50, n_envs=1)
+        args = loop.Args(
+            value_fn=q_learning,
+            policy_ns=epsilon_greedy,
+            mdp=mdp,
+            seed=seed,
+            n_steps=5000,
+            max_ep_len=50,
+            n_envs=1
+        )
 
         # Initialize algorithm and policy states
         key = jrd.PRNGKey(seed)
@@ -317,12 +327,10 @@ def q_learning_multi_seed():
         policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
 
         # Initialize loop state
-        state = loop.init(alg_state, policy_state, mdp, loop_args)
+        state = loop.init(alg_state, policy_state, args)
 
         # Train
-        final_state, metrics = loop.train(
-            q_learning, epsilon_greedy, mdp, state, loop_args, compute_metrics
-        )
+        final_state, metrics = loop.train(state, args, compute_metrics)
         return final_state, metrics
 
     # Vmap over different seeds
@@ -347,20 +355,28 @@ def q_learning_grid_world():
     """
     mdp = grid_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50, n_envs=1)
+
+    # Create loop arguments with all configuration
+    args = loop.Args(
+        value_fn=q_learning,
+        policy_ns=epsilon_greedy,
+        mdp=mdp,
+        seed=0,
+        n_steps=5000,
+        max_ep_len=50,
+        n_envs=1
+    )
 
     # Initialize algorithm and policy states
-    key = jrd.PRNGKey(loop_args.seed)
+    key = jrd.PRNGKey(args.seed)
     alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
     policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
 
     # Initialize loop state
-    state = loop.init(alg_state, policy_state, mdp, loop_args)
+    state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(
-        q_learning, epsilon_greedy, mdp, state, loop_args, compute_metrics
-    )
+    final_state, metrics = loop.train(state, args, compute_metrics)
 
     results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -375,20 +391,28 @@ def q_learning_garnet():
     """
     mdp = garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2)
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=30000, max_ep_len=50, n_envs=1)
+
+    # Create loop arguments with all configuration
+    args = loop.Args(
+        value_fn=q_learning,
+        policy_ns=epsilon_greedy,
+        mdp=mdp,
+        seed=0,
+        n_steps=30000,
+        max_ep_len=50,
+        n_envs=1
+    )
 
     # Initialize algorithm and policy states
-    key = jrd.PRNGKey(loop_args.seed)
+    key = jrd.PRNGKey(args.seed)
     alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.3)
     policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.9995, eps_min=0.05)
 
     # Initialize loop state
-    state = loop.init(alg_state, policy_state, mdp, loop_args)
+    state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(
-        q_learning, epsilon_greedy, mdp, state, loop_args, compute_metrics
-    )
+    final_state, metrics = loop.train(state, args, compute_metrics)
 
     results = {"GarnetMDP": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -403,20 +427,28 @@ def q_learning_graph():
     """
     mdp = graph_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=40000, max_ep_len=50, n_envs=1)
+
+    # Create loop arguments with all configuration
+    args = loop.Args(
+        value_fn=q_learning,
+        policy_ns=epsilon_greedy,
+        mdp=mdp,
+        seed=0,
+        n_steps=40000,
+        max_ep_len=50,
+        n_envs=1
+    )
 
     # Initialize algorithm and policy states
-    key = jrd.PRNGKey(loop_args.seed)
+    key = jrd.PRNGKey(args.seed)
     alg_state = q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
     policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.9996, eps_min=0.05)
 
     # Initialize loop state
-    state = loop.init(alg_state, policy_state, mdp, loop_args)
+    state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(
-        q_learning, epsilon_greedy, mdp, state, loop_args, compute_metrics
-    )
+    final_state, metrics = loop.train(state, args, compute_metrics)
 
     results = {"GraphMDP": (metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
@@ -430,58 +462,77 @@ def q_learning_benchmark():
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
     alg_name = "Q-Learning"
-    max_ep_len = 50
+
+    @struct.dataclass
+    class MDPConfig:
+        name: str
+        mdp: MDP
+        n_steps: int
+        alpha: float
+        epsilon: float
+        eps_decay: float
+        eps_min: float
 
     # Tuned hyperparameters for each MDP
-    mdp_configs = {
-        "GridWorld": {
-            "mdp": grid_mdp_factory(),
-            "n_steps": 5000,
-            "alpha": 0.5,
-            "epsilon": 1.0,
-            "eps_decay": 0.997,
-            "eps_min": 0.1
-        },
-        "GarnetMDP": {
-            "mdp": garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
-            "n_steps": 30000,
-            "alpha": 0.3,
-            "epsilon": 1.0,
-            "eps_decay": 0.9995,
-            "eps_min": 0.05
-        },
-        "GraphMDP": {
-            "mdp": graph_mdp_factory(),
-            "n_steps": 40000,
-            "alpha": 0.5,
-            "epsilon": 1.0,
-            "eps_decay": 0.9996,
-            "eps_min": 0.05
-        }
-    }
+    configs = [
+        MDPConfig(
+            name="GridWorld",
+            mdp=grid_mdp_factory(),
+            n_steps=5000,
+            alpha=0.5,
+            epsilon=1.0,
+            eps_decay=0.997,
+            eps_min=0.1
+        ),
+        MDPConfig(
+            name="GarnetMDP",
+            mdp=garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
+            n_steps=30000,
+            alpha=0.3,
+            epsilon=1.0,
+            eps_decay=0.9995,
+            eps_min=0.05
+        ),
+        MDPConfig(
+            name="GraphMDP",
+            mdp=graph_mdp_factory(),
+            n_steps=40000,
+            alpha=0.5,
+            epsilon=1.0,
+            eps_decay=0.9996,
+            eps_min=0.05
+        )
+    ]
 
     results = {}
-    for mdp_name, config in mdp_configs.items():
-        loop_args = LoopArgs(seed=0, n_steps=config["n_steps"], max_ep_len=max_ep_len, n_envs=1)
+    for config in configs:
+        # Create loop arguments
+        args = loop.Args(
+            value_fn=q_learning,
+            policy_ns=epsilon_greedy,
+            mdp=config.mdp,
+            seed=0,
+            n_steps=config.n_steps,
+            max_ep_len=50,
+            n_envs=1
+        )
 
         # Initialize algorithm and policy states
-        key = jrd.PRNGKey(loop_args.seed)
-        alg_state = q_learning.init(config["mdp"], key, gamma=0.99, alpha=config["alpha"])
+        key = jrd.PRNGKey(args.seed)
+        alg_state = q_learning.init(config.mdp, key, gamma=0.99, alpha=config.alpha)
         policy_state = epsilon_greedy.init(
-            epsilon=config["epsilon"],
-            eps_decay=config["eps_decay"],
-            eps_min=config["eps_min"]
+            epsilon=config.epsilon,
+            eps_decay=config.eps_decay,
+            eps_min=config.eps_min
         )
 
         # Initialize loop state
-        state = loop.init(alg_state, policy_state, config["mdp"], loop_args)
+        state = loop.init(alg_state, policy_state, args)
 
         # Train
-        final_state, metrics = loop.train(
-            q_learning, epsilon_greedy, config["mdp"], state, loop_args, compute_metrics
-        )
+        final_state, metrics = loop.train(state, args, compute_metrics)
 
-        results[mdp_name] = (metrics, final_state.alg_state.q_vals)
+        results[config.name] = (metrics, final_state.alg_state.q_vals)
 
     log_results(results, alg_name)
     return results
