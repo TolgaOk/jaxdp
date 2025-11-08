@@ -24,13 +24,16 @@ class q_learning(metaclass=StaticMeta):
         gamma: jnp.ndarray
         alpha: jnp.ndarray
         epsilon: jnp.ndarray
+        eps_decay: jnp.ndarray
+        eps_min: jnp.ndarray
         state: jnp.ndarray
         ep_step: jnp.ndarray
         ep_return: jnp.ndarray
         last_return: jnp.ndarray
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray,
-             alpha: jnp.ndarray, epsilon: jnp.ndarray) -> "q_learning.State":
+             alpha: jnp.ndarray, epsilon: jnp.ndarray,
+             eps_decay: jnp.ndarray = 0.995, eps_min: jnp.ndarray = 0.01) -> "q_learning.State":
         q_vals = jnp.zeros((mdp.action_size, mdp.state_size))
         init_state = mdp.init_state(key)
 
@@ -39,6 +42,8 @@ class q_learning(metaclass=StaticMeta):
             gamma=gamma,
             alpha=alpha,
             epsilon=epsilon,
+            eps_decay=eps_decay,
+            eps_min=eps_min,
             state=init_state,
             ep_step=jnp.array(0.0),
             ep_return=jnp.array(0.0),
@@ -67,10 +72,15 @@ class q_learning(metaclass=StaticMeta):
         last_return = jnp.where(done, new_return, state.last_return)
         ep_return = jnp.where(done, 0.0, new_return)
 
+        # Decay epsilon after each episode
+        new_epsilon = jnp.maximum(state.epsilon * state.eps_decay, state.eps_min)
+        epsilon = jnp.where(done, new_epsilon, state.epsilon)
+
         return state.replace(
             q_vals=next_q,
             state=s,
             ep_step=ep_step,
             ep_return=ep_return,
-            last_return=last_return
+            last_return=last_return,
+            epsilon=epsilon
         )

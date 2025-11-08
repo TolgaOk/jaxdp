@@ -17,7 +17,7 @@ def log_results(results, alg_name):
     table.add_column("Bellman Error", justify="right", style="white")
     table.add_column("Max L-inf", justify="right", style="white")
     table.add_column("Updates", justify="right", style="white")
-    table.add_column("Mean Return", justify="right", style="white")
+    table.add_column("Last 20 Eps", justify="right", style="white")
     table.add_column("Episodes", justify="right", style="white")
 
     for mdp_name, (metrics, q_vals) in results.items():
@@ -25,17 +25,20 @@ def log_results(results, alg_name):
         max_linf = float(jnp.max(metrics.linf))
         n_updates = int(jnp.sum(metrics.linf > 0))
 
-        # Episode statistics
+        # Episode statistics - show mean of last 20 episodes
         ep_mask = metrics.ep_return != 0
-        n_episodes = int(jnp.sum(ep_mask))
-        mean_return = float(jnp.mean(metrics.ep_return[ep_mask])) if n_episodes > 0 else 0.0
+        ep_returns = metrics.ep_return[ep_mask]
+        n_episodes = len(ep_returns)
+        last_20_return = float(jnp.mean(ep_returns[-20:])) if n_episodes >= 20 else (
+            float(jnp.mean(ep_returns)) if n_episodes > 0 else 0.0
+        )
 
         table.add_row(
             mdp_name,
             f"{bellman_err:.6f}",
             f"{max_linf:.6f}",
             f"{n_updates}",
-            f"{mean_return:.3f}",
+            f"{last_20_return:.3f}",
             f"{n_episodes}"
         )
 

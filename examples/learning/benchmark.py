@@ -97,8 +97,11 @@ def q_learning_grid_world():
     alg_name = "Q-Learning"
     loop_args = LoopArgs(seed=12345, n_steps=10000, max_ep_len=50)
 
-    init_state = q_learning.init(mdp, jrd.PRNGKey(loop_args.seed),
-                                  gamma=0.99, alpha=0.5, epsilon=0.4)
+    init_state = q_learning.init(
+        mdp, jrd.PRNGKey(loop_args.seed),
+        gamma=0.99, alpha=0.1, epsilon=1.0,
+        eps_decay=0.995, eps_min=0.01
+    )
 
     final_state, metrics = loop(
         mdp, init_state, loop_args,
