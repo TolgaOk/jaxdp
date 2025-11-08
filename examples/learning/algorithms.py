@@ -34,14 +34,14 @@ class q_learning(metaclass=StaticMeta):
             alpha=alpha
         )
 
-    def update(alg_state: "q_learning.State", mdp_state: jnp.ndarray,
+    def update(state: "q_learning.State", mdp_state: jnp.ndarray,
                action: jnp.ndarray, next_s: jnp.ndarray, reward: jnp.ndarray,
                term: jnp.ndarray) -> "q_learning.State":
         """
         Update Q-values based on a single transition.
 
         Args:
-            alg_state: Current algorithm state (Q-values and parameters)
+            state: Current algorithm state (Q-values and parameters)
             mdp_state: State where action was taken (one-hot, shape: [n_states])
             action: Action taken (one-hot, shape: [n_actions])
             next_s: Next state reached (one-hot, shape: [n_states])
@@ -51,18 +51,18 @@ class q_learning(metaclass=StaticMeta):
         # Q-learning update: Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s',a') - Q(s,a)]
         # Use einsum for efficient computation
         # Q: [n_actions, n_states], action: [n_actions], mdp_state: [n_states]
-        curr_q = jnp.einsum('as,a,s->', alg_state.q_vals, action, mdp_state)
+        curr_q = jnp.einsum('as,a,s->', state.q_vals, action, mdp_state)
 
         # Compute Q-values for next state, then take max
-        q_next = jnp.einsum('as,s->a', alg_state.q_vals, next_s)
+        q_next = jnp.einsum('as,s->a', state.q_vals, next_s)
         max_next_q = jnp.max(q_next)
 
         # TD target and error
-        td_target = reward + alg_state.gamma * max_next_q * (1.0 - term)
+        td_target = reward + state.gamma * max_next_q * (1.0 - term)
         td_error = td_target - curr_q
 
         # Update: Q += α * δ * (action ⊗ state)
         update = jnp.einsum('a,s->as', action, mdp_state)
-        next_q = alg_state.q_vals + alg_state.alpha * td_error * update
+        next_q = state.q_vals + state.alpha * td_error * update
 
-        return alg_state.replace(q_vals=next_q)
+        return state.replace(q_vals=next_q)
