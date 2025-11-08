@@ -156,6 +156,56 @@ def graph_mdp_factory() -> MDP:
     return graph_mdp()
 
 
+def q_learning_multi_seed():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Q-Learning Multi-Seed (Parallel Environments)
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+    mdp = grid_mdp_factory()
+    alg_name = "Q-Learning (Multi-Seed)"
+    loop_args = LoopArgs(seed=42, n_steps=5000, max_ep_len=50)
+    n_seeds = 5
+
+    # Create multiple seeds
+    seed_keys = jrd.split(jrd.PRNGKey(loop_args.seed), n_seeds)
+
+    # Initialize vmap'd algorithm states
+    def init_alg(key):
+        return q_learning.init(mdp, key, gamma=0.99, alpha=0.5)
+
+    vmap_init_alg = jax.vmap(init_alg)
+    alg_states = vmap_init_alg(seed_keys)
+
+    # Initialize vmap'd loop states
+    def init_loop_state(alg_state, key):
+        return LoopState(
+            alg_state=alg_state,
+            mdp_state=mdp.init_state(key),
+            ep_step=jnp.array(0.0),
+            ep_return=jnp.array(0.0),
+            last_return=jnp.array(0.0),
+            epsilon=jnp.array(1.0),
+            eps_decay=jnp.array(0.997),
+            eps_min=jnp.array(0.1)
+        )
+
+    vmap_init_loop = jax.vmap(init_loop_state)
+    init_states = vmap_init_loop(alg_states, seed_keys)
+
+    # Run vmap'd training loops
+    vmap_loop = jax.vmap(loop, in_axes=(None, 0, None, None))
+    final_states, all_metrics = vmap_loop(mdp, init_states, loop_args, compute_metrics)
+
+    # Average across seeds
+    avg_metrics = jax.tree.map(lambda x: jnp.mean(x, axis=0), all_metrics)
+    avg_q = jnp.mean(final_states.alg_state.q_vals, axis=0)
+
+    results = {"GridWorld": (avg_metrics, avg_q)}
+    log_results(results, alg_name)
+    return results
+
+
 def q_learning_grid_world():
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
@@ -324,7 +374,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run JAX Learning benchmarks")
     parser.add_argument(
         "benchmark_type",
-        choices=["q_learning", "q_learning_garnet", "q_learning_graph", "benchmark"],
+        choices=["q_learning", "multi_seed", "q_learning_garnet", "q_learning_graph", "benchmark"],
         help="Type of benchmark to run"
     )
 
@@ -332,6 +382,8 @@ if __name__ == "__main__":
 
     if args.benchmark_type == "q_learning":
         q_learning_grid_world()
+    elif args.benchmark_type == "multi_seed":
+        q_learning_multi_seed()
     elif args.benchmark_type == "q_learning_garnet":
         q_learning_garnet()
     elif args.benchmark_type == "q_learning_graph":
