@@ -26,8 +26,6 @@ def log_results(results, alg_name):
         max_linf = float(jnp.max(metrics.linf))
         n_updates = int(jnp.sum(metrics.linf > 0))
 
-        # Episode statistics - flatten and filter NaN values
-        # ep_return shape: [n_steps, n_envs]
         ep_returns_flat = metrics.ep_return.flatten()
         ep_returns = ep_returns_flat[~jnp.isnan(ep_returns_flat)]
         n_episodes = len(ep_returns)
@@ -37,7 +35,6 @@ def log_results(results, alg_name):
             else (float(jnp.mean(ep_returns)) if n_episodes > 0 else 0.0)
         )
 
-        # Evaluation results - get last non-NaN value
         eval_returns = metrics.eval_mean_return[~jnp.isnan(metrics.eval_mean_return)]
         eval_return_str = f"{float(eval_returns[-1]):.3f}" if len(eval_returns) > 0 else "N/A"
 

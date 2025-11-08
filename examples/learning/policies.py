@@ -73,10 +73,7 @@ class soft_policy(metaclass=StaticMeta):
 
     def get_policy(q_vals: QType, state: "soft_policy.State") -> PiType:
         """Get soft policy from Q-values"""
-        # Compute softmax probabilities: exp(Q/T) / sum(exp(Q/T))
-        # Q-values shape: (n_actions, n_states)
-        # For each state, compute softmax over actions
         scaled_q = q_vals / state.temperature
-        exp_q = jnp.exp(scaled_q - jnp.max(scaled_q, axis=0, keepdims=True))  # Numerical stability
+        exp_q = jnp.exp(scaled_q - jnp.max(scaled_q, axis=0, keepdims=True))
         policy = exp_q / jnp.sum(exp_q, axis=0, keepdims=True)
         return policy
