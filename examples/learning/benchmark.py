@@ -7,7 +7,7 @@ import jax.numpy as jnp
 import jax.random as jrd
 from algorithms import q_learning
 from flax import struct
-from policies import epsilon_greedy, softmax
+from policies import epsilon_greedy, soft_policy
 from utils import log_results
 
 from jaxdp import async_sample_step_pi
@@ -76,48 +76,108 @@ class LoopArgs:
     seed: int
     n_steps: int
     max_ep_len: int = 50
+    n_envs: int = 1  # Number of parallel environments
 
 
 def loop(mdp: MDP, init: LoopState, args: LoopArgs, policy_module, metrics_fn):
-    """Run Q-learning loop for n_steps with specified exploration policy"""
-    def step_fn(state: LoopState, step_and_key):
-        step, key = step_and_key
-        prev = state
+    """Run Q-learning loop for n_steps with specified exploration policy
 
-        # Sample from MDP using policy
-        policy = policy_module.get_policy(state.alg_state.q_vals, state.policy_state)
-        action, next_s, reward, term, timeout, stepped_s, ep_step = async_sample_step_pi(
-            mdp, policy, state.mdp_state, state.ep_step, args.max_ep_len, key
-        )
+    If args.n_envs > 1, runs multiple environments in parallel at each step.
+    """
+    if args.n_envs == 1:
+        # Single environment mode
+        def step_fn(state: LoopState, step_and_key):
+            step, key = step_and_key
+            prev = state
 
-        # Update algorithm state (Q-values)
-        new_alg_state = q_learning.update(
-            state.alg_state, state.mdp_state, action, next_s, reward, term
-        )
+            # Sample from MDP using policy
+            policy = policy_module.get_policy(state.alg_state.q_vals, state.policy_state)
+            action, next_s, reward, term, timeout, stepped_s, ep_step = async_sample_step_pi(
+                mdp, policy, state.mdp_state, state.ep_step, args.max_ep_len, key
+            )
 
-        # Update policy state (decay exploration parameter)
-        done = term + timeout > 0
-        new_policy_state = policy_module.update(state.policy_state, done)
+            # Update algorithm state (Q-values)
+            new_alg_state = q_learning.update(
+                state.alg_state, state.mdp_state, action, next_s, reward, term
+            )
 
-        # Update loop state (MDP state, episode tracking)
-        new_return = state.ep_return + reward
-        last_return = jnp.where(done, new_return, state.last_return)
-        ep_return = jnp.where(done, 0.0, new_return)
+            # Update policy state (decay exploration parameter)
+            done = term + timeout > 0
+            new_policy_state = policy_module.update(state.policy_state, done)
 
-        new_state = LoopState(
-            alg_state=new_alg_state,
-            policy_state=new_policy_state,
-            mdp_state=stepped_s,
-            ep_step=ep_step,
-            ep_return=ep_return,
-            last_return=last_return
-        )
+            # Update loop state (MDP state, episode tracking)
+            new_return = state.ep_return + reward
+            last_return = jnp.where(done, new_return, state.last_return)
+            ep_return = jnp.where(done, 0.0, new_return)
 
-        metrics = metrics_fn(prev, new_state, mdp, step)
-        return new_state, metrics
+            new_state = LoopState(
+                alg_state=new_alg_state,
+                policy_state=new_policy_state,
+                mdp_state=stepped_s,
+                ep_step=ep_step,
+                ep_return=ep_return,
+                last_return=last_return
+            )
 
-    keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps)
-    steps_and_keys = (jnp.arange(args.n_steps), keys)
+            metrics = metrics_fn(prev, new_state, mdp, step)
+            return new_state, metrics
+    else:
+        # Parallel environments mode
+        def step_fn(state: LoopState, step_and_keys):
+            step, keys = step_and_keys  # keys shape: [n_envs]
+            prev = state
+
+            # Sample from all environments in parallel
+            policy = policy_module.get_policy(state.alg_state.q_vals, state.policy_state)
+
+            # Vmap over environments
+            vmap_sample = jax.vmap(
+                lambda s, ep, k: async_sample_step_pi(mdp, policy, s, ep, args.max_ep_len, k),
+                in_axes=(0, 0, 0)
+            )
+            actions, next_states, rewards, terms, timeouts, stepped_states, ep_steps = vmap_sample(
+                state.mdp_state, state.ep_step, keys
+            )
+
+            # Update Q-values for each transition in parallel, then average
+            vmap_update = jax.vmap(q_learning.update, in_axes=(None, 0, 0, 0, 0, 0))
+            updated_states = vmap_update(
+                state.alg_state, state.mdp_state, actions, next_states, rewards, terms
+            )
+            # Average Q-values across all parallel updates
+            avg_q_vals = jnp.mean(updated_states.q_vals, axis=0)
+            new_alg_state = state.alg_state.replace(q_vals=avg_q_vals)
+
+            # Update policy state (use any episode completion signal)
+            dones = terms + timeouts > 0
+            any_done = jnp.any(dones)
+            new_policy_state = policy_module.update(state.policy_state, any_done)
+
+            # Update loop state (track all environments)
+            new_returns = state.ep_return + rewards
+            last_returns = jnp.where(dones, new_returns, state.last_return)
+            ep_returns = jnp.where(dones, 0.0, new_returns)
+
+            new_state = LoopState(
+                alg_state=new_alg_state,
+                policy_state=new_policy_state,
+                mdp_state=stepped_states,
+                ep_step=ep_steps,
+                ep_return=ep_returns,
+                last_return=last_returns
+            )
+
+            metrics = metrics_fn(prev, new_state, mdp, step)
+            return new_state, metrics
+
+    keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps * args.n_envs)
+    keys = keys.reshape(args.n_steps, args.n_envs, -1)
+
+    if args.n_envs == 1:
+        keys = keys[:, 0, :]  # Shape: [n_steps, 2]
+        steps_and_keys = (jnp.arange(args.n_steps), keys)
+    else:
+        steps_and_keys = (jnp.arange(args.n_steps), keys)
 
     final_state, all_metrics = jax.lax.scan(step_fn, init, steps_and_keys)
     return final_state, all_metrics
@@ -149,6 +209,44 @@ def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int,
 def graph_mdp_factory() -> MDP:
     """ Create a Graph MDP """
     return graph_mdp()
+
+
+def q_learning_parallel_envs():
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Q-Learning with Parallel Environments
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+    mdp = grid_mdp_factory()
+    alg_name = "Q-Learning (Parallel Envs)"
+    n_envs = 4
+    loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50, n_envs=n_envs)
+    policy_module = epsilon_greedy
+
+    key = jrd.PRNGKey(loop_args.seed)
+    key, init_key = jrd.split(key)
+
+    alg_state = q_learning.init(mdp, init_key, gamma=0.99, alpha=0.5)
+    policy_state = epsilon_greedy.init(epsilon=1.0, eps_decay=0.997, eps_min=0.1)
+
+    # Initialize parallel environment states
+    env_keys = jrd.split(key, n_envs)
+    mdp_states = jax.vmap(mdp.init_state)(env_keys)
+
+    state = LoopState(
+        alg_state=alg_state,
+        policy_state=policy_state,
+        mdp_state=mdp_states,  # Shape: [n_envs, n_states]
+        ep_step=jnp.zeros(n_envs),
+        ep_return=jnp.zeros(n_envs),
+        last_return=jnp.zeros(n_envs)
+    )
+
+    final_state, metrics = loop(mdp, state, loop_args, policy_module, compute_metrics)
+
+    results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
+    log_results(results, alg_name)
+    return final_state.alg_state.q_vals
 
 
 def q_learning_multi_seed():
@@ -372,12 +470,14 @@ def q_learning_benchmark():
 @click.command()
 @click.argument(
     "benchmark_type",
-    type=click.Choice(["q_learning", "multi_seed", "q_learning_garnet", "q_learning_graph", "benchmark"])
+    type=click.Choice(["q_learning", "parallel_envs", "multi_seed", "q_learning_garnet", "q_learning_graph", "benchmark"])
 )
 def main(benchmark_type):
     """Run JAX Learning benchmarks"""
     if benchmark_type == "q_learning":
         q_learning_grid_world()
+    elif benchmark_type == "parallel_envs":
+        q_learning_parallel_envs()
     elif benchmark_type == "multi_seed":
         q_learning_multi_seed()
     elif benchmark_type == "q_learning_garnet":

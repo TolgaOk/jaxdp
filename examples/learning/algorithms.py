@@ -42,17 +42,27 @@ class q_learning(metaclass=StaticMeta):
 
         Args:
             alg_state: Current algorithm state (Q-values and parameters)
-            mdp_state: State where action was taken
-            action: Action taken (one-hot vector)
-            next_s: Next state reached
+            mdp_state: State where action was taken (one-hot, shape: [n_states])
+            action: Action taken (one-hot, shape: [n_actions])
+            next_s: Next state reached (one-hot, shape: [n_states])
             reward: Reward received
             term: Terminal flag
         """
         # Q-learning update: Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s',a') - Q(s,a)]
-        curr_q = jnp.sum(alg_state.q_vals * action[:, None] * mdp_state[None, :])
-        max_next_q = jnp.max(jnp.sum(alg_state.q_vals * next_s[None, :], axis=1))
+        # Use einsum for efficient computation
+        # Q: [n_actions, n_states], action: [n_actions], mdp_state: [n_states]
+        curr_q = jnp.einsum('as,a,s->', alg_state.q_vals, action, mdp_state)
+
+        # Compute Q-values for next state, then take max
+        q_next = jnp.einsum('as,s->a', alg_state.q_vals, next_s)
+        max_next_q = jnp.max(q_next)
+
+        # TD target and error
         td_target = reward + alg_state.gamma * max_next_q * (1.0 - term)
         td_error = td_target - curr_q
-        next_q = alg_state.q_vals + alg_state.alpha * td_error * action[:, None] * mdp_state[None, :]
+
+        # Update: Q += α * δ * (action ⊗ state)
+        update = jnp.einsum('a,s->as', action, mdp_state)
+        next_q = alg_state.q_vals + alg_state.alpha * td_error * update
 
         return alg_state.replace(q_vals=next_q)

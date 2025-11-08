@@ -42,10 +42,10 @@ class epsilon_greedy(metaclass=StaticMeta):
         return e_greedy_policy.q(q_vals, state.epsilon)
 
 
-class softmax(metaclass=StaticMeta):
+class soft_policy(metaclass=StaticMeta):
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
-    Softmax (Boltzmann) Exploration Policy
+    Soft Policy (Boltzmann Exploration)
 
     Selects actions with probability proportional to exp(Q(s,a)/temperature).
     Temperature decays over time: temp = max(temp * decay, min)
@@ -59,21 +59,21 @@ class softmax(metaclass=StaticMeta):
         temp_min: jnp.ndarray
 
     def init(temperature: float = 1.0, temp_decay: float = 0.995,
-             temp_min: float = 0.01) -> "softmax.State":
-        return softmax.State(
+             temp_min: float = 0.01) -> "soft_policy.State":
+        return soft_policy.State(
             temperature=jnp.array(temperature),
             temp_decay=jnp.array(temp_decay),
             temp_min=jnp.array(temp_min)
         )
 
-    def update(state: "softmax.State", done: jnp.ndarray) -> "softmax.State":
+    def update(state: "soft_policy.State", done: jnp.ndarray) -> "soft_policy.State":
         """Decay temperature after each episode"""
         new_temp = jnp.maximum(state.temperature * state.temp_decay, state.temp_min)
         temperature = jnp.where(done, new_temp, state.temperature)
         return state.replace(temperature=temperature)
 
-    def get_policy(q_vals: QType, state: "softmax.State"):
-        """Get softmax policy from Q-values"""
+    def get_policy(q_vals: QType, state: "soft_policy.State"):
+        """Get soft policy from Q-values"""
         # Compute softmax probabilities: exp(Q/T) / sum(exp(Q/T))
         # Q-values shape: (n_actions, n_states)
         # For each state, compute softmax over actions
