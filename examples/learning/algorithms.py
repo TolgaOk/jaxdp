@@ -26,17 +26,12 @@ class q_learning(metaclass=StaticMeta):
         epsilon: jnp.ndarray
         eps_decay: jnp.ndarray
         eps_min: jnp.ndarray
-        state: jnp.ndarray
-        ep_step: jnp.ndarray
-        ep_return: jnp.ndarray
-        last_return: jnp.ndarray
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray,
              alpha: jnp.ndarray, epsilon: jnp.ndarray,
              eps_decay: jnp.ndarray = 0.995, eps_min: jnp.ndarray = 0.01,
              init_q: jnp.ndarray = 0.0) -> "q_learning.State":
         q_vals = jnp.full((mdp.action_size, mdp.state_size), init_q)
-        init_state = mdp.init_state(key)
 
         return q_learning.State(
             q_vals=q_vals,
@@ -44,45 +39,33 @@ class q_learning(metaclass=StaticMeta):
             alpha=alpha,
             epsilon=epsilon,
             eps_decay=eps_decay,
-            eps_min=eps_min,
-            state=init_state,
-            ep_step=jnp.array(0.0),
-            ep_return=jnp.array(0.0),
-            last_return=jnp.array(0.0)
+            eps_min=eps_min
         )
 
-    def update(state: "q_learning.State", mdp: MDP, step: int,
-               max_ep_len: int, key: jrd.PRNGKey) -> "q_learning.State":
-        policy = e_greedy_policy.q(state.q_vals, state.epsilon)
+    def update(alg_state: "q_learning.State", mdp_state: jnp.ndarray,
+               action: jnp.ndarray, next_s: jnp.ndarray, reward: jnp.ndarray,
+               term: jnp.ndarray, done: jnp.ndarray) -> "q_learning.State":
+        """
+        Update Q-values based on a single transition.
 
-        action, next_s, reward, term, timeout, stepped_s, ep_step = async_sample_step_pi(
-            mdp, policy, state.state, state.ep_step, max_ep_len, key
-        )
-
+        Args:
+            alg_state: Current algorithm state (Q-values and parameters)
+            mdp_state: State where action was taken
+            action: Action taken (one-hot vector)
+            next_s: Next state reached
+            reward: Reward received
+            term: Terminal flag
+            done: Episode done flag (terminal or timeout)
+        """
         # Q-learning update: Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s',a') - Q(s,a)]
-        # Use state.state (where we started) not stepped_s (where we ended up after potential reset)
-        curr_q = jnp.sum(state.q_vals * action[:, None] * state.state[None, :])
-        max_next_q = jnp.max(jnp.sum(state.q_vals * next_s[None, :], axis=1))
-        td_target = reward + state.gamma * max_next_q * (1.0 - term)
+        curr_q = jnp.sum(alg_state.q_vals * action[:, None] * mdp_state[None, :])
+        max_next_q = jnp.max(jnp.sum(alg_state.q_vals * next_s[None, :], axis=1))
+        td_target = reward + alg_state.gamma * max_next_q * (1.0 - term)
         td_error = td_target - curr_q
-        next_q = state.q_vals + state.alpha * td_error * action[:, None] * state.state[None, :]
-
-        # Track episode return
-        new_return = state.ep_return + reward
-        done = term + timeout > 0
-
-        last_return = jnp.where(done, new_return, state.last_return)
-        ep_return = jnp.where(done, 0.0, new_return)
+        next_q = alg_state.q_vals + alg_state.alpha * td_error * action[:, None] * mdp_state[None, :]
 
         # Decay epsilon after each episode
-        new_epsilon = jnp.maximum(state.epsilon * state.eps_decay, state.eps_min)
-        epsilon = jnp.where(done, new_epsilon, state.epsilon)
+        new_epsilon = jnp.maximum(alg_state.epsilon * alg_state.eps_decay, alg_state.eps_min)
+        epsilon = jnp.where(done, new_epsilon, alg_state.epsilon)
 
-        return state.replace(
-            q_vals=next_q,
-            state=stepped_s,  # Update to next state (or reset state)
-            ep_step=ep_step,
-            ep_return=ep_return,
-            last_return=last_return,
-            epsilon=epsilon
-        )
+        return alg_state.replace(q_vals=next_q, epsilon=epsilon)
