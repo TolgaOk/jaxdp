@@ -23,6 +23,72 @@ jax.config.update("jax_enable_x64", True)
 from jaxdp.typehints import StaticMeta
 
 
+class metrics(metaclass=StaticMeta):
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Metrics Namespace
+
+    Computes and stores training metrics.
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+
+    @struct.dataclass
+    class State:
+        """Metrics collected during training"""
+        l1: jnp.ndarray
+        l2: jnp.ndarray
+        linf: jnp.ndarray
+        bellman_err: jnp.ndarray
+        iteration: jnp.ndarray
+        ep_return: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
+        ep_len: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
+        eval_mean_return: jnp.ndarray  # NaN if no evaluation this step
+        eval_std_return: jnp.ndarray  # NaN if no evaluation this step
+
+    def compute(prev: "loop.State", new: "loop.State", args: "loop.Args",
+                step: int, dones: jnp.ndarray, eval_results: dict) -> "metrics.State":
+        """Compute metrics for the current iteration
+
+        Args:
+            prev: Previous loop state
+            new: New loop state
+            args: Loop arguments
+            step: Current step number
+            dones: Boolean array indicating which environments completed episodes [n_envs]
+            eval_results: Dictionary with evaluation results (mean_return, std_return)
+
+        Returns:
+            Metrics state with NaN values where no information is available
+        """
+        prev_alg = prev.alg_state
+        new_alg = new.alg_state
+
+        diff = new_alg.q_vals - prev_alg.q_vals
+        l1 = jnp.sum(jnp.abs(diff))
+        l2 = jnp.sqrt(jnp.sum(diff**2))
+        linf = jnp.max(jnp.abs(diff))
+
+        bellman_target = bellman_op.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
+        bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
+
+        # Initialize episode metrics with NaN for each environment
+        # Only set actual values where episodes completed
+        ep_return = jnp.where(dones, new.last_return, jnp.nan)
+        ep_len = jnp.where(dones, prev.ep_step, jnp.nan)
+
+        return metrics.State(
+            l1=l1,
+            l2=l2,
+            linf=linf,
+            bellman_err=bellman_err,
+            iteration=step,
+            ep_return=ep_return,
+            ep_len=ep_len,
+            eval_mean_return=eval_results["mean_return"],
+            eval_std_return=eval_results["std_return"]
+        )
+
+
 class loop(metaclass=StaticMeta):
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
@@ -58,19 +124,6 @@ class loop(metaclass=StaticMeta):
         n_eval_episodes: int = 10  # Number of episodes for evaluation
         eval_seed: int = 42  # Seed for evaluation
 
-    @struct.dataclass
-    class Metrics:
-        """Metrics collected during training"""
-        l1: jnp.ndarray
-        l2: jnp.ndarray
-        linf: jnp.ndarray
-        bellman_err: jnp.ndarray
-        iteration: jnp.ndarray
-        ep_return: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
-        ep_len: jnp.ndarray  # Shape: [n_envs] - NaN if episode not complete
-        eval_mean_return: jnp.ndarray  # NaN if no evaluation this step
-        eval_std_return: jnp.ndarray  # NaN if no evaluation this step
-
     def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states
 
@@ -97,13 +150,12 @@ class loop(metaclass=StaticMeta):
             last_return=last_return
         )
 
-    def train(state: "loop.State", args: "loop.Args", metrics_fn) -> tuple["loop.State", Any]:
+    def train(state: "loop.State", args: "loop.Args") -> tuple["loop.State", Any]:
         """Run training loop for n_steps with specified value function and policy
 
         Args:
             state: Initial loop state
             args: Loop arguments (includes value_fn, policy_ns, mdp, n_steps, etc.)
-            metrics_fn: Function to compute metrics at each step
 
         Returns:
             Final loop state and all metrics collected during training
@@ -140,12 +192,12 @@ class loop(metaclass=StaticMeta):
             any_done = jnp.any(dones)
             new_policy_state = args.policy_ns.update(state.policy_state, any_done)
 
-            # Update loop state (track all environments)
+            # Update loop state (track all environments) - use .replace()
             new_returns = state.ep_return + rewards
             last_returns = jnp.where(dones, new_returns, state.last_return)
             ep_returns = jnp.where(dones, 0.0, new_returns)
 
-            new_state = loop.State(
+            new_state = state.replace(
                 alg_state=new_alg_state,
                 policy_state=new_policy_state,
                 mdp_state=stepped_states,
@@ -168,8 +220,9 @@ class loop(metaclass=StaticMeta):
                 new_state
             )
 
-            metrics = metrics_fn(prev, new_state, args, step, dones, eval_results)
-            return new_state, metrics
+            # Compute metrics
+            metrics_state = metrics.compute(prev, new_state, args, step, dones, eval_results)
+            return new_state, metrics_state
 
         keys = jrd.split(jrd.PRNGKey(args.seed), args.n_steps * args.n_envs)
         keys = keys.reshape(args.n_steps, args.n_envs, -1)
@@ -222,50 +275,6 @@ class loop(metaclass=StaticMeta):
             "mean_length": jnp.mean(lengths),
             "std_length": jnp.std(lengths)
         }
-
-
-def compute_metrics(prev: loop.State, new: loop.State, args: loop.Args, step: int,
-                    dones: jnp.ndarray, eval_results: dict) -> loop.Metrics:
-    """Compute metrics for the current iteration
-
-    Args:
-        prev: Previous loop state
-        new: New loop state
-        args: Loop arguments
-        step: Current step number
-        dones: Boolean array indicating which environments completed episodes [n_envs]
-        eval_results: Dictionary with evaluation results (mean_return, std_return)
-
-    Returns:
-        Metrics with NaN values where no information is available
-    """
-    prev_alg = prev.alg_state
-    new_alg = new.alg_state
-
-    diff = new_alg.q_vals - prev_alg.q_vals
-    l1 = jnp.sum(jnp.abs(diff))
-    l2 = jnp.sqrt(jnp.sum(diff**2))
-    linf = jnp.max(jnp.abs(diff))
-
-    bellman_target = bellman_op.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
-    bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
-
-    # Initialize episode metrics with NaN for each environment
-    # Only set actual values where episodes completed
-    ep_return = jnp.where(dones, new.last_return, jnp.nan)
-    ep_len = jnp.where(dones, prev.ep_step, jnp.nan)
-
-    return loop.Metrics(
-        l1=l1,
-        l2=l2,
-        linf=linf,
-        bellman_err=bellman_err,
-        iteration=step,
-        ep_return=ep_return,
-        ep_len=ep_len,
-        eval_mean_return=eval_results["mean_return"],
-        eval_std_return=eval_results["std_return"]
-    )
 
 
 def grid_mdp_factory() -> MDP:
@@ -328,9 +337,9 @@ def q_learning_parallel_envs():
     state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(state, args, compute_metrics)
+    final_state, all_metrics = loop.train(state, args)
 
-    results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
+    results = {"GridWorld": (all_metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
     return final_state.alg_state.q_vals
 
@@ -366,8 +375,8 @@ def q_learning_multi_seed():
         state = loop.init(alg_state, policy_state, args)
 
         # Train
-        final_state, metrics = loop.train(state, args, compute_metrics)
-        return final_state, metrics
+        final_state, all_metrics = loop.train(state, args)
+        return final_state, all_metrics
 
     # Vmap over different seeds
     seeds = jnp.arange(n_seeds)
@@ -415,9 +424,9 @@ def q_learning_grid_world():
     state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(state, args, compute_metrics)
+    final_state, all_metrics = loop.train(state, args)
 
-    results = {"GridWorld": (metrics, final_state.alg_state.q_vals)}
+    results = {"GridWorld": (all_metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
     return final_state.alg_state.q_vals
 
@@ -451,9 +460,9 @@ def q_learning_garnet():
     state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(state, args, compute_metrics)
+    final_state, all_metrics = loop.train(state, args)
 
-    results = {"GarnetMDP": (metrics, final_state.alg_state.q_vals)}
+    results = {"GarnetMDP": (all_metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
     return final_state.alg_state.q_vals
 
@@ -487,9 +496,9 @@ def q_learning_graph():
     state = loop.init(alg_state, policy_state, args)
 
     # Train
-    final_state, metrics = loop.train(state, args, compute_metrics)
+    final_state, all_metrics = loop.train(state, args)
 
-    results = {"GraphMDP": (metrics, final_state.alg_state.q_vals)}
+    results = {"GraphMDP": (all_metrics, final_state.alg_state.q_vals)}
     log_results(results, alg_name)
     return final_state.alg_state.q_vals
 
@@ -569,9 +578,9 @@ def q_learning_benchmark():
         state = loop.init(alg_state, policy_state, args)
 
         # Train
-        final_state, metrics = loop.train(state, args, compute_metrics)
+        final_state, all_metrics = loop.train(state, args)
 
-        results[config.name] = (metrics, final_state.alg_state.q_vals)
+        results[config.name] = (all_metrics, final_state.alg_state.q_vals)
 
     log_results(results, alg_name)
     return results
