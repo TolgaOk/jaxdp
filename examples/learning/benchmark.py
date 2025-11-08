@@ -22,7 +22,8 @@ class Metrics:
     linf: jnp.ndarray
     bellman_err: jnp.ndarray
     iteration: jnp.ndarray
-    episode_reward: jnp.ndarray
+    episode_reward: jnp.ndarray  # Reward from last completed episode
+    episode_length: jnp.ndarray  # Length of last completed episode (in steps)
 
 
 def compute_metrics(prev_state, new_state, mdp, step):
@@ -39,8 +40,16 @@ def compute_metrics(prev_state, new_state, mdp, step):
     bellman_target = bellman_op.q(mdp, prev_q, gamma)
     bellman_err = jnp.max(jnp.abs(prev_q - bellman_target))
 
-    # For now, we don't track episode rewards in metrics
-    episode_reward = jnp.array(0.0)
+    # Track episode rewards and lengths
+    # An episode completed if episode_count increased between prev and new state
+    episode_completed = new_state.episode_count > prev_state.episode_count
+
+    # When episode completes, record its reward, otherwise 0
+    episode_reward = jnp.where(episode_completed, new_state.last_episode_reward, 0.0)
+
+    # Episode length is the episode_step from BEFORE the reset (prev_state)
+    # because new_state.episode_step is already reset to 0 after episode ends
+    episode_length = jnp.where(episode_completed, prev_state.episode_step + 1, 0.0)
 
     return Metrics(
         l1=l1,
@@ -48,7 +57,8 @@ def compute_metrics(prev_state, new_state, mdp, step):
         linf=linf,
         bellman_err=bellman_err,
         iteration=step,
-        episode_reward=episode_reward
+        episode_reward=episode_reward,
+        episode_length=episode_length
     )
 
 
@@ -118,7 +128,7 @@ def q_learning_grid_world():
     """
     mdp = grid_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=12345, n_steps=5000, max_episode_len=50)
+    loop_args = LoopArgs(seed=12345, n_steps=10000, max_episode_len=50)
 
     # Q-learning hyperparameters
     gamma = 0.99

@@ -28,6 +28,9 @@ class q_learning(metaclass=StaticMeta):
         epsilon: jnp.ndarray
         last_state: jnp.ndarray
         episode_step: jnp.ndarray
+        current_episode_reward: jnp.ndarray  # Accumulates reward for current episode
+        last_episode_reward: jnp.ndarray  # Stores reward from last completed episode
+        episode_count: jnp.ndarray  # Total number of completed episodes
 
     def init(mdp: MDP, key: jrd.PRNGKey, gamma: jnp.ndarray,
              alpha: jnp.ndarray, epsilon: jnp.ndarray) -> "q_learning.State":
@@ -44,7 +47,10 @@ class q_learning(metaclass=StaticMeta):
             alpha=alpha,
             epsilon=epsilon,
             last_state=init_state,
-            episode_step=jnp.array(0.0)
+            episode_step=jnp.array(0.0),
+            current_episode_reward=jnp.array(0.0),
+            last_episode_reward=jnp.array(0.0),
+            episode_count=jnp.array(0.0)
         )
 
     def update(state: "q_learning.State", mdp: MDP, step: int,
@@ -72,8 +78,20 @@ class q_learning(metaclass=StaticMeta):
         q_update = state.alpha * td_error * action[:, None] * state_vec[None, :]
         next_q = state.q_vals + q_update
 
+        # Track episodic rewards
+        new_episode_reward = state.current_episode_reward + reward
+        episode_ended = terminal + timeout  # Episode ends on terminal or timeout
+
+        # If episode ended, store the total reward and reset counter, increment episode count
+        last_ep_reward = jnp.where(episode_ended > 0, new_episode_reward, state.last_episode_reward)
+        current_ep_reward = jnp.where(episode_ended > 0, 0.0, new_episode_reward)
+        new_episode_count = jnp.where(episode_ended > 0, state.episode_count + 1, state.episode_count)
+
         return state.replace(
             q_vals=next_q,
-            last_state=next_state_vec,
-            episode_step=episode_step
+            last_state=state_vec,  # Use state_vec (properly reset) not next_state_vec!
+            episode_step=episode_step,
+            current_episode_reward=current_ep_reward,
+            last_episode_reward=last_ep_reward,
+            episode_count=new_episode_count
         )
