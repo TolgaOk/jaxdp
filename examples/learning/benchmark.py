@@ -95,12 +95,12 @@ def q_learning_grid_world():
     """
     mdp = grid_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=42, n_steps=15000, max_ep_len=100)
+    loop_args = LoopArgs(seed=0, n_steps=5000, max_ep_len=50)
 
     init_state = q_learning.init(
         mdp, jrd.PRNGKey(loop_args.seed),
-        gamma=0.99, alpha=0.5, epsilon=0.9,
-        eps_decay=0.999, eps_min=0.05
+        gamma=0.99, alpha=0.5, epsilon=1.0,
+        eps_decay=0.997, eps_min=0.1
     )
 
     final_state, metrics = loop(
