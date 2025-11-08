@@ -194,20 +194,22 @@ class loop(metaclass=StaticMeta):
             mdp_state = args.mdp.init_state(key)
             ep_step = jnp.array(0.0)
             ep_return = jnp.array(0.0)
+            done = jnp.array(False)
 
             def step_fn(carry, _):
-                mdp_state, ep_step, ep_return = carry
+                mdp_state, ep_step, ep_return, done = carry
                 # Use greedy policy for evaluation
                 policy = greedy_policy.q(state.alg_state.q_vals)
                 action, next_s, reward, term, timeout, stepped_s, new_ep_step = async_sample_step_pi(
                     args.mdp, policy, mdp_state, ep_step, args.max_ep_len, key
                 )
-                new_return = ep_return + reward
-                done = term + timeout > 0
-                return (stepped_s, new_ep_step, new_return), done
+                # Only accumulate reward if episode not already done
+                new_return = jnp.where(done, ep_return, ep_return + reward)
+                new_done = done | (term + timeout > 0)
+                return (stepped_s, new_ep_step, new_return, new_done), None
 
-            (final_mdp_state, final_ep_step, final_return), _ = jax.lax.scan(
-                step_fn, (mdp_state, ep_step, ep_return), None, length=args.max_ep_len
+            (final_mdp_state, final_ep_step, final_return, final_done), _ = jax.lax.scan(
+                step_fn, (mdp_state, ep_step, ep_return, done), None, length=args.max_ep_len
             )
             return final_return, final_ep_step
 
