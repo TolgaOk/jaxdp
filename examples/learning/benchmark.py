@@ -186,19 +186,18 @@ class loop(metaclass=StaticMeta):
                 state.mdp_state, state.ep_step, keys
             )
 
-            # Update Q-values for each transition in parallel, then average
-            # Create Transition objects for each environment
-            vmap_transition = jax.vmap(lambda s, a, r, ns, t: Transition(
-                state=s, action=a, reward=r, next_state=ns, terminal=t
-            ))
-            transitions = vmap_transition(state.mdp_state, actions, rewards, next_states, terms)
+            # Update Q-values using batch of transitions
+            # Create Transition batch with all environment transitions
+            transitions = Transition(
+                state=state.mdp_state,
+                action=actions,
+                reward=rewards,
+                next_state=next_states,
+                terminal=terms
+            )
 
-            vmap_update = jax.vmap(args.value_fn.update, in_axes=(None, 0))
-            updated_states = vmap_update(state.alg_state, transitions)
-
-            # Average Q-values across all parallel updates
-            avg_q_vals = jnp.mean(updated_states.q_vals, axis=0)
-            new_alg_state = state.alg_state.replace(q_vals=avg_q_vals)
+            # Use batch_update to properly handle repeated (s,a) pairs
+            new_alg_state = args.value_fn.batch_update(state.alg_state, transitions)
 
             # Update policy state (use any episode completion signal)
             dones = terms + timeouts > 0
