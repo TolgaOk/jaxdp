@@ -80,16 +80,16 @@ class q_learning(metaclass=StaticMeta):
         """
         Update Q-values based on a batch of transitions.
 
-        Properly handles repeated state-action pairs by dividing updates by the
-        number of occurrences. When multiple transitions visit the same (s,a) pair,
-        their TD errors are averaged.
+        Properly handles repeated state-action pairs by dividing the summed updates
+        by the number of occurrences of each (s,a) pair. This ensures that frequently
+        visited (s,a) pairs don't get disproportionately large updates.
 
         Args:
             state: Current algorithm state (Q-values and parameters)
             transitions: Batch of Transition objects (fields have batch dimension)
 
         Returns:
-            Updated algorithm state with Q-values averaged by occurrence count
+            Updated algorithm state with properly normalized updates
         """
         # Vmap the regular update to compute all individual updates
         vmap_update = jax.vmap(lambda t: q_learning.update(state, t))
@@ -103,18 +103,16 @@ class q_learning(metaclass=StaticMeta):
         total_delta = jnp.sum(deltas, axis=0)  # Shape: [n_actions, n_states]
 
         # Count how many times each (s,a) pair appears in the batch
-        # Each transition contributes to one (s,a) pair via outer product
-        # Shape: [batch, n_actions, n_states]
+        # Use einsum to compute outer product for each transition in batch
         counts = jnp.einsum('ba,bs->bas', transitions.action, transitions.state)
         total_counts = jnp.sum(counts, axis=0)  # Shape: [n_actions, n_states]
 
+        # Divide summed updates by occurrence count for each (s,a)
         # Avoid division by zero (where count=0, delta should also be 0)
         safe_counts = jnp.maximum(total_counts, 1.0)
+        normalized_delta = total_delta / safe_counts
 
-        # Average the deltas by the occurrence count for each (s,a)
-        avg_delta = total_delta / safe_counts
-
-        # Apply the averaged update
-        new_q_vals = state.q_vals + avg_delta
+        # Apply the normalized updates
+        new_q_vals = state.q_vals + normalized_delta
 
         return state.replace(q_vals=new_q_vals)
