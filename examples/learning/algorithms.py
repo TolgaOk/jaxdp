@@ -1,4 +1,3 @@
-
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -17,6 +16,7 @@ class Transition:
 
     Contains all information about a single transition (s, a, r, s', done).
     """
+
     state: F["S"]  # Current state (one-hot)
     action: F["A"]  # Action taken (one-hot)
     reward: F[""]  # Reward received (scalar)
@@ -39,15 +39,12 @@ class q_learning(metaclass=StaticMeta):
         gamma: F[""]  # Discount factor (scalar)
         alpha: F[""]  # Learning rate (scalar)
 
-    def init(mdp: MDP, key: jrd.PRNGKey, gamma: float,
-             alpha: float, init_q: float = 0.0) -> "q_learning.State":
+    def init(
+        mdp: MDP, key: jrd.PRNGKey, gamma: float, alpha: float, init_q: float = 0.0
+    ) -> "q_learning.State":
         q_vals = jnp.full((mdp.action_size, mdp.state_size), init_q)
 
-        return q_learning.State(
-            q_vals=q_vals,
-            gamma=jnp.array(gamma),
-            alpha=jnp.array(alpha)
-        )
+        return q_learning.State(q_vals=q_vals, gamma=jnp.array(gamma), alpha=jnp.array(alpha))
 
     def update(state: "q_learning.State", transition: Transition) -> "q_learning.State":
         """
@@ -60,10 +57,10 @@ class q_learning(metaclass=StaticMeta):
         # Q-learning update: Q(s,a) ← Q(s,a) + α[r + γ max_a' Q(s',a') - Q(s,a)]
         # Use einsum for efficient computation
         # Q: [n_actions, n_states], action: [n_actions], state: [n_states]
-        curr_q = jnp.einsum('as,a,s->', state.q_vals, transition.action, transition.state)
+        curr_q = jnp.einsum("as,a,s->", state.q_vals, transition.action, transition.state)
 
         # Compute Q-values for next state, then take max
-        q_next = jnp.einsum('as,s->a', state.q_vals, transition.next_state)
+        q_next = jnp.einsum("as,s->a", state.q_vals, transition.next_state)
         max_next_q = jnp.max(q_next)
 
         # TD target and error
@@ -71,7 +68,7 @@ class q_learning(metaclass=StaticMeta):
         td_error = td_target - curr_q
 
         # Update: Q += α * δ * (action ⊗ state)
-        update = jnp.einsum('a,s->as', transition.action, transition.state)
+        update = jnp.einsum("a,s->as", transition.action, transition.state)
         next_q = state.q_vals + state.alpha * td_error * update
 
         return state.replace(q_vals=next_q)
@@ -104,7 +101,7 @@ class q_learning(metaclass=StaticMeta):
 
         # Count how many times each (s,a) pair appears in the batch
         # Use einsum: sum over batch dimension to get occurrence counts
-        total_counts = jnp.einsum('ba,bs->as', transitions.action, transitions.state)
+        total_counts = jnp.einsum("ba,bs->as", transitions.action, transitions.state)
 
         # Divide summed updates by occurrence count for each (s,a)
         # Avoid division by zero (where count=0, delta should also be 0)

@@ -11,7 +11,7 @@ def log_results(results, alg_name):
         show_header=True,
         header_style="bold white",
         border_style="white",
-        title_style="bold white"
+        title_style="bold white",
     )
     table.add_column("MDP", style="bold white", width=20)
     table.add_column("Bellman Error", justify="right", style="white")
@@ -31,8 +31,10 @@ def log_results(results, alg_name):
         ep_returns_flat = metrics.ep_return.flatten()
         ep_returns = ep_returns_flat[~jnp.isnan(ep_returns_flat)]
         n_episodes = len(ep_returns)
-        last_20_return = float(jnp.mean(ep_returns[-20:])) if n_episodes >= 20 else (
-            float(jnp.mean(ep_returns)) if n_episodes > 0 else 0.0
+        last_20_return = (
+            float(jnp.mean(ep_returns[-20:]))
+            if n_episodes >= 20
+            else (float(jnp.mean(ep_returns)) if n_episodes > 0 else 0.0)
         )
 
         # Evaluation results - get last non-NaN value
@@ -46,7 +48,7 @@ def log_results(results, alg_name):
             f"{n_updates}",
             f"{last_20_return:.3f}",
             f"{n_episodes}",
-            eval_return_str
+            eval_return_str,
         )
 
     console.print()

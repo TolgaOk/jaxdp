@@ -1,4 +1,3 @@
-
 import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
@@ -23,12 +22,11 @@ class epsilon_greedy(metaclass=StaticMeta):
         eps_decay: F[""]  # Decay factor (scalar)
         eps_min: F[""]  # Minimum epsilon (scalar)
 
-    def init(epsilon: float = 1.0, eps_decay: float = 0.997,
-             eps_min: float = 0.1) -> "epsilon_greedy.State":
+    def init(
+        epsilon: float = 1.0, eps_decay: float = 0.997, eps_min: float = 0.1
+    ) -> "epsilon_greedy.State":
         return epsilon_greedy.State(
-            epsilon=jnp.array(epsilon),
-            eps_decay=jnp.array(eps_decay),
-            eps_min=jnp.array(eps_min)
+            epsilon=jnp.array(epsilon), eps_decay=jnp.array(eps_decay), eps_min=jnp.array(eps_min)
         )
 
     def update(state: "epsilon_greedy.State", done: F[""]) -> "epsilon_greedy.State":
@@ -58,12 +56,13 @@ class soft_policy(metaclass=StaticMeta):
         temp_decay: F[""]  # Decay factor (scalar)
         temp_min: F[""]  # Minimum temperature (scalar)
 
-    def init(temperature: float = 1.0, temp_decay: float = 0.995,
-             temp_min: float = 0.01) -> "soft_policy.State":
+    def init(
+        temperature: float = 1.0, temp_decay: float = 0.995, temp_min: float = 0.01
+    ) -> "soft_policy.State":
         return soft_policy.State(
             temperature=jnp.array(temperature),
             temp_decay=jnp.array(temp_decay),
-            temp_min=jnp.array(temp_min)
+            temp_min=jnp.array(temp_min),
         )
 
     def update(state: "soft_policy.State", done: F[""]) -> "soft_policy.State":
