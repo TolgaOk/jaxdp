@@ -5,7 +5,7 @@ import click
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
-from algorithms import q_learning
+from algorithms import q_learning, Transition
 from flax import struct
 from policies import epsilon_greedy, soft_policy
 from utils import log_results
@@ -187,10 +187,15 @@ class loop(metaclass=StaticMeta):
             )
 
             # Update Q-values for each transition in parallel, then average
-            vmap_update = jax.vmap(args.value_fn.update, in_axes=(None, 0, 0, 0, 0, 0))
-            updated_states = vmap_update(
-                state.alg_state, state.mdp_state, actions, next_states, rewards, terms
-            )
+            # Create Transition objects for each environment
+            vmap_transition = jax.vmap(lambda s, a, r, ns, t: Transition(
+                state=s, action=a, reward=r, next_state=ns, terminal=t
+            ))
+            transitions = vmap_transition(state.mdp_state, actions, rewards, next_states, terms)
+
+            vmap_update = jax.vmap(args.value_fn.update, in_axes=(None, 0))
+            updated_states = vmap_update(state.alg_state, transitions)
+
             # Average Q-values across all parallel updates
             avg_q_vals = jnp.mean(updated_states.q_vals, axis=0)
             new_alg_state = state.alg_state.replace(q_vals=avg_q_vals)
