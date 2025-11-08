@@ -139,12 +139,12 @@ def q_learning_garnet():
     """
     mdp = garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2)
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
+    loop_args = LoopArgs(seed=0, n_steps=30000, max_ep_len=50)
 
     init_state = q_learning.init(
         mdp, jrd.PRNGKey(loop_args.seed),
-        gamma=0.99, alpha=0.5, epsilon=1.0,
-        eps_decay=0.997, eps_min=0.1
+        gamma=0.99, alpha=0.3, epsilon=1.0,
+        eps_decay=0.9995, eps_min=0.05
     )
 
     final_state, metrics = loop(
@@ -165,12 +165,12 @@ def q_learning_graph():
     """
     mdp = graph_mdp_factory()
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
+    loop_args = LoopArgs(seed=0, n_steps=40000, max_ep_len=50)
 
     init_state = q_learning.init(
         mdp, jrd.PRNGKey(loop_args.seed),
         gamma=0.99, alpha=0.5, epsilon=1.0,
-        eps_decay=0.997, eps_min=0.1
+        eps_decay=0.9996, eps_min=0.05
     )
 
     final_state, metrics = loop(
@@ -190,29 +190,48 @@ def q_learning_benchmark():
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
     alg_name = "Q-Learning"
-    loop_args = LoopArgs(seed=0, n_steps=10000, max_ep_len=50)
-    gamma = 0.99
-    alpha = 0.5
-    epsilon = 1.0
-    eps_decay = 0.997
-    eps_min = 0.1
+    max_ep_len = 50
 
-    mdps = {
-        "GridWorld": grid_mdp_factory(),
-        "GarnetMDP": garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
-        "GraphMDP": graph_mdp_factory()
+    # Tuned hyperparameters for each MDP
+    mdp_configs = {
+        "GridWorld": {
+            "mdp": grid_mdp_factory(),
+            "n_steps": 5000,
+            "alpha": 0.5,
+            "epsilon": 1.0,
+            "eps_decay": 0.997,
+            "eps_min": 0.1
+        },
+        "GarnetMDP": {
+            "mdp": garnet_mdp_factory(jrd.PRNGKey(42), state_size=10, action_size=4, branch_size=2),
+            "n_steps": 30000,
+            "alpha": 0.3,
+            "epsilon": 1.0,
+            "eps_decay": 0.9995,
+            "eps_min": 0.05
+        },
+        "GraphMDP": {
+            "mdp": graph_mdp_factory(),
+            "n_steps": 40000,
+            "alpha": 0.5,
+            "epsilon": 1.0,
+            "eps_decay": 0.9996,
+            "eps_min": 0.05
+        }
     }
 
     results = {}
-    for mdp_name, mdp in mdps.items():
+    for mdp_name, config in mdp_configs.items():
+        loop_args = LoopArgs(seed=0, n_steps=config["n_steps"], max_ep_len=max_ep_len)
+
         init_state = q_learning.init(
-            mdp, jrd.PRNGKey(loop_args.seed),
-            gamma=gamma, alpha=alpha, epsilon=epsilon,
-            eps_decay=eps_decay, eps_min=eps_min
+            config["mdp"], jrd.PRNGKey(loop_args.seed),
+            gamma=0.99, alpha=config["alpha"], epsilon=config["epsilon"],
+            eps_decay=config["eps_decay"], eps_min=config["eps_min"]
         )
 
         final_state, metrics = loop(
-            mdp, init_state, loop_args,
+            config["mdp"], init_state, loop_args,
             q_learning.update, compute_metrics
         )
 
