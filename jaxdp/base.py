@@ -9,7 +9,6 @@ from jaxdp.typehints import F, PiType, QType, StaticMeta, VType
 
 
 class greedy_policy(metaclass=StaticMeta):
-
     def q(value: QType) -> PiType:
         """
         Greedy policy distribution from Q values.
@@ -21,9 +20,9 @@ class greedy_policy(metaclass=StaticMeta):
             PiType: Policy distribution as one hot vectors
 
         """
-        return jax.nn.one_hot(jnp.argmax(value, axis=0, keepdims=False),
-                              num_classes=value.shape[0],
-                              axis=0)
+        return jax.nn.one_hot(
+            jnp.argmax(value, axis=0, keepdims=False), num_classes=value.shape[0], axis=0
+        )
 
     def v(mdp: MDP, value: VType, gamma: float) -> PiType:
         """
@@ -43,7 +42,6 @@ class greedy_policy(metaclass=StaticMeta):
 
 
 class soft_policy(metaclass=StaticMeta):
-
     def q(value: QType, temperature: float) -> PiType:
         r"""
         Softmax policy distribution.
@@ -65,7 +63,6 @@ class soft_policy(metaclass=StaticMeta):
 
 
 class e_greedy_policy(metaclass=StaticMeta):
-
     def q(value: QType, epsilon: float) -> PiType:
         r"""
         Epsilon greedy policy distribution.
@@ -83,12 +80,14 @@ class e_greedy_policy(metaclass=StaticMeta):
         greedy_policy.p = greedy_policy.q(value)
         return greedy_policy.p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
-    def v(value: VType, epsilon: float, ) -> PiType:
+    def v(
+        value: VType,
+        epsilon: float,
+    ) -> PiType:
         raise NotImplementedError
 
 
 class expected_value(metaclass=StaticMeta):
-
     def q(mdp: MDP, value: QType) -> chex.Scalar:
         r"""
         Expected value of the state-action values (Q) over initial distribution.
@@ -125,7 +124,6 @@ class expected_value(metaclass=StaticMeta):
 
 
 class policy_evaluation(metaclass=StaticMeta):
-
     def q(mdp: MDP, policy: PiType, gamma: float) -> QType:
         r"""
         Evaluate the policy for each state-action pair using the true MDP
@@ -145,7 +143,7 @@ class policy_evaluation(metaclass=StaticMeta):
         """
         mc_state_values = policy_evaluation.v(mdp, policy, gamma)
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return (reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values))
+        return reward + gamma * jnp.einsum("axs,x->as", mdp.transition, mc_state_values)
 
     def v(mdp: MDP, policy: PiType, gamma: float) -> VType:
         r"""
@@ -165,12 +163,12 @@ class policy_evaluation(metaclass=StaticMeta):
         """
         transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
 
-        return (jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @
-                jnp.einsum("sx,sx->s", transition_pi.T, reward_pi))
+        return jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @ jnp.einsum(
+            "sx,sx->s", transition_pi.T, reward_pi
+        )
 
 
 class bellman_operator(metaclass=StaticMeta):
-
     def q(mdp: MDP, policy: PiType, value: QType, gamma: float) -> QType:
         r"""
         Evaluate the Bellman policy operator for each state-action pair
@@ -189,8 +187,9 @@ class bellman_operator(metaclass=StaticMeta):
             QType: Target value
 
         """
-        target_values = jnp.einsum("axs,ux,ux,x->as",
-                                   mdp.transition, value, policy, (1 - mdp.terminal))
+        target_values = jnp.einsum(
+            "axs,ux,ux,x->as", mdp.transition, value, policy, (1 - mdp.terminal)
+        )
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
         return reward + gamma * target_values
 
@@ -212,14 +211,12 @@ class bellman_operator(metaclass=StaticMeta):
 
         """
         # TODO: Add test
-        target_values = jnp.einsum("axs,x,x->as",
-                                   mdp.transition, value, (1 - mdp.terminal))
+        target_values = jnp.einsum("axs,x,x->as", mdp.transition, value, (1 - mdp.terminal))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
         return jnp.einsum("as,as->s", reward + gamma * target_values, policy)
 
 
 class bellman_optimality_operator(metaclass=StaticMeta):
-
     def q(mdp: MDP, value: QType, gamma: float) -> QType:
         r"""
         Bellman optimality operator for Q-values.
@@ -237,14 +234,14 @@ class bellman_optimality_operator(metaclass=StaticMeta):
 
         """
         # TODO: Add test
-        target_values = jnp.einsum("axs,x->as", mdp.transition,
-                                   jnp.max(value, axis=0, keepdims=False))
+        target_values = jnp.einsum(
+            "axs,x->as", mdp.transition, jnp.max(value, axis=0, keepdims=False)
+        )
         rewards = jnp.einsum("axs,asx->as", mdp.transition, mdp.reward)
         return rewards + gamma * target_values
 
 
 class stationary_distribution(metaclass=StaticMeta):
-
     def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["AS"]:
         """
         Compute the stationary distribution of the Markov chain induced by the policy.
@@ -257,20 +254,13 @@ class stationary_distribution(metaclass=StaticMeta):
         Returns:
             F["AS"]: Stationary distribution over states
         """
-        distribution = jnp.einsum(
-            "s,as->as",
-            mdp.initial,
-            policy)
+        distribution = jnp.einsum("s,as->as", mdp.initial, policy)
         return jax.lax.fori_loop(
             0,
             iterations,
-            lambda i, d: jnp.einsum(
-                "axs,ux,as->ux",
-                mdp.transition,
-                policy,
-                d
-            ),
-            distribution)
+            lambda i, d: jnp.einsum("axs,ux,as->ux", mdp.transition, policy, d),
+            distribution,
+        )
 
     def v(mdp: MDP, policy: PiType, iterations: int = 10) -> F["S"]:
         raise NotImplementedError
@@ -303,8 +293,9 @@ def to_greedy_state_value(value: QType) -> VType:
 def to_state_action_value(mdp: MDP, value: VType, gamma: float) -> QType:
     """Convert state values to Q-values using the MDP dynamics."""
     # TODO: Add test
-    return (jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) +
-            gamma * jnp.einsum("axs,x->as", mdp.transition, value))
+    return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) + gamma * jnp.einsum(
+        "axs,x->as", mdp.transition, value
+    )
 
 
 def _markov_chain_pi(mdp: MDP, policy: PiType) -> tuple[F["SS"], F["SS"]]:
@@ -343,12 +334,9 @@ def sample_from(policy: PiType, key: chex.PRNGKey) -> F["AS"]:
     return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
 
 
-def sample_based_policy_evaluation(mdp: MDP,
-                                   policy: PiType,
-                                   key: chex.PRNGKey,
-                                   gamma: float,
-                                   max_episode_length: int
-                                   ) -> chex.Scalar:
+def sample_based_policy_evaluation(
+    mdp: MDP, policy: PiType, key: chex.PRNGKey, gamma: float, max_episode_length: int
+) -> chex.Scalar:
     """
     Evaluate policy using sample-based Monte Carlo estimation.
 
@@ -372,18 +360,18 @@ def sample_based_policy_evaluation(mdp: MDP,
     def _step(index, _data):
         _episode_step, _key, _episode_rewards, _state, _is_terminated = _data
         _key, step_key = jrd.split(_key)
-        (act, next_state, reward, terminal, timeout, _state, _episode_step
-         ) = async_sample_step_pi(
-            mdp, policy, _state, _episode_step, max_episode_length, step_key)
-        reward = (1 - _is_terminated) * reward * (gamma ** index)
+        (act, next_state, reward, terminal, timeout, _state, _episode_step) = async_sample_step_pi(
+            mdp, policy, _state, _episode_step, max_episode_length, step_key
+        )
+        reward = (1 - _is_terminated) * reward * (gamma**index)
         _is_terminated = jnp.logical_or(terminal, _is_terminated)
         _episode_rewards = _episode_rewards.at[index].set(reward)
 
         return _episode_step, _key, _episode_rewards, _state, _is_terminated
 
     _, _, episode_rewards, _, _ = jax.lax.fori_loop(
-        0, max_episode_length, _step,
-        (episode_step, key, episode_rewards, state, is_terminated))
+        0, max_episode_length, _step, (episode_step, key, episode_rewards, state, is_terminated)
+    )
     return episode_rewards.sum()
 
 
@@ -400,21 +388,22 @@ def sync_sample(mdp: MDP, key: chex.PRNGKey) -> tuple[F["AS"], F["ASS"], F["AS"]
 
     """
     next_state = distrax.OneHotCategorical(
-        probs=jnp.einsum("axs->asx", mdp.transition), dtype="float").sample(seed=key)
+        probs=jnp.einsum("axs->asx", mdp.transition), dtype="float"
+    ).sample(seed=key)
     terminal = jnp.einsum("asx,x->as", next_state, mdp.terminal)
     reward = jnp.einsum("asx,asx->as", mdp.reward, next_state)
 
     return reward, next_state, terminal
 
 
-def async_sample_step(mdp: MDP,
-                      action: F["A"],
-                      state: F["S"],
-                      episode_step: chex.Scalar,
-                      episode_length: int,
-                      key: chex.PRNGKey
-                      ) -> tuple[F["S"], chex.Scalar, chex.Scalar,
-                                 chex.Scalar, F["S"], chex.Scalar]:
+def async_sample_step(
+    mdp: MDP,
+    action: F["A"],
+    state: F["S"],
+    episode_step: chex.Scalar,
+    episode_length: int,
+    key: chex.PRNGKey,
+) -> tuple[F["S"], chex.Scalar, chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
     r"""
     Asynchronously sample from the given MDP by following the given action. The starting state
     is given by the <state> argument. Similar to stateless version of the env.step() function
@@ -444,10 +433,8 @@ def async_sample_step(mdp: MDP,
     """
     state_key, init_key = jrd.split(key, num=2)
 
-    next_state_p = jnp.einsum(
-        "a,axs,s->x", action, mdp.transition, state)
-    next_state = distrax.OneHotCategorical(
-        probs=next_state_p, dtype="float").sample(seed=state_key)
+    next_state_p = jnp.einsum("a,axs,s->x", action, mdp.transition, state)
+    next_state = distrax.OneHotCategorical(probs=next_state_p, dtype="float").sample(seed=state_key)
     reward = jnp.einsum("asx,a,s,x->", mdp.reward, action, state, next_state)
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
 
@@ -456,22 +443,21 @@ def async_sample_step(mdp: MDP,
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
     done = jnp.logical_or(terminal, timeout)
 
-    init_state = distrax.OneHotCategorical(
-        probs=mdp.initial, dtype="float").sample(seed=init_key)
+    init_state = distrax.OneHotCategorical(probs=mdp.initial, dtype="float").sample(seed=init_key)
     state = next_state * (1 - done) + init_state * done
     episode_step = episode_step * (1 - done)
 
     return next_state, reward, terminal, timeout, state, episode_step
 
 
-def async_sample_step_pi(mdp: MDP,
-                         policy: PiType,
-                         state: F["S"],
-                         episode_step: chex.Scalar,
-                         episode_length: int,
-                         key: chex.PRNGKey
-                         ) -> tuple[F["A"], F["S"], chex.Scalar,
-                                    chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
+def async_sample_step_pi(
+    mdp: MDP,
+    policy: PiType,
+    state: F["S"],
+    episode_step: chex.Scalar,
+    episode_length: int,
+    key: chex.PRNGKey,
+) -> tuple[F["A"], F["S"], chex.Scalar, chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
     r"""
     Asynchronously sample from the given MDP by following the given policy.
 
@@ -497,12 +483,14 @@ def async_sample_step_pi(mdp: MDP,
     policy_p = jnp.einsum("as,s->a", policy, state)
     action = sample_from(policy_p, key=act_key)
 
-    return action, *async_sample_step(mdp=mdp,
-                                      action=action,
-                                      state=state,
-                                      episode_step=episode_step,
-                                      episode_length=episode_length,
-                                      key=step_key)
+    return action, *async_sample_step(
+        mdp=mdp,
+        action=action,
+        state=state,
+        episode_step=episode_step,
+        episode_length=episode_length,
+        key=step_key,
+    )
 
 
 def sg(array: chex.Array) -> chex.Array:
