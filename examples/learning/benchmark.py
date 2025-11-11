@@ -8,11 +8,12 @@ from flax import struct
 
 from jaxdp import async_sample_step_pi
 from jaxdp.base import bellman_optimality_operator as bellman_op
+from jaxdp.base import greedy_policy
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
-from jaxdp.typehints import F, StaticMeta
+from jaxdp.typehints import F, PiType, StaticMeta
 
 from algorithms import Transition, q_learning
 from policies import epsilon_greedy, soft_policy
@@ -90,6 +91,128 @@ class metrics(metaclass=StaticMeta):
             eval_mean_return=eval_results.mean_return,
             eval_std_return=eval_results.std_return,
         )
+
+
+class sampler(metaclass=StaticMeta):
+    """
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    Sampler Namespace
+
+    Provides sampling functions for interacting with MDPs using policies.
+    ◈─────────────────────────────────────────────────────────────────────────◈
+    """
+
+    @struct.dataclass
+    class StepResult:
+        """Result from sampling a single step"""
+
+        action: F["A"]  # Action taken (one-hot) [n_actions]
+        next_state: F["S"]  # Next state (one-hot) [n_states]
+        reward: F[""]  # Reward received (scalar)
+        terminal: F[""]  # Terminal flag (scalar)
+        timeout: F[""]  # Timeout flag (scalar)
+        stepped_state: F["S"]  # Actual next state for continuing (one-hot) [n_states]
+        ep_step: F[""]  # Episode step counter (scalar)
+
+    @struct.dataclass
+    class EpisodeResult:
+        """Result from sampling a complete episode"""
+
+        total_return: F[""]  # Total episode return (scalar)
+        episode_length: F[""]  # Episode length (scalar)
+
+    def step(
+        mdp: MDP, policy: PiType, mdp_state: F["S"], ep_step: F[""], max_ep_len: int, key: jrd.PRNGKey
+    ) -> "sampler.StepResult":
+        """
+        Sample a single step from the MDP using the given policy.
+
+        Args:
+            mdp: The MDP to sample from
+            policy: Policy to use for action selection [n_actions, n_states]
+            mdp_state: Current MDP state (one-hot) [n_states]
+            ep_step: Current episode step counter (scalar)
+            max_ep_len: Maximum episode length
+            key: Random key for sampling
+
+        Returns:
+            StepResult containing action, next state, reward, flags, and updated state
+        """
+        action, next_state, reward, terminal, timeout, stepped_state, new_ep_step = async_sample_step_pi(
+            mdp, policy, mdp_state, ep_step, max_ep_len, key
+        )
+
+        return sampler.StepResult(
+            action=action,
+            next_state=next_state,
+            reward=reward,
+            terminal=terminal,
+            timeout=timeout,
+            stepped_state=stepped_state,
+            ep_step=new_ep_step,
+        )
+
+    def step_batch(
+        mdp: MDP,
+        policy: PiType,
+        mdp_states: F["... S"],
+        ep_steps: F["..."],
+        max_ep_len: int,
+        keys: jrd.PRNGKey,
+    ) -> "sampler.StepResult":
+        """
+        Sample a single step for a batch of environments.
+
+        Args:
+            mdp: The MDP to sample from
+            policy: Policy to use for action selection [n_actions, n_states]
+            mdp_states: Current MDP states [n_envs, n_states]
+            ep_steps: Current episode step counters [n_envs]
+            max_ep_len: Maximum episode length
+            keys: Random keys for sampling [n_envs]
+
+        Returns:
+            StepResult with batch dimension for all parallel environments
+        """
+        vmap_sample = jax.vmap(
+            lambda s, ep, k: sampler.step(mdp, policy, s, ep, max_ep_len, k), in_axes=(0, 0, 0)
+        )
+        results = vmap_sample(mdp_states, ep_steps, keys)
+
+        return results
+
+    def episode(
+        mdp: MDP, policy: PiType, max_ep_len: int, key: jrd.PRNGKey
+    ) -> "sampler.EpisodeResult":
+        """
+        Sample a complete episode from the MDP using the given policy.
+
+        Args:
+            mdp: The MDP to sample from
+            policy: Policy to use for action selection [n_actions, n_states]
+            max_ep_len: Maximum episode length
+            key: Random key for sampling
+
+        Returns:
+            EpisodeResult containing total return and episode length
+        """
+        mdp_state = mdp.init_state(key)
+        ep_step = jnp.array(0.0)
+        ep_return = jnp.array(0.0)
+        done = jnp.array(False)
+
+        def step_fn(carry, _):
+            mdp_state, ep_step, ep_return, done = carry
+            result = sampler.step(mdp, policy, mdp_state, ep_step, max_ep_len, key)
+            new_return = jnp.where(done, ep_return, ep_return + result.reward)
+            new_done = done | (result.terminal + result.timeout > 0)
+            return (result.stepped_state, result.ep_step, new_return, new_done), None
+
+        (final_mdp_state, final_ep_step, final_return, final_done), _ = jax.lax.scan(
+            step_fn, (mdp_state, ep_step, ep_return, done), None, length=max_ep_len
+        )
+
+        return sampler.EpisodeResult(total_return=final_return, episode_length=final_ep_step)
 
 
 class loop(metaclass=StaticMeta):
@@ -183,37 +306,33 @@ class loop(metaclass=StaticMeta):
 
             policy = args.policy_ns.get_policy(state.alg_state.q_vals, state.policy_state)
 
-            vmap_sample = jax.vmap(
-                lambda s, ep, k: async_sample_step_pi(args.mdp, policy, s, ep, args.max_ep_len, k),
-                in_axes=(0, 0, 0),
-            )
-            actions, next_states, rewards, terms, timeouts, stepped_states, ep_steps = vmap_sample(
-                state.mdp_state, state.ep_step, keys
+            sample_results = sampler.step_batch(
+                args.mdp, policy, state.mdp_state, state.ep_step, args.max_ep_len, keys
             )
 
             transitions = Transition(
                 state=state.mdp_state,
-                action=actions,
-                reward=rewards,
-                next_state=next_states,
-                terminal=terms,
+                action=sample_results.action,
+                reward=sample_results.reward,
+                next_state=sample_results.next_state,
+                terminal=sample_results.terminal,
             )
 
             new_alg_state = args.value_fn.batch_update(state.alg_state, transitions)
 
-            dones = terms + timeouts > 0
+            dones = sample_results.terminal + sample_results.timeout > 0
             any_done = jnp.any(dones)
             new_policy_state = args.policy_ns.update(state.policy_state, any_done)
 
-            new_returns = state.ep_return + rewards
+            new_returns = state.ep_return + sample_results.reward
             last_returns = jnp.where(dones, new_returns, state.last_return)
             ep_returns = jnp.where(dones, 0.0, new_returns)
 
             new_state = state.replace(
                 alg_state=new_alg_state,
                 policy_state=new_policy_state,
-                mdp_state=stepped_states,
-                ep_step=ep_steps,
+                mdp_state=sample_results.stepped_state,
+                ep_step=sample_results.ep_step,
                 ep_return=ep_returns,
                 last_return=last_returns,
             )
@@ -248,28 +367,11 @@ class loop(metaclass=StaticMeta):
         Returns:
             loop.EvalResult dataclass with evaluation statistics
         """
-        from jaxdp.base import greedy_policy
+        policy = greedy_policy.q(state.alg_state.q_vals)
 
         def run_episode(key):
-            mdp_state = args.mdp.init_state(key)
-            ep_step = jnp.array(0.0)
-            ep_return = jnp.array(0.0)
-            done = jnp.array(False)
-
-            def step_fn(carry, _):
-                mdp_state, ep_step, ep_return, done = carry
-                policy = greedy_policy.q(state.alg_state.q_vals)
-                action, next_s, reward, term, timeout, stepped_s, new_ep_step = (
-                    async_sample_step_pi(args.mdp, policy, mdp_state, ep_step, args.max_ep_len, key)
-                )
-                new_return = jnp.where(done, ep_return, ep_return + reward)
-                new_done = done | (term + timeout > 0)
-                return (stepped_s, new_ep_step, new_return, new_done), None
-
-            (final_mdp_state, final_ep_step, final_return, final_done), _ = jax.lax.scan(
-                step_fn, (mdp_state, ep_step, ep_return, done), None, length=args.max_ep_len
-            )
-            return final_return, final_ep_step
+            result = sampler.episode(args.mdp, policy, args.max_ep_len, key)
+            return result.total_return, result.episode_length
 
         keys = jrd.split(jrd.PRNGKey(args.eval_seed), args.n_eval_episodes)
         returns, lengths = jax.vmap(run_episode)(keys)
