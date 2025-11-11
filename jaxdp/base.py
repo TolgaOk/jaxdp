@@ -77,8 +77,8 @@ class e_greedy_policy(metaclass=StaticMeta):
             PiType: Policy distribution
 
         """
-        greedy_policy.p = greedy_policy.q(value)
-        return greedy_policy.p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
+        greedy_p = greedy_policy.q(value)
+        return greedy_p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
     def v(
         value: VType,
