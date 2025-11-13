@@ -15,7 +15,7 @@ from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.typehints import F, PiType, StaticMeta
 
-from algorithms import Transition, q_learning
+from algorithms import q_learning
 from policies import epsilon_greedy, soft_policy
 from utils import log_results
 
@@ -101,6 +101,16 @@ class sampler(metaclass=StaticMeta):
     Provides sampling functions for interacting with MDPs using policies.
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
+
+    @struct.dataclass
+    class Transition:
+        """Protocol dataclass for MDP transitions"""
+
+        state: F["S"]  # Current state (one-hot)
+        action: F["A"]  # Action taken (one-hot)
+        reward: F[""]  # Reward received (scalar)
+        next_state: F["S"]  # Next state reached (one-hot)
+        terminal: F[""]  # Terminal flag (scalar)
 
     @struct.dataclass
     class StepResult:
@@ -310,7 +320,7 @@ class loop(metaclass=StaticMeta):
                 args.mdp, policy, state.mdp_state, state.ep_step, args.max_ep_len, keys
             )
 
-            transitions = Transition(
+            transitions = sampler.Transition(
                 state=state.mdp_state,
                 action=sample_results.action,
                 reward=sample_results.reward,

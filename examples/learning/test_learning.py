@@ -5,9 +5,9 @@ import jax.random as jrd
 
 from jaxdp.mdp.grid_world import grid_world
 
-from algorithms import Transition, q_learning
+from algorithms import q_learning
 from policies import epsilon_greedy, soft_policy
-from benchmark import loop, metrics
+from benchmark import loop, metrics, sampler
 
 
 class TestQLearningAlgorithm(unittest.TestCase):
@@ -46,7 +46,7 @@ class TestQLearningAlgorithm(unittest.TestCase):
         a = jnp.zeros(self.mdp.action_size).at[0].set(1.0)
         s_next = jnp.zeros(self.mdp.state_size).at[1].set(1.0)
 
-        transition = Transition(
+        transition = sampler.Transition(
             state=s,
             action=a,
             reward=jnp.array(1.0),
@@ -66,7 +66,7 @@ class TestQLearningAlgorithm(unittest.TestCase):
         a = jnp.zeros(self.mdp.action_size).at[0].set(1.0)
         s_next = jnp.zeros(self.mdp.state_size).at[1].set(1.0)
 
-        transition = Transition(
+        transition = sampler.Transition(
             state=s,
             action=a,
             reward=jnp.array(1.0),
@@ -91,7 +91,7 @@ class TestQLearningAlgorithm(unittest.TestCase):
         a = jnp.zeros(self.mdp.action_size).at[0].set(1.0)
         s_next = jnp.zeros(self.mdp.state_size).at[1].set(1.0)
 
-        transition = Transition(
+        transition = sampler.Transition(
             state=s,
             action=a,
             reward=jnp.array(1.0),
@@ -112,7 +112,7 @@ class TestQLearningAlgorithm(unittest.TestCase):
         a = jnp.zeros(self.mdp.action_size).at[0].set(1.0)
         s_next = jnp.zeros(self.mdp.state_size).at[1].set(1.0)
 
-        transitions = Transition(
+        transitions = sampler.Transition(
             state=jnp.stack([s, s]),
             action=jnp.stack([a, a]),
             reward=jnp.array([1.0, 1.0]),
@@ -124,7 +124,7 @@ class TestQLearningAlgorithm(unittest.TestCase):
 
         single_updated = q_learning.update(
             state,
-            Transition(
+            sampler.Transition(
                 state=s,
                 action=a,
                 reward=jnp.array(1.0),
@@ -282,7 +282,7 @@ class TestTransitionDataclass(unittest.TestCase):
 
     def test_transition_creation(self):
         """Test that Transition can be created with all fields."""
-        transition = Transition(
+        transition = sampler.Transition(
             state=jnp.array([1.0, 0.0, 0.0, 0.0]),
             action=jnp.array([1.0, 0.0, 0.0, 0.0]),
             reward=jnp.array(1.0),
@@ -302,7 +302,7 @@ class TestTransitionDataclass(unittest.TestCase):
         state_size = 4
         action_size = 4
 
-        transitions = Transition(
+        transitions = sampler.Transition(
             state=jnp.zeros((batch_size, state_size)),
             action=jnp.zeros((batch_size, action_size)),
             reward=jnp.zeros(batch_size),

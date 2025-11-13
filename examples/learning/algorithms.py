@@ -1,3 +1,5 @@
+from typing import Protocol
+
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -9,19 +11,19 @@ from jaxdp.mdp import MDP
 from jaxdp.typehints import F, QType, StaticMeta
 
 
-@struct.dataclass
-class Transition:
+class Transition(Protocol):
     """
-    Protocol dataclass for MDP transitions.
+    Protocol for MDP transition objects.
 
-    Contains all information about a single transition (s, a, r, s', done).
+    Defines the interface that transition objects must implement.
+    Actual implementation is sampler.Transition in benchmark.py.
     """
 
-    state: F["S"]  # Current state (one-hot)
-    action: F["A"]  # Action taken (one-hot)
-    reward: F[""]  # Reward received (scalar)
-    next_state: F["S"]  # Next state reached (one-hot)
-    terminal: F[""]  # Terminal flag (scalar)
+    state: F["S"]
+    action: F["A"]
+    reward: F[""]
+    next_state: F["S"]
+    terminal: F[""]
 
 
 class q_learning(metaclass=StaticMeta):
