@@ -6,15 +6,64 @@ This directory contains comprehensive planning documents for scaling jaxdp to la
 
 ## 📋 Quick Start
 
-**Read this first:** [SCALING_STRATEGY_SUMMARY.md](SCALING_STRATEGY_SUMMARY.md) (5 min read)
+**IMPORTANT UPDATE:** The initial documents focused on learning algorithms in the library. However, **learning is in `examples/` not in `jaxdp/`**. The library provides base primitives that examples use.
 
-Then dive into the details as needed.
+**Read this first:** [FINAL_RECOMMENDATION.md](FINAL_RECOMMENDATION.md) (5 min read)
+
+Then see detailed design: [BASE_LIBRARY_API_DESIGN.md](BASE_LIBRARY_API_DESIGN.md)
 
 ---
 
 ## 📚 Document Guide
 
-### 1. **SCALING_STRATEGY_SUMMARY.md** ⭐ START HERE
+### 1. **FINAL_RECOMMENDATION.md** ⭐ START HERE (UPDATED)
+- **Purpose:** Final recommendation based on correct understanding
+- **Audience:** Everyone
+- **Length:** ~15 pages
+- **Contents:**
+  - Correct architecture understanding (jaxdp vs examples)
+  - Type-polymorphic base primitives design
+  - What changes (sampling) vs what doesn't (Bellman operators)
+  - Simple API: int=indexed, array=one-hot
+  - Implementation plan
+  - Performance estimates (with honesty about benchmarking)
+
+**Read if:** You want the correct final recommendation.
+
+---
+
+### 2. **BASE_LIBRARY_API_DESIGN.md** 📖 TECHNICAL DESIGN
+- **Purpose:** Detailed base library primitive design
+- **Audience:** Implementers, technical reviewers
+- **Length:** ~40 pages
+- **Contents:**
+  - Current vs proposed primitives analysis
+  - Type-polymorphic implementation details
+  - What changes in base.py (sampling primitives)
+  - What doesn't change (Bellman operators, policies)
+  - Usage in examples (planning vs learning)
+  - Complete code examples
+
+**Read if:** You're implementing the changes or reviewing the design.
+
+---
+
+### 3. **BASE_API_COMPARISON.md** 🔄 BEFORE/AFTER
+- **Purpose:** Side-by-side comparison of current vs proposed
+- **Audience:** Everyone
+- **Length:** ~20 pages
+- **Contents:**
+  - Current one-hot only approach
+  - Proposed type-polymorphic approach
+  - Code examples showing both
+  - Memory/performance impact
+  - User experience comparison
+
+**Read if:** You want to see concrete before/after examples.
+
+---
+
+### 4. **SCALING_STRATEGY_SUMMARY.md** 📊 INITIAL ANALYSIS (OUTDATED)
 - **Purpose:** Executive summary with visual decision trees
 - **Audience:** Everyone (technical and non-technical)
 - **Length:** ~15 pages
@@ -66,27 +115,41 @@ Then dive into the details as needed.
 
 ---
 
-## 🎯 Recommendation Summary
+## 🎯 Final Recommendation (UPDATED)
 
-### **Option C: Hybrid Approach** (Score: 8.7/10)
+### **Type-Polymorphic Base Primitives**
 
 #### What is it?
-- Keep **one-hot** for planning algorithms (Value Iteration, Policy Iteration)
-- Add **index-based** for learning algorithms (Q-learning, TD methods)
-- Both coexist with conversion utilities
+- Modify `jaxdp/base.py` sampling primitives to accept **int OR array**
+- Auto-detect input type and dispatch to appropriate implementation
+- Bellman operators unchanged (they work on Q-tables)
+- Examples choose representation (planning uses one-hot, learning uses indices)
+
+#### The API
+```python
+# Same function, different input types
+from jaxdp import async_sample_step
+
+# Indexed (efficient for learning)
+next_state, reward, ... = async_sample_step(mdp, 1, 3, ...)  # Integers
+
+# One-hot (compatible/planning)
+next_state, reward, ... = async_sample_step(mdp, [0,1,0], [0,0,0,1,0], ...)  # Arrays
+```
 
 #### Why?
-1. ✅ **Backward compatible** - no breaking changes
-2. ✅ **Optimal for each use case** - dense for planning, sparse for learning
-3. ✅ **Low risk** - additive implementation
-4. ✅ **Proven pattern** - similar to other RL libraries
-5. ✅ **90%+ memory savings** for learning scenarios
-6. ✅ **5-10x speedup** for learning on large MDPs
+1. ✅ **Single simple API** - one function, no duplication
+2. ✅ **Backward compatible** - arrays still work
+3. ✅ **Automatic optimization** - type determines behavior
+4. ✅ **No configuration** - just use int or array
+5. ✅ **100,000x memory savings** for learning (guaranteed)
+6. ✅ **2-10x speedup** for learning (estimated, needs benchmarking)
 
 #### Implementation Timeline
-- **Week 1-2:** Foundation (indexed types, basic operations)
-- **Week 2-3:** Learning algorithms (Q-learning indexed)
-- **Week 3-4:** Integration (docs, tests, benchmarks)
+- **Week 1-2:** Modify base.py primitives (~100-150 lines)
+- **Week 2:** Testing and benchmarking
+- **Week 3:** Learning examples showing indexed usage
+- **Week 4:** Documentation and validation
 - **Total:** 3-4 weeks
 
 ---
