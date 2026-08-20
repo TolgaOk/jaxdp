@@ -58,8 +58,19 @@ class soft_policy(metaclass=StaticMeta):
         """
         return jax.nn.softmax(value / temperature, axis=0)
 
-    def v(value: VType, temperature: float) -> PiType:
-        raise NotImplementedError
+    def v(mdp: MDP, value: VType, gamma: float, temperature: float) -> PiType:
+        """Construct a softmax policy from one-step lookahead state values.
+
+        Args:
+            mdp: Markov decision process.
+            value: State values with shape ``(S,)``.
+            gamma: Discount factor.
+            temperature: Positive softmax temperature.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        return soft_policy.q(to_state_action_value(mdp, value, gamma), temperature)
 
 
 class e_greedy_policy(metaclass=StaticMeta):
@@ -81,10 +92,23 @@ class e_greedy_policy(metaclass=StaticMeta):
         return greedy_p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
 
     def v(
+        mdp: MDP,
         value: VType,
+        gamma: float,
         epsilon: float,
     ) -> PiType:
-        raise NotImplementedError
+        """Construct an epsilon-greedy policy from one-step lookahead state values.
+
+        Args:
+            mdp: Markov decision process.
+            value: State values with shape ``(S,)``.
+            gamma: Discount factor.
+            epsilon: Probability assigned to uniform exploration.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        return e_greedy_policy.q(to_state_action_value(mdp, value, gamma), epsilon)
 
 
 class expected_value(metaclass=StaticMeta):
@@ -163,8 +187,9 @@ class policy_evaluation(metaclass=StaticMeta):
         """
         transition_pi, reward_pi = _markov_chain_pi(mdp, policy)
 
-        return jnp.linalg.inv(jnp.eye(mdp.state_size) - gamma * transition_pi.T) @ jnp.einsum(
-            "sx,sx->s", transition_pi.T, reward_pi
+        return jnp.linalg.solve(
+            jnp.eye(mdp.state_size) - gamma * transition_pi.T,
+            jnp.einsum("sx,sx->s", transition_pi.T, reward_pi),
         )
 
 
@@ -198,7 +223,8 @@ class bellman_operator(metaclass=StaticMeta):
         Bellman policy operator for state values.
 
         .. math::
-            \mathcal{T}^\pi(V)(s) = \sum_a \pi(a|s) \left[ r(s, a) + \gamma \sum_{s'} P(s'|s, a) V(s') \right]
+            \mathcal{T}^\pi(V)(s) = \sum_a \pi(a|s) \left[
+            r(s, a) + \gamma \sum_{s'} P(s'|s, a) V(s') \right]
 
         Args:
             mdp (MDP): Markov Decision Process
@@ -233,37 +259,60 @@ class bellman_optimality_operator(metaclass=StaticMeta):
             QType: Updated Q-values after applying Bellman optimality operator
 
         """
-        # TODO: Add test
-        target_values = jnp.einsum(
-            "axs,x->as", mdp.transition, jnp.max(value, axis=0, keepdims=False)
-        )
-        rewards = jnp.einsum("axs,asx->as", mdp.transition, mdp.reward)
-        return rewards + gamma * target_values
+        return to_state_action_value(mdp, jnp.max(value, axis=0), gamma)
+
+    def v(mdp: MDP, value: VType, gamma: float) -> VType:
+        """Apply the Bellman optimality operator to state values.
+
+        Args:
+            mdp: Markov decision process.
+            value: State values with shape ``(S,)``.
+            gamma: Discount factor.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
+        return jnp.max(to_state_action_value(mdp, value, gamma), axis=0)
 
 
 class stationary_distribution(metaclass=StaticMeta):
     def q(mdp: MDP, policy: PiType, iterations: int = 10) -> F["AS"]:
-        """
-        Compute the stationary distribution of the Markov chain induced by the policy.
+        """Return the action-state distribution after finite policy propagation.
+
+        The result is stationary only when the propagated state distribution has converged.
 
         Args:
-            mdp (MDP): Markov Decision Process
-            policy (PiType): Policy distribution
-            iterations (int): Number of iterations for power method
+            mdp: Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            iterations: Number of transition steps from the initial distribution.
 
         Returns:
-            F["AS"]: Stationary distribution over states
+            Action-state probabilities with shape ``(A, S)``.
         """
-        distribution = jnp.einsum("s,as->as", mdp.initial, policy)
+        distribution = stationary_distribution.v(mdp, policy, iterations)
+        return policy * distribution
+
+    def v(mdp: MDP, policy: PiType, iterations: int = 10) -> F["S"]:
+        """Return the state distribution after finite policy propagation.
+
+        The result is stationary only when the propagated state distribution has converged.
+
+        Args:
+            mdp: Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            iterations: Number of transition steps from the initial distribution.
+
+        Returns:
+            State probabilities with shape ``(S,)``.
+        """
         return jax.lax.fori_loop(
             0,
             iterations,
-            lambda i, d: jnp.einsum("axs,ux,as->ux", mdp.transition, policy, d),
-            distribution,
+            lambda _, distribution: jnp.einsum(
+                "axs,as,s->x", mdp.transition, policy, distribution
+            ),
+            mdp.initial,
         )
-
-    def v(mdp: MDP, policy: PiType, iterations: int = 10) -> F["S"]:
-        raise NotImplementedError
 
 
 def markov_chain_eigen_values(mdp: MDP, policy: PiType) -> F["S"]:
