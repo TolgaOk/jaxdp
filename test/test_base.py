@@ -1,11 +1,13 @@
 import unittest
+
+import distrax
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
-import distrax
 
-import jaxdp.base as DP
+import jaxdp.base as base
 from jaxdp.mdp.mdp import MDP
+from jaxdp.policy import EpsilonGreedy, Greedy, Soft
 
 
 class TestBaseDP(unittest.TestCase):
@@ -21,7 +23,7 @@ class TestBaseDP(unittest.TestCase):
     def test_greedy_policy(self):
         self.assertTrue(
             jnp.allclose(
-                DP.greedy_policy(value=jnp.array([
+                Greedy().q(jnp.array([
                     [2, 0, 2, 0],
                     [0, 2, 0, 2],
                 ])),
@@ -41,7 +43,7 @@ class TestBaseDP(unittest.TestCase):
         ])
         self.assertTrue(
             jnp.allclose(
-                DP.e_greedy_policy(value, epsilon=eps),
+                EpsilonGreedy(epsilon=eps).q(value),
                 jnp.array([
                     [1 - 2 * eps / 3, eps / 3, 1 - 2 * eps / 3, eps / 3],
                     [eps / 3, eps / 3, eps / 3, 1 - 2 * eps / 3],
@@ -54,16 +56,13 @@ class TestBaseDP(unittest.TestCase):
             [1, 0, 1, 0],
             [0, 1, 0, 1],
         ])
-        self.assertTrue(
-            jnp.allclose(
-                DP.soft_policy(value, temperature=0),
-                jnp.ones_like(value) / value.shape[0]
-            ))
+        with self.assertRaisesRegex(ValueError, "temperature"):
+            Soft(temperature=0)
 
         self.assertTrue(
             jnp.allclose(
-                DP.soft_policy(value, temperature=1e10),
-                value,
+                Soft(temperature=1e10).q(value),
+                jnp.ones_like(value) / value.shape[0],
                 atol=1e-5
             ))
 
@@ -75,7 +74,7 @@ class TestBaseDP(unittest.TestCase):
 
         self.assertTrue(
             jnp.allclose(
-                DP.sample_from(policy, key=jrd.PRNGKey(self.seed)),
+                base.sample_from(policy, key=jrd.PRNGKey(self.seed)),
                 policy,
                 atol=1e-5
             ))
@@ -86,7 +85,7 @@ class TestBaseDP(unittest.TestCase):
             [0.9, 0.5, 0.75, 1],
         ])
         batch_sample_from = jax.vmap(
-            DP.sample_from,
+            base.sample_from,
             in_axes=(None, 0),
             out_axes=0)
         self.assertTrue(
@@ -112,7 +111,7 @@ class TestBaseDP(unittest.TestCase):
         ])
         self.assertTrue(
             jnp.allclose(
-                DP.q_policy_evaluation(
+                base.q_policy_evaluation(
                     self.sequential_mdp,
                     policy,
                     gamma=gamma),
@@ -122,7 +121,7 @@ class TestBaseDP(unittest.TestCase):
 
         self.assertTrue(
             jnp.allclose(
-                DP.policy_evaluation(
+                base.policy_evaluation(
                     self.sequential_mdp,
                     policy,
                     gamma=gamma),
@@ -146,7 +145,7 @@ class TestBaseDP(unittest.TestCase):
         ])
         self.assertTrue(
             jnp.allclose(
-                DP.bellman_q_operator(
+                base.bellman_q_operator(
                     self.sequential_mdp,
                     policy,
                     value,
@@ -155,14 +154,14 @@ class TestBaseDP(unittest.TestCase):
             )
         )
 
-        target_value = DP.q_policy_evaluation(
+        target_value = base.q_policy_evaluation(
                         self.sequential_mdp,
                         policy,
                         gamma=gamma
                     )
         self.assertTrue(
             jnp.allclose(
-                DP.bellman_q_operator(
+                base.bellman_q_operator(
                     self.sequential_mdp,
                     policy,
                     target_value,
@@ -184,7 +183,7 @@ class TestBaseDP(unittest.TestCase):
 
         sync_sample_step = jax.jit(
             jax.vmap(
-                DP.sync_sample,
+                base.sync_sample,
                 in_axes=(None, None, 0),
                 out_axes=0)
         )
@@ -242,7 +241,7 @@ class TestBaseDP(unittest.TestCase):
         async_step = jax.jit(
             jax.vmap(
                 jax.vmap(
-                    DP.async_sample_step_pi,
+                    base.async_sample_step_pi,
                     in_axes=(None, None, 0, 0, None, 0),
                     out_axes=0),
                 in_axes=(None, 0, 0, 0, None, 0),

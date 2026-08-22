@@ -3,8 +3,6 @@ import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
 
-from jaxdp import async_sample_step_pi
-from jaxdp.base import e_greedy_policy
 from jaxdp.mdp import MDP
 from jaxdp.typehints import F, QType, StaticMeta
 

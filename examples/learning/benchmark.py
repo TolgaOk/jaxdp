@@ -4,20 +4,19 @@ import click
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
+from algorithms import Transition, q_learning
 from flax import struct
+from policies import epsilon_greedy
+from utils import log_results
 
 from jaxdp import async_sample_step_pi
 from jaxdp.base import bellman_optimality_operator as bellman_op
-from jaxdp.base import greedy_policy
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.policy import Greedy
 from jaxdp.typehints import F, PiType, StaticMeta
-
-from algorithms import Transition, q_learning
-from policies import epsilon_greedy, soft_policy
-from utils import log_results
 
 jax.config.update("jax_enable_x64", True)
 
@@ -122,7 +121,12 @@ class sampler(metaclass=StaticMeta):
         episode_length: F[""]  # Episode length (scalar)
 
     def step(
-        mdp: MDP, policy: PiType, mdp_state: F["S"], ep_step: F[""], max_ep_len: int, key: jrd.PRNGKey
+        mdp: MDP,
+        policy: PiType,
+        mdp_state: F["S"],
+        ep_step: F[""],
+        max_ep_len: int,
+        key: jrd.PRNGKey,
     ) -> "sampler.StepResult":
         """
         Sample a single step from the MDP using the given policy.
@@ -138,9 +142,8 @@ class sampler(metaclass=StaticMeta):
         Returns:
             StepResult containing action, next state, reward, flags, and updated state
         """
-        action, next_state, reward, terminal, timeout, stepped_state, new_ep_step = async_sample_step_pi(
-            mdp, policy, mdp_state, ep_step, max_ep_len, key
-        )
+        step = async_sample_step_pi(mdp, policy, mdp_state, ep_step, max_ep_len, key)
+        action, next_state, reward, terminal, timeout, stepped_state, new_ep_step = step
 
         return sampler.StepResult(
             action=action,
@@ -367,7 +370,7 @@ class loop(metaclass=StaticMeta):
         Returns:
             loop.EvalResult dataclass with evaluation statistics
         """
-        policy = greedy_policy.q(state.alg_state.q_vals)
+        policy = Greedy().q(state.alg_state.q_vals)
 
         def run_episode(key):
             result = sampler.episode(args.mdp, policy, args.max_ep_len, key)

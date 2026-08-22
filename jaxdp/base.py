@@ -5,110 +5,8 @@ import jax.numpy as jnp
 import jax.random as jrd
 
 from jaxdp.mdp.mdp import MDP
+from jaxdp.policy import _state_action_value
 from jaxdp.typehints import F, PiType, QType, StaticMeta, VType
-
-
-class greedy_policy(metaclass=StaticMeta):
-    def q(value: QType) -> PiType:
-        """
-        Greedy policy distribution from Q values.
-
-        Args:
-            value (QType): Q Value array
-
-        Returns:
-            PiType: Policy distribution as one hot vectors
-
-        """
-        return jax.nn.one_hot(
-            jnp.argmax(value, axis=0, keepdims=False), num_classes=value.shape[0], axis=0
-        )
-
-    def v(mdp: MDP, value: VType, gamma: float) -> PiType:
-        """
-        Greedy policy distribution from state values.
-
-        Args:
-            mdp (MDP): Markov Decision Process
-            value (VType): State value array
-            gamma (float): Discount factor
-
-        Returns:
-            PiType: Policy distribution as one hot vectors
-
-        """
-        # TODO: Add test
-        return greedy_policy.q(to_state_action_value(mdp, value, gamma))
-
-
-class soft_policy(metaclass=StaticMeta):
-    def q(value: QType, temperature: float) -> PiType:
-        r"""
-        Softmax policy distribution.
-
-        Args:
-            value (QType): Q Value array
-            temperature (float): Temperature parameter of softmax. Higher values will result in
-                uniform policy distribution while lower values will result a distribution closer
-                to greedy policy.
-
-        Returns:
-            PiType: Policy distribution
-
-        """
-        return jax.nn.softmax(value / temperature, axis=0)
-
-    def v(mdp: MDP, value: VType, gamma: float, temperature: float) -> PiType:
-        """Construct a softmax policy from one-step lookahead state values.
-
-        Args:
-            mdp: Markov decision process.
-            value: State values with shape ``(S,)``.
-            gamma: Discount factor.
-            temperature: Positive softmax temperature.
-
-        Returns:
-            Action probabilities with shape ``(A, S)``.
-        """
-        return soft_policy.q(to_state_action_value(mdp, value, gamma), temperature)
-
-
-class e_greedy_policy(metaclass=StaticMeta):
-    def q(value: QType, epsilon: float) -> PiType:
-        r"""
-        Epsilon greedy policy distribution.
-
-        Args:
-            value (QType): Q Value array
-            epsilon (float): Epsilon parameter. The policy takes the greedy action with
-                (1 - epsilon + epsilon/|A|) probability while take a non-greedy action with
-                (epsilon / |A|) probability where |A| is the dimension of the action space.
-
-        Returns:
-            PiType: Policy distribution
-
-        """
-        greedy_p = greedy_policy.q(value)
-        return greedy_p * (1 - epsilon) + jnp.ones_like(value) * (epsilon / value.shape[0])
-
-    def v(
-        mdp: MDP,
-        value: VType,
-        gamma: float,
-        epsilon: float,
-    ) -> PiType:
-        """Construct an epsilon-greedy policy from one-step lookahead state values.
-
-        Args:
-            mdp: Markov decision process.
-            value: State values with shape ``(S,)``.
-            gamma: Discount factor.
-            epsilon: Probability assigned to uniform exploration.
-
-        Returns:
-            Action probabilities with shape ``(A, S)``.
-        """
-        return e_greedy_policy.q(to_state_action_value(mdp, value, gamma), epsilon)
 
 
 class expected_value(metaclass=StaticMeta):
@@ -341,10 +239,7 @@ def to_greedy_state_value(value: QType) -> VType:
 
 def to_state_action_value(mdp: MDP, value: VType, gamma: float) -> QType:
     """Convert state values to Q-values using the MDP dynamics."""
-    # TODO: Add test
-    return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition) + gamma * jnp.einsum(
-        "axs,x->as", mdp.transition, value
-    )
+    return _state_action_value(mdp, value, gamma)
 
 
 def _markov_chain_pi(mdp: MDP, policy: PiType) -> tuple[F["SS"], F["SS"]]:
