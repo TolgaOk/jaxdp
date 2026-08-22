@@ -3,13 +3,12 @@ import jax.numpy as jnp
 
 from jaxdp.base import (
     bellman_optimality_operator,
-    e_greedy_policy,
     policy_evaluation,
-    soft_policy,
     stationary_distribution,
     to_state_action_value,
 )
 from jaxdp.mdp import MDP
+from jaxdp.policy import EpsilonGreedy, Soft
 
 
 def _two_state_mdp() -> MDP:
@@ -38,14 +37,16 @@ def test_value_policies_apply_one_step_lookahead() -> None:
     value = jnp.array([4.0, 8.0])
     gamma = 0.5
     q_value = to_state_action_value(mdp, value, gamma)
+    soft = Soft(temperature=2.0)
+    epsilon_greedy = EpsilonGreedy(epsilon=0.2)
 
     assert jnp.allclose(
-        soft_policy.v(mdp, value, gamma, temperature=2.0),
-        soft_policy.q(q_value, temperature=2.0),
+        soft.v(mdp, value, gamma),
+        soft.q(q_value),
     )
     assert jnp.allclose(
-        e_greedy_policy.v(mdp, value, gamma, epsilon=0.2),
-        e_greedy_policy.q(q_value, epsilon=0.2),
+        epsilon_greedy.v(mdp, value, gamma),
+        epsilon_greedy.q(q_value),
     )
 
 
@@ -89,11 +90,10 @@ def test_stationary_state_and_action_distributions_are_consistent() -> None:
 
 def test_completed_api_supports_jit_and_vmap() -> None:
     mdp = _two_state_mdp()
+    soft = Soft(temperature=2.0)
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
 
-    policies = jax.jit(
-        jax.vmap(lambda value: soft_policy.v(mdp, value, 0.5, 2.0))
-    )(values)
+    policies = jax.jit(jax.vmap(lambda value: soft.v(mdp, value, 0.5)))(values)
     optimal_values = jax.jit(
         jax.vmap(lambda value: bellman_optimality_operator.v(mdp, value, 0.5))
     )(values)

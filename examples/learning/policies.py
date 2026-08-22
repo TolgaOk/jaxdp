@@ -1,8 +1,7 @@
+import jax
 import jax.numpy as jnp
-import jax.random as jrd
 from flax import struct
 
-from jaxdp.base import e_greedy_policy
 from jaxdp.typehints import F, PiType, QType, StaticMeta
 
 
@@ -37,7 +36,8 @@ class epsilon_greedy(metaclass=StaticMeta):
 
     def get_policy(q_vals: QType, state: "epsilon_greedy.State") -> PiType:
         """Get epsilon-greedy policy from Q-values"""
-        return e_greedy_policy.q(q_vals, state.epsilon)
+        greedy = jax.nn.one_hot(jnp.argmax(q_vals, axis=0), q_vals.shape[0], axis=0)
+        return (1 - state.epsilon) * greedy + state.epsilon / q_vals.shape[0]
 
 
 class soft_policy(metaclass=StaticMeta):

@@ -3,8 +3,9 @@ import jax.random as jrd
 from flax import struct
 
 from jaxdp import bellman_optimality_operator as bellman_op
-from jaxdp.base import greedy_policy, policy_evaluation
+from jaxdp.base import policy_evaluation
 from jaxdp.mdp import MDP
+from jaxdp.policy import Greedy
 from jaxdp.typehints import QType, StaticMeta
 
 
@@ -77,7 +78,7 @@ class pi(metaclass=StaticMeta):
         return pi.State(q_vals=q_vals, gamma=gamma)
 
     def update(state: "pi.State", mdp: MDP, step: int) -> "pi.State":
-        policy = greedy_policy.q(state.q_vals)
+        policy = Greedy().q(state.q_vals)
         q_vals = policy_evaluation.q(mdp, policy, state.gamma)
 
         return state.replace(q_vals=q_vals)
