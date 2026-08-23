@@ -14,11 +14,11 @@ from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
-from jaxdp.operator import Optimality
+from jaxdp.operator import BellmanOptimality
 
 jax.config.update("jax_enable_x64", True)
 
-optimality = Optimality()
+bellman_optimality = BellmanOptimality()
 
 
 @struct.dataclass
@@ -41,7 +41,7 @@ def compute_metrics(prev_state, new_state, mdp, step):
     l2 = jnp.sqrt(jnp.sum(diff**2))
     linf = jnp.max(jnp.abs(diff))
 
-    bellman_target = optimality.q(mdp, prev_q, gamma)
+    bellman_target = bellman_optimality.q(mdp, prev_q, gamma)
     bellman_err = jnp.max(jnp.abs(prev_q - bellman_target))
 
     return Metrics(

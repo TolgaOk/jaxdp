@@ -4,11 +4,12 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+import jaxdp
 from jaxdp.mdp import Mdp
 from jaxdp.operator import (
     Bellman,
+    BellmanOptimality,
     Expected,
-    Optimality,
     PolicyEvaluation,
     greedy_state_value,
     state_action_value,
@@ -37,6 +38,11 @@ def _two_state_mdp() -> Mdp:
         initial=jnp.array([1.0, 0.0]),
         terminal=jnp.zeros(2),
     )
+
+
+def test_public_name_is_bellman_optimality() -> None:
+    assert jaxdp.BellmanOptimality is BellmanOptimality
+    assert not hasattr(jaxdp, "Optimality")
 
 
 def test_value_conversions_and_expectation() -> None:
@@ -80,19 +86,22 @@ def test_policy_evaluation_matches_analytical_solution() -> None:
     )
 
 
-def test_bellman_and_optimality_operators() -> None:
+def test_bellman_operators() -> None:
     mdp = _two_state_mdp()
     policy = jnp.full((2, 2), 0.5)
     value = jnp.array([4.0, 8.0])
     q = jnp.array([[2.0, 5.0], [6.0, 5.0]])
 
     bellman = Bellman()
-    optimality = Optimality()
+    bellman_optimality = BellmanOptimality()
 
     assert jnp.allclose(bellman.v(mdp, policy, value, 0.5), jnp.array([4.0, 5.0]))
     assert jnp.allclose(bellman.q(mdp, policy, q, 0.5), jnp.array([[2.0, 3.5], [4.5, 5.0]]))
-    assert jnp.allclose(optimality.v(mdp, value, 0.5), jnp.array([6.0, 5.0]))
-    assert jnp.allclose(optimality.q(mdp, q, 0.5), jnp.array([[3.0, 3.5], [4.5, 6.0]]))
+    assert jnp.allclose(bellman_optimality.v(mdp, value, 0.5), jnp.array([6.0, 5.0]))
+    assert jnp.allclose(
+        bellman_optimality.q(mdp, q, 0.5),
+        jnp.array([[3.0, 3.5], [4.5, 6.0]]),
+    )
 
 
 @pytest.mark.parametrize("gamma", [-0.1, 1.0, jnp.inf, jnp.nan])
@@ -106,12 +115,12 @@ def test_discounted_operators_reject_invalid_gamma(gamma: float) -> None:
     with pytest.raises(ValueError, match="gamma"):
         Bellman().v(mdp, policy, value, gamma)
     with pytest.raises(ValueError, match="gamma"):
-        Optimality().v(mdp, value, gamma)
+        BellmanOptimality().v(mdp, value, gamma)
 
 
 def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
     mdp = _two_state_mdp()
-    operator = Optimality()
+    operator = BellmanOptimality()
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
     gammas = jnp.array([0.5, 0.25])
     result = jax.jit(jax.vmap(lambda value, gamma: operator.v(mdp, value, gamma)))(
