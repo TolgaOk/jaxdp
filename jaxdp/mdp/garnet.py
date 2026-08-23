@@ -1,59 +1,71 @@
-from typing import Tuple, Any, Union, Type
+"""Random Garnet MDP factory."""
+
+import math
+
+import chex
+import jax
 import jax.numpy as jnp
 import jax.random as jrd
-import jax
 
 from jaxdp.mdp import Mdp
-from jax.typing import ArrayLike as KeyType
 
 
-def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType,
-               min_reward: float = 0, max_reward: float = 1.0) -> Mdp:
-    """
-    Constructs a Garnet MDP.
+def garnet_mdp(
+    key: chex.PRNGKey,
+    state_size: int,
+    action_size: int,
+    branch_size: int,
+    min_reward: float = 0.0,
+    max_reward: float = 1.0,
+) -> Mdp:
+    """Create a random finite MDP with a fixed number of successors per state-action pair.
 
-    Garnet MDPs are randomly generated MDPs characterized by:
-      - A specified number of states (state_size) and actions (action_size).
-      - Each state-action pair has a fixed number of successor states defined by branch_size.
-      - Transitions are stochastic and generated using the provided random key.
-      - Rewards are assigned randomly within the interval [min_reward, max_reward].
-      
     Args:
-        state_size (int): Number of states.
-        action_size (int): Number of actions.
-        branch_size (int): Number of successor states per state-action pair.
-        key (KeyType): JAX random key for generating transitions and rewards.
-        min_reward (float): Minimum reward value.
-        max_reward (float): Maximum reward value.
-        
+        key: Key used to generate transitions and rewards.
+        state_size: Positive number of states.
+        action_size: Positive number of actions.
+        branch_size: Number of distinct successors per state-action pair.
+        min_reward: Inclusive lower reward bound.
+        max_reward: Inclusive upper reward bound.
+
     Returns:
-        MDP: The constructed Garnet MDP.
+        Random Garnet MDP.
     """
-    # TODO: Make key the first argument
-    # TODO: Add test
+    if state_size < 1:
+        raise ValueError("state_size must be positive")
+    if action_size < 1:
+        raise ValueError("action_size must be positive")
+    if not 1 <= branch_size <= state_size:
+        raise ValueError("branch_size must be in [1, state_size]")
+    if not math.isfinite(min_reward) or not math.isfinite(max_reward):
+        raise ValueError("reward bounds must be finite")
+    if min_reward > max_reward:
+        raise ValueError("min_reward must not exceed max_reward")
+
     branch_key, transition_key, reward_key = jrd.split(key, 3)
-    transition = jnp.zeros((action_size, state_size, state_size))
-
-    indices = jrd.permutation(
-        branch_key,
-        jnp.tile(
-            jnp.arange(state_size),
-            (action_size, state_size, 1)
-        ),
-        axis=-1,
-        independent=True
-    )[:, :, :branch_size]
-    raw_transition = jnp.einsum(
-        "axbs,axb->axs",
-        jax.nn.one_hot(indices, state_size, axis=-1),
-        jrd.uniform(transition_key, indices.shape)
+    candidates = jnp.broadcast_to(
+        jnp.arange(state_size),
+        (action_size, state_size, state_size),
     )
-    transition = raw_transition / raw_transition.sum(axis=-1, keepdims=True)
+    successor = jrd.permutation(
+        branch_key,
+        candidates,
+        axis=-1,
+        independent=True,
+    )[..., :branch_size]
+    weight = jrd.uniform(transition_key, successor.shape)
+    weight = weight / jnp.sum(weight, axis=-1, keepdims=True)
+    transition = jnp.einsum(
+        "asbx,asb->axs",
+        jax.nn.one_hot(successor, state_size),
+        weight,
+    )
 
-    transition = transition.transpose(0, 2, 1)
-    terminal = jnp.zeros((state_size,))
-    initial = jnp.ones((state_size,)) / state_size
-    reward = jrd.uniform(reward_key, (action_size, state_size, state_size),
-                         minval=min_reward, maxval=max_reward)
-
+    reward_unit = jrd.uniform(reward_key, (action_size, state_size, state_size))
+    reward = min_reward + (max_reward - min_reward) * reward_unit
+    initial = jnp.full(state_size, 1 / state_size)
+    terminal = jnp.zeros(state_size)
     return Mdp(transition, reward, initial, terminal)
+
+
+__all__ = ["garnet_mdp"]
