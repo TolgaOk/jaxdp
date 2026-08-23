@@ -1,4 +1,4 @@
-from dataclasses import FrozenInstanceError, is_dataclass
+from dataclasses import is_dataclass
 
 import jax
 import jax.numpy as jnp
@@ -67,11 +67,11 @@ def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
 def test_policy_evaluation_matches_analytical_solution() -> None:
     mdp = _two_state_mdp()
     policy = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-    evaluate = PolicyEvaluation(gamma=0.5)
+    evaluate = PolicyEvaluation()
 
-    assert jnp.allclose(evaluate.v(mdp, policy), jnp.array([14.0 / 3.0, 16.0 / 3.0]))
+    assert jnp.allclose(evaluate.v(mdp, policy, 0.5), jnp.array([14.0 / 3.0, 16.0 / 3.0]))
     assert jnp.allclose(
-        evaluate.q(mdp, policy),
+        evaluate.q(mdp, policy, 0.5),
         jnp.array([[7.0 / 3.0, 11.0 / 3.0], [14.0 / 3.0, 16.0 / 3.0]]),
     )
 
@@ -82,33 +82,38 @@ def test_bellman_and_optimality_operators() -> None:
     value = jnp.array([4.0, 8.0])
     q = jnp.array([[2.0, 5.0], [6.0, 5.0]])
 
-    bellman = Bellman(gamma=0.5)
-    optimality = Optimality(gamma=0.5)
+    bellman = Bellman()
+    optimality = Optimality()
 
-    assert jnp.allclose(bellman.v(mdp, policy, value), jnp.array([4.0, 5.0]))
-    assert jnp.allclose(bellman.q(mdp, policy, q), jnp.array([[2.0, 3.5], [4.5, 5.0]]))
-    assert jnp.allclose(optimality.v(mdp, value), jnp.array([6.0, 5.0]))
-    assert jnp.allclose(optimality.q(mdp, q), jnp.array([[3.0, 3.5], [4.5, 6.0]]))
+    assert jnp.allclose(bellman.v(mdp, policy, value, 0.5), jnp.array([4.0, 5.0]))
+    assert jnp.allclose(bellman.q(mdp, policy, q, 0.5), jnp.array([[2.0, 3.5], [4.5, 5.0]]))
+    assert jnp.allclose(optimality.v(mdp, value, 0.5), jnp.array([6.0, 5.0]))
+    assert jnp.allclose(optimality.q(mdp, q, 0.5), jnp.array([[3.0, 3.5], [4.5, 6.0]]))
 
 
 @pytest.mark.parametrize("gamma", [-0.1, 1.0, jnp.inf, jnp.nan])
-@pytest.mark.parametrize("component", [PolicyEvaluation, Bellman, Optimality])
-def test_discounted_operators_reject_invalid_gamma(
-    component: type[PolicyEvaluation] | type[Bellman] | type[Optimality],
-    gamma: float,
-) -> None:
+def test_discounted_operators_reject_invalid_gamma(gamma: float) -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.full((2, 2), 0.5)
+    value = jnp.zeros(2)
+
     with pytest.raises(ValueError, match="gamma"):
-        component(gamma=gamma)
+        PolicyEvaluation().v(mdp, policy, gamma)
+    with pytest.raises(ValueError, match="gamma"):
+        Bellman().v(mdp, policy, value, gamma)
+    with pytest.raises(ValueError, match="gamma"):
+        Optimality().v(mdp, value, gamma)
 
 
 def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
     mdp = _two_state_mdp()
-    operator = Optimality(gamma=0.5)
+    operator = Optimality()
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
-    result = jax.jit(jax.vmap(lambda value: operator.v(mdp, value)))(values)
+    gammas = jnp.array([0.5, 0.25])
+    result = jax.jit(jax.vmap(lambda value, gamma: operator.v(mdp, value, gamma)))(
+        values,
+        gammas,
+    )
 
     assert is_dataclass(operator)
     assert result.shape == values.shape
-    attribute = "gamma"
-    with pytest.raises(FrozenInstanceError):
-        setattr(operator, attribute, 0.9)
