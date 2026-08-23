@@ -275,7 +275,7 @@ def sample_from(policy: PiType, key: chex.PRNGKey) -> F["AS"]:
         Array: Sampled actions in the one-hot vector form for each state.
 
     """
-    return distrax.OneHotCategorical(probs=policy.T, dtype="float").sample(seed=key).T
+    return distrax.OneHotCategorical(probs=policy.T, dtype=policy.dtype).sample(seed=key).T
 
 
 def sample_based_policy_evaluation(
@@ -332,7 +332,7 @@ def sync_sample(mdp: MDP, key: chex.PRNGKey) -> tuple[F["AS"], F["ASS"], F["AS"]
 
     """
     next_state = distrax.OneHotCategorical(
-        probs=jnp.einsum("axs->asx", mdp.transition), dtype="float"
+        probs=jnp.einsum("axs->asx", mdp.transition), dtype=mdp.transition.dtype
     ).sample(seed=key)
     terminal = jnp.einsum("asx,x->as", next_state, mdp.terminal)
     reward = jnp.einsum("asx,asx->as", mdp.reward, next_state)
@@ -344,10 +344,10 @@ def async_sample_step(
     mdp: MDP,
     action: F["A"],
     state: F["S"],
-    episode_step: chex.Scalar,
+    episode_step: jax.Array,
     episode_length: int,
     key: chex.PRNGKey,
-) -> tuple[F["S"], chex.Scalar, chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
+) -> tuple[F["S"], jax.Array, jax.Array, jax.Array, F["S"], jax.Array]:
     r"""
     Asynchronously sample from the given MDP by following the given action. The starting state
     is given by the <state> argument. Similar to stateless version of the env.step() function
@@ -378,7 +378,10 @@ def async_sample_step(
     state_key, init_key = jrd.split(key, num=2)
 
     next_state_p = jnp.einsum("a,axs,s->x", action, mdp.transition, state)
-    next_state = distrax.OneHotCategorical(probs=next_state_p, dtype="float").sample(seed=state_key)
+    next_state = distrax.OneHotCategorical(
+        probs=next_state_p,
+        dtype=next_state_p.dtype,
+    ).sample(seed=state_key)
     reward = jnp.einsum("asx,a,s,x->", mdp.reward, action, state, next_state)
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
 
@@ -387,7 +390,7 @@ def async_sample_step(
     terminal = jnp.einsum("s,s->", mdp.terminal, next_state)
     done = jnp.logical_or(terminal, timeout)
 
-    init_state = distrax.OneHotCategorical(probs=mdp.initial, dtype="float").sample(seed=init_key)
+    init_state = mdp.init_state(init_key)
     state = next_state * (1 - done) + init_state * done
     episode_step = episode_step * (1 - done)
 
@@ -398,10 +401,10 @@ def async_sample_step_pi(
     mdp: MDP,
     policy: PiType,
     state: F["S"],
-    episode_step: chex.Scalar,
+    episode_step: jax.Array,
     episode_length: int,
     key: chex.PRNGKey,
-) -> tuple[F["A"], F["S"], chex.Scalar, chex.Scalar, chex.Scalar, F["S"], chex.Scalar]:
+) -> tuple[F["A"], F["S"], jax.Array, jax.Array, jax.Array, F["S"], jax.Array]:
     r"""
     Asynchronously sample from the given MDP by following the given policy.
 
