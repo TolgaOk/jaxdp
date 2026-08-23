@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxdp.mdp import Mdp
-from jaxdp.mdp.sampler.mdp import State, _queue_push, rollout, step
+from jaxdp.mdp.sampler.mdp import State, _queue_push, rollout, sample_step, step
 
 
 def _terminal_mdp() -> Mdp:
@@ -42,6 +42,22 @@ def test_step_keeps_transition_successor_separate_from_reset_state() -> None:
     assert state.episode_step == 0
     assert state.episode_reward_queue[0] == 3.0
     assert state.episode_length_queue[0] == 1
+
+
+def test_sample_step_returns_the_successor_and_continuation_separately() -> None:
+    mdp = _terminal_mdp()
+    data, continuation, episode_step = jax.jit(sample_step)(
+        jax.random.key(0),
+        mdp.initial,
+        jnp.array(0),
+        jnp.ones((1, 2)),
+        mdp,
+        10,
+    )
+
+    assert jnp.array_equal(data.next_state, jnp.array([0.0, 1.0]))
+    assert jnp.array_equal(continuation, mdp.initial)
+    assert episode_step == 0
 
 
 def test_queue_push_preserves_nan_slots_when_idle() -> None:

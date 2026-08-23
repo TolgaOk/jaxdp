@@ -7,7 +7,6 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrd
 
-import jaxdp
 from jaxdp.mdp import Mdp
 
 
@@ -117,6 +116,50 @@ def _update_state(state: State, step_data: RolloutData) -> State:
     )
 
 
+def sample_step(
+    key: chex.PRNGKey,
+    state: jax.Array,
+    episode_step: jax.Array,
+    policy: jax.Array,
+    mdp: Mdp,
+    max_episode_len: int,
+) -> tuple[RolloutData, jax.Array, jax.Array]:
+    """Sample one transition and return the reset-aware continuation state."""
+    action_key, state_key, reset_key = jrd.split(key, 3)
+    action_probability = jnp.einsum("as,s->a", policy, state)
+    action_index = jrd.categorical(action_key, jnp.log(action_probability))
+    action = jax.nn.one_hot(action_index, mdp.action_size, dtype=policy.dtype)
+
+    next_state_probability = jnp.einsum("a,axs,s->x", action, mdp.transition, state)
+    next_state_index = jrd.categorical(state_key, jnp.log(next_state_probability))
+    next_state = jax.nn.one_hot(
+        next_state_index,
+        mdp.state_size,
+        dtype=mdp.transition.dtype,
+    )
+    reward = jnp.einsum("asx,a,s,x->", mdp.reward, action, state, next_state)
+    terminal = jnp.einsum("s,s->", mdp.terminal, next_state).astype(bool)
+
+    next_episode_step = episode_step + 1
+    timeout = next_episode_step >= max_episode_len
+    done = jnp.logical_or(terminal, timeout)
+    continuation_state = jnp.where(done, mdp.init_state(reset_key), next_state)
+    next_episode_step = jnp.where(done, jnp.zeros_like(next_episode_step), next_episode_step)
+
+    return (
+        RolloutData(
+            state=state,
+            next_state=next_state,
+            action=action,
+            reward=reward,
+            terminal=terminal,
+            timeout=timeout,
+        ),
+        continuation_state,
+        next_episode_step,
+    )
+
+
 def step(
     key: chex.PRNGKey,
     sampler_state: State,
@@ -125,30 +168,17 @@ def step(
     max_episode_len: int,
 ) -> tuple[RolloutData, State]:
     """Sample one transition and advance the continuing sampler state."""
-    _, step_key = jrd.split(key)
     (
-        action,
-        next_state,
-        reward,
-        terminal,
-        timeout,
+        step_data,
         continuation_state,
         episode_step,
-    ) = jaxdp.async_sample_step_pi(
-        mdp,
-        policy,
+    ) = sample_step(
+        key,
         sampler_state.last_state,
         sampler_state.episode_step,
+        policy,
+        mdp,
         max_episode_len,
-        step_key,
-    )
-    step_data = RolloutData(
-        state=sampler_state.last_state,
-        next_state=next_state,
-        action=action,
-        reward=reward,
-        terminal=terminal,
-        timeout=timeout,
     )
     next_sampler_state = replace(
         _update_state(sampler_state, step_data),
@@ -195,6 +225,7 @@ __all__ = [
     "State",
     "RolloutData",
     "rollout",
+    "sample_step",
     "step",
     "init_sampler_state",
     "init_rollout",
