@@ -1,9 +1,7 @@
 import jax
 import jax.numpy as jnp
 
-from jaxdp.base import (
-    stationary_distribution,
-)
+from jaxdp.distribution import Occupancy
 from jaxdp.mdp import MDP
 from jaxdp.operator import state_action_value
 from jaxdp.policy import EpsilonGreedy, Soft
@@ -48,14 +46,14 @@ def test_value_policies_apply_one_step_lookahead() -> None:
     )
 
 
-def test_stationary_state_and_action_distributions_are_consistent() -> None:
+def test_state_and_action_occupancies_are_consistent() -> None:
     mdp = _two_state_mdp()
     policy = jnp.full((2, 2), 0.5)
 
-    initial_v = stationary_distribution.v(mdp, policy, iterations=0)
-    initial_q = stationary_distribution.q(mdp, policy, iterations=0)
-    next_v = stationary_distribution.v(mdp, policy, iterations=1)
-    next_q = stationary_distribution.q(mdp, policy, iterations=1)
+    initial_v = Occupancy(steps=0).v(mdp, policy)
+    initial_q = Occupancy(steps=0).q(mdp, policy)
+    next_v = Occupancy(steps=1).v(mdp, policy)
+    next_q = Occupancy(steps=1).q(mdp, policy)
 
     assert jnp.allclose(initial_v, mdp.initial)
     assert jnp.allclose(initial_q, policy * mdp.initial)
@@ -69,9 +67,9 @@ def test_completed_api_supports_jit_and_vmap() -> None:
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
 
     policies = jax.jit(jax.vmap(lambda value: soft.v(mdp, value, 0.5)))(values)
-    state_distribution = jax.jit(
-        lambda policy: stationary_distribution.v(mdp, policy, iterations=3)
-    )(jnp.full((2, 2), 0.5))
+    state_distribution = jax.jit(lambda policy: Occupancy(steps=3).v(mdp, policy))(
+        jnp.full((2, 2), 0.5)
+    )
 
     assert policies.shape == (2, mdp.action_size, mdp.state_size)
     assert jnp.allclose(state_distribution, jnp.array([0.5, 0.5]))
