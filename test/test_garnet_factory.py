@@ -42,13 +42,23 @@ def test_garnet_is_reproducible_and_composes_with_jit_and_vmap() -> None:
     assert batch.transition.shape == (4, 2, 5, 5)
 
 
+def test_garnet_caps_branching_at_the_state_count() -> None:
+    mdp = garnet_mdp(
+        jax.random.key(0),
+        state_size=2,
+        action_size=3,
+        branch_size=5,
+    )
+
+    assert jnp.all(jnp.sum(mdp.transition > 0, axis=-2) == 2)
+
+
 @pytest.mark.parametrize(
     ("state_size", "action_size", "branch_size", "min_reward", "max_reward", "message"),
     [
         (0, 2, 1, 0.0, 1.0, "state_size"),
         (2, 0, 1, 0.0, 1.0, "action_size"),
         (2, 2, 0, 0.0, 1.0, "branch_size"),
-        (2, 2, 3, 0.0, 1.0, "branch_size"),
         (2, 2, 1, 2.0, 1.0, "min_reward"),
     ],
 )

@@ -24,7 +24,7 @@ def garnet_mdp(
         key: Key used to generate transitions and rewards.
         state_size: Positive number of states.
         action_size: Positive number of actions.
-        branch_size: Number of distinct successors per state-action pair.
+        branch_size: Maximum number of distinct successors per state-action pair.
         min_reward: Inclusive lower reward bound.
         max_reward: Inclusive upper reward bound.
 
@@ -35,14 +35,15 @@ def garnet_mdp(
         raise ValueError("state_size must be positive")
     if action_size < 1:
         raise ValueError("action_size must be positive")
-    if not 1 <= branch_size <= state_size:
-        raise ValueError("branch_size must be in [1, state_size]")
+    if branch_size < 1:
+        raise ValueError("branch_size must be positive")
     if not math.isfinite(min_reward) or not math.isfinite(max_reward):
         raise ValueError("reward bounds must be finite")
     if min_reward > max_reward:
         raise ValueError("min_reward must not exceed max_reward")
 
     branch_key, transition_key, reward_key = jrd.split(key, 3)
+    successor_size = min(branch_size, state_size)
     candidates = jnp.broadcast_to(
         jnp.arange(state_size),
         (action_size, state_size, state_size),
@@ -52,7 +53,7 @@ def garnet_mdp(
         candidates,
         axis=-1,
         independent=True,
-    )[..., :branch_size]
+    )[..., :successor_size]
     weight = jrd.uniform(transition_key, successor.shape)
     weight = weight / jnp.sum(weight, axis=-1, keepdims=True)
     transition = jnp.einsum(
