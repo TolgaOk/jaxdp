@@ -60,6 +60,33 @@ def test_sample_step_returns_the_successor_and_continuation_separately() -> None
     assert episode_step == 0
 
 
+def test_sample_step_matches_action_and_transition_probabilities() -> None:
+    mdp = Mdp(
+        transition=jnp.array(
+            [
+                [[0.25, 0.0], [0.75, 1.0]],
+                [[0.80, 0.0], [0.20, 1.0]],
+            ]
+        ),
+        reward=jnp.zeros((2, 2, 2)),
+        initial=jnp.array([1.0, 0.0]),
+        terminal=jnp.zeros(2),
+    )
+    policy = jnp.array([[0.25, 0.5], [0.75, 0.5]])
+    keys = jax.random.split(jax.random.key(0), 20_000)
+
+    data = jax.vmap(
+        lambda key: sample_step(key, mdp.initial, jnp.array(0), policy, mdp, 10)[0]
+    )(keys)
+
+    assert jnp.allclose(jnp.mean(data.action, axis=0), jnp.array([0.25, 0.75]), atol=0.02)
+    assert jnp.allclose(
+        jnp.mean(data.next_state, axis=0),
+        jnp.array([0.6625, 0.3375]),
+        atol=0.02,
+    )
+
+
 def test_queue_push_preserves_nan_slots_when_idle() -> None:
     queue = jnp.array([2.0, jnp.nan])
 

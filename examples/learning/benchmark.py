@@ -9,10 +9,10 @@ from flax import struct
 from policies import epsilon_greedy
 from utils import log_results
 
-from jaxdp import async_sample_step_pi
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
+from jaxdp.mdp.sampler.mdp import sample_step
 from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.operator import Optimality
 from jaxdp.policy import Greedy
@@ -144,15 +144,21 @@ class sampler(metaclass=StaticMeta):
         Returns:
             StepResult containing action, next state, reward, flags, and updated state
         """
-        step = async_sample_step_pi(mdp, policy, mdp_state, ep_step, max_ep_len, key)
-        action, next_state, reward, terminal, timeout, stepped_state, new_ep_step = step
+        data, stepped_state, new_ep_step = sample_step(
+            key,
+            mdp_state,
+            ep_step,
+            policy,
+            mdp,
+            max_ep_len,
+        )
 
         return sampler.StepResult(
-            action=action,
-            next_state=next_state,
-            reward=reward,
-            terminal=terminal,
-            timeout=timeout,
+            action=data.action,
+            next_state=data.next_state,
+            reward=data.reward,
+            terminal=data.terminal,
+            timeout=data.timeout,
             stepped_state=stepped_state,
             ep_step=new_ep_step,
         )

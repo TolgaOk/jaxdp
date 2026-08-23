@@ -1,14 +1,6 @@
 from jaxdp import distribution as distribution
 from jaxdp import operator as operator
 from jaxdp import policy as policy
-from jaxdp.base import (
-    async_sample_step,
-    async_sample_step_pi,
-    sample_based_policy_evaluation,
-    sample_from,
-    sg,
-    sync_sample,
-)
 from jaxdp.distribution import Occupancy, Stationary, eigenvalues
 from jaxdp.mdp.mdp import MDP, Mdp
 from jaxdp.operator import (
@@ -35,10 +27,4 @@ __all__ = [
     "Occupancy",
     "Stationary",
     "eigenvalues",
-    "sample_from",
-    "sample_based_policy_evaluation",
-    "sync_sample",
-    "async_sample_step",
-    "async_sample_step_pi",
-    "sg",
 ]
