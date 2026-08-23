@@ -1,68 +1,44 @@
-""" From the paper: `Revisiting Peng's Q(λ) for Modern Reinforcement Learning`
-    https://proceedings.mlr.press/v139/kozuno21a/kozuno21a.pdf
-"""
+"""Deterministic binary-tree MDP factory."""
+
+import jax
 import jax.numpy as jnp
+
 from jaxdp.mdp import Mdp
 
 
-def _tree_mdp(depth: int) -> Mdp:
-    """
-    Constructs a binary tree MDP of given depth.
-      - The state space consists of nodes in a complete binary tree.
-        Total states: 2^(depth+1) - 1.
-      - Action space: two actions, 0 for 'Left' and 1 for 'Right'.
-      - For non-leaf nodes, action 0 transitions deterministically to the left child
-        and action 1 transitions to the right child.
-      - For leaf nodes, both actions yield a self loop (absorbing state).
-      - Rewards are zero everywhere except when reaching:
-            • the leftmost leaf (state index 2**depth - 1): reward 1.
-            • the rightmost leaf (state index = total_states - 1): reward 0.5.
-      - The initial state is the root (state 0).
-      - Terminal states are the leaf nodes.
-
-    Example of the tree structure for depth = 2:
-
-             0
-           /   \
-          /     \
-         /       \
-        1         2
-       / \\       / \\
-      /   \\     /   \\
-   3(+1) 4(0) 5(0) 6(+0.5)
+def tree_mdp(depth: int) -> Mdp:
+    """Create a binary tree with rewarded outer leaves.
 
     Args:
-        depth (int): Depth of the tree (number of steps per episode).
+        depth: Positive number of transitions from root to leaf.
 
     Returns:
-        MDP: The constructed Tree MDP.
+        Binary-tree MDP with terminal absorbing leaves.
     """
-    n_states = 2 ** (depth + 1) - 1
-    n_action = 2
-    n_non_leaf = 2 ** depth - 1
+    if depth < 1:
+        raise ValueError("depth must be positive")
 
-    transition = (
-        jnp.zeros((n_action, n_states, n_states))
-        .at[0, jnp.arange(n_non_leaf) * 2 + 1, jnp.arange(n_non_leaf)].set(1.0)
-        .at[0, jnp.arange(n_non_leaf, n_states), jnp.arange(n_non_leaf, n_states)].set(1.0)
-        .at[1, jnp.arange(n_non_leaf) * 2 + 2, jnp.arange(n_non_leaf)].set(1.0)
-        .at[1, jnp.arange(n_non_leaf, n_states), jnp.arange(n_non_leaf, n_states)].set(1.0)
+    state_size = 2 ** (depth + 1) - 1
+    non_leaf_size = 2**depth - 1
+    state = jnp.arange(state_size)
+    terminal = state >= non_leaf_size
+    next_state = jnp.stack(
+        (
+            jnp.where(terminal, state, 2 * state + 1),
+            jnp.where(terminal, state, 2 * state + 2),
+        )
     )
+    transition = jax.nn.one_hot(next_state, state_size, axis=-2)
+
     reward = (
-        jnp.zeros((n_action, n_states, n_states))
-        .at[0, 2 ** (depth - 1) - 1, 2 ** depth - 1].set(1.0)
-        .at[1, 2 ** depth - 2, -1].set(0.5)
+        jnp.zeros((2, state_size, state_size))
+        .at[0, 2 ** (depth - 1) - 1, 2**depth - 1]
+        .set(1.0)
+        .at[1, 2**depth - 2, state_size - 1]
+        .set(0.5)
     )
-    initial = (
-        jnp.zeros(n_states)
-        .at[0].set(1.0)
-    )
-    terminal = (
-        jnp.zeros(n_states)
-        .at[n_non_leaf:].set(1.0)
-    )
-
+    initial = jax.nn.one_hot(0, state_size)
     return Mdp(transition, reward, initial, terminal)
 
 
-tree_mdp = _tree_mdp
+__all__ = ["tree_mdp"]
