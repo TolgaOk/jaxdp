@@ -4,8 +4,8 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from jaxdp.base import to_state_action_value
 from jaxdp.mdp import MDP
+from jaxdp.operator import state_action_value
 from jaxdp.policy import EpsilonGreedy, Greedy, Policy, Soft
 
 
@@ -37,7 +37,7 @@ def _apply_q(policy: Policy, value: jax.Array) -> jax.Array:
 def test_policy_components_share_q_v_api() -> None:
     mdp = _two_state_mdp()
     value = jnp.array([4.0, 8.0])
-    q_value = to_state_action_value(mdp, value, gamma=0.5)
+    q_value = state_action_value(mdp, value, gamma=0.5)
     policies: tuple[Policy, ...] = (
         Greedy(),
         Soft(temperature=2.0),

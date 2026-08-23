@@ -21,9 +21,12 @@ class State:
     alpha: jnp.ndarray
 
 
+optimality = jaxdp.Optimality()
+
+
 def update(s: State, mdp: MDP, step: int) -> State:
     diff = s.q_val - s.prev_q_val
-    b_residual = jaxdp.bellman_optimality_operator.q(mdp, s.q_val, s.gamma) - s.q_val
+    b_residual = optimality.q(mdp, s.q_val, s.gamma) - s.q_val
     next_q = s.q_val + s.alpha * b_residual + s.beta * diff
     
     return s.replace(q_val=next_q, prev_q_val=s.q_val)

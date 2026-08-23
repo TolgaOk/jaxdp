@@ -1,6 +1,7 @@
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 import jax
 import jax.numpy as jnp
@@ -9,13 +10,15 @@ from algorithms import nesterov_vi, pi, vi
 from flax import struct
 from utils import log_comprehensive_benchmark, log_multi_gamma_results, log_results
 
-from jaxdp.base import bellman_optimality_operator as bellman_op
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.operator import Optimality
 
 jax.config.update("jax_enable_x64", True)
+
+optimality = Optimality()
 
 
 @struct.dataclass
@@ -38,7 +41,7 @@ def compute_metrics(prev_state, new_state, mdp, step):
     l2 = jnp.sqrt(jnp.sum(diff**2))
     linf = jnp.max(jnp.abs(diff))
 
-    bellman_target = bellman_op.q(mdp, prev_q, gamma)
+    bellman_target = optimality.q(mdp, prev_q, gamma)
     bellman_err = jnp.max(jnp.abs(prev_q - bellman_target))
 
     return Metrics(
@@ -64,20 +67,7 @@ def loop(mdp: MDP,
          metrics_fn: Callable[[Any, Any, MDP, jnp.ndarray], Any],
          callback: Callable[[int, Any], None] | None = None,
          ) -> tuple[Any, Any]:
-    """
-    Run the loop for a fixed number of iterations, updating the algorithm state and computing metrics.
-
-    Args:
-        mdp (MDP): Markov Decision Process
-        alg_state (Any): Initial state of the algorithm
-        args (LoopArgs): Loop arguments
-        update_fn (Callable[[Any, MDP, jnp.ndarray], Any]): Function to update the algorithm state
-        metrics_fn (Callable[[Any, Any, MDP, jnp.ndarray], Any]): Function to compute metrics
-        callback (Callable[[int, Any], None] | None): Optional callback function to be called at each iteration
-
-    Returns:
-        tuple[Any, Any]: Final algorithm state and all metrics collected during the loop
-    """
+    """Run a fixed number of updates and collect their metrics."""
 
     def scan_body(state: Any, iter_idx: jnp.ndarray) -> tuple[Any, Any]:
         prev_state = state
