@@ -26,8 +26,9 @@ def _reward(mdp: Mdp) -> jax.Array:
 
 def _policy_dynamics(mdp: Mdp, policy: jax.Array) -> tuple[jax.Array, jax.Array]:
     transition = jnp.einsum("as,axs->xs", policy, mdp.transition)
-    reward = jnp.einsum("as,asx->sx", policy, mdp.reward)
-    return transition, reward
+    reward = jnp.einsum("as,asx,axs->s", policy, mdp.reward, mdp.transition)
+    continuation = transition * (1 - mdp.terminal[:, None])
+    return continuation, reward
 
 
 def greedy_state_value(value: jax.Array) -> jax.Array:
@@ -73,8 +74,8 @@ class PolicyEvaluation:
         _validate_gamma(gamma)
         transition, reward = _policy_dynamics(mdp, policy)
         return jnp.linalg.solve(
-            jnp.eye(mdp.state_size) - gamma * transition.T,
-            jnp.einsum("xs,sx->s", transition, reward),
+            jnp.eye(mdp.state_size, dtype=mdp.transition.dtype) - gamma * transition.T,
+            reward,
         )
 
 

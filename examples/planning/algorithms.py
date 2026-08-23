@@ -2,11 +2,13 @@ import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
 
-from jaxdp import bellman_optimality_operator as bellman_op
-from jaxdp.base import policy_evaluation
 from jaxdp.mdp import MDP
+from jaxdp.operator import Optimality, PolicyEvaluation
 from jaxdp.policy import Greedy
 from jaxdp.typehints import QType, StaticMeta
+
+optimality = Optimality()
+evaluation = PolicyEvaluation()
 
 
 class vi(metaclass=StaticMeta):
@@ -28,7 +30,7 @@ class vi(metaclass=StaticMeta):
         return vi.State(q_vals=q_vals, gamma=gamma)
 
     def update(state: "vi.State", mdp: MDP, step: int) -> "vi.State":
-        next_q = bellman_op.q(mdp, state.q_vals, state.gamma)
+        next_q = optimality.q(mdp, state.q_vals, state.gamma)
         return state.replace(q_vals=next_q)
 
 
@@ -54,7 +56,7 @@ class nesterov_vi(metaclass=StaticMeta):
     def update(state: "nesterov_vi.State", mdp: MDP, step: int) -> "nesterov_vi.State":
         beta = (1 - jnp.sqrt(1 - state.gamma**2)) / state.gamma
         z_vals = state.q_vals + beta * (state.q_vals - state.prev_q)
-        bellman_residual = bellman_op.q(mdp, z_vals, state.gamma) - z_vals
+        bellman_residual = optimality.q(mdp, z_vals, state.gamma) - z_vals
         next_q = z_vals + (1 / (1 + state.gamma)) * bellman_residual
 
         return state.replace(q_vals=next_q, prev_q=state.q_vals)
@@ -79,6 +81,6 @@ class pi(metaclass=StaticMeta):
 
     def update(state: "pi.State", mdp: MDP, step: int) -> "pi.State":
         policy = Greedy().q(state.q_vals)
-        q_vals = policy_evaluation.q(mdp, policy, state.gamma)
+        q_vals = evaluation.q(mdp, policy, state.gamma)
 
         return state.replace(q_vals=q_vals)

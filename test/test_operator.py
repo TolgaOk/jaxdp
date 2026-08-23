@@ -62,6 +62,10 @@ def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
         state_action_value(mdp, jnp.array([0.0, 100.0]), gamma=0.9),
         jnp.array([[2.0, 0.0]]),
     )
+    assert jnp.array_equal(
+        PolicyEvaluation().v(mdp, jnp.ones((1, 2)), gamma=0.9),
+        jnp.array([2.0, 0.0]),
+    )
 
 
 def test_policy_evaluation_matches_analytical_solution() -> None:

@@ -10,15 +10,17 @@ from policies import epsilon_greedy
 from utils import log_results
 
 from jaxdp import async_sample_step_pi
-from jaxdp.base import bellman_optimality_operator as bellman_op
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.operator import Optimality
 from jaxdp.policy import Greedy
 from jaxdp.typehints import F, PiType, StaticMeta
 
 jax.config.update("jax_enable_x64", True)
+
+optimality = Optimality()
 
 
 class metrics(metaclass=StaticMeta):
@@ -73,7 +75,7 @@ class metrics(metaclass=StaticMeta):
         l2 = jnp.sqrt(jnp.sum(diff**2))
         linf = jnp.max(jnp.abs(diff))
 
-        bellman_target = bellman_op.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
+        bellman_target = optimality.q(args.mdp, prev_alg.q_vals, prev_alg.gamma)
         bellman_err = jnp.max(jnp.abs(prev_alg.q_vals - bellman_target))
 
         ep_return = jnp.where(dones, new.last_return, jnp.nan)
