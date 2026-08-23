@@ -1,13 +1,17 @@
-from jaxdp.mdp.mdp import MDP, flatten_mdp, unflatten_mdp
-from jaxdp.mdp.grid_world import grid_world
-from jaxdp.mdp.garnet import garnet_mdp
-from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.mdp.mdp import MDP, Mdp
+
+# isort: split
+
 from jaxdp.mdp.delayed_reward import delayed_reward_mdp
-from jaxdp.mdp.sequential import sequential_mdp
-from jaxdp.mdp.tree_mdp import tree_mdp
 from jaxdp.mdp.forest_mdp import forest_mdp
+from jaxdp.mdp.garnet import garnet_mdp
+from jaxdp.mdp.grid_world import grid_world
+from jaxdp.mdp.sequential import sequential_mdp
+from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.mdp.tree_mdp import tree_mdp
 
 __all__ = [
+    "Mdp",
     "MDP",
     "grid_world",
     "garnet_mdp",
@@ -16,6 +20,4 @@ __all__ = [
     "sequential_mdp",
     "tree_mdp",
     "forest_mdp",
-    "flatten_mdp",
-    "unflatten_mdp",
 ]

@@ -1,5 +1,3 @@
-import jax
-
 from jaxdp import policy as policy
 from jaxdp.base import (
     _markov_chain_pi,
@@ -18,10 +16,12 @@ from jaxdp.base import (
     to_greedy_state_value,
     to_state_action_value,
 )
-from jaxdp.mdp.mdp import MDP, flatten_mdp, unflatten_mdp
+from jaxdp.mdp.mdp import MDP, Mdp
 
 __all__ = [
     "policy",
+    "Mdp",
+    "MDP",
     "sample_from",
     "to_greedy_state_value",
     "to_state_action_value",
@@ -38,6 +38,3 @@ __all__ = [
     "async_sample_step_pi",
     "sg",
 ]
-
-
-jax.tree_util.register_pytree_node(MDP, flatten_mdp, unflatten_mdp)

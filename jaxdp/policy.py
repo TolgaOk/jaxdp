@@ -7,12 +7,7 @@ import chex
 import jax
 import jax.numpy as jnp
 
-
-class Mdp(Protocol):
-    """Tabular dynamics consumed by value-based policies."""
-
-    transition: jax.Array
-    reward: jax.Array
+from jaxdp.mdp.mdp import Mdp
 
 
 class Policy(Protocol):
