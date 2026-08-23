@@ -1,8 +1,8 @@
 import jax.numpy as jnp
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 
 
-def forest_mdp(rotation: int) -> MDP:
+def forest_mdp(rotation: int) -> Mdp:
     """
     Constructs a simple Forest MDP for forest management decisions.
 
@@ -46,4 +46,4 @@ def forest_mdp(rotation: int) -> MDP:
     )
     terminal = jnp.zeros(n_states)
 
-    return MDP(transition, reward, initial, terminal, name=f"ForestMDP[rotation={rotation}]")
+    return Mdp(transition, reward, initial, terminal)

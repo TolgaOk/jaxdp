@@ -6,10 +6,10 @@ import jax.numpy as jnp
 import jax.random as jrd
 import jax
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 
 
-def sequential_mdp(state_size: int) -> MDP:
+def sequential_mdp(state_size: int) -> Mdp:
     # TODO: Add test
     # TODO: Add documentation
     transition = jnp.zeros((2, state_size, state_size))
@@ -22,4 +22,4 @@ def sequential_mdp(state_size: int) -> MDP:
     initial = jnp.zeros((state_size,)).at[0].set(1)
     reward = jnp.zeros((2, state_size)).at[0, state_size-2].set(1)
 
-    return MDP(transition, reward, initial, terminal, name=f"SequentialMDP")
+    return Mdp(transition, reward, initial, terminal)

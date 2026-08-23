@@ -34,7 +34,7 @@ def _apply_q(policy: Policy, value: jax.Array) -> jax.Array:
     return policy.q(value)
 
 
-def test_policy_components_share_q_v_contract() -> None:
+def test_policy_components_share_q_v_api() -> None:
     mdp = _two_state_mdp()
     value = jnp.array([4.0, 8.0])
     q_value = to_state_action_value(mdp, value, gamma=0.5)

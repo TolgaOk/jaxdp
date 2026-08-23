@@ -7,14 +7,14 @@ import jax.numpy as jnp
 import jax.random as jrd
 import jax
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 
 
 _edge_info = {0: [0, 4], 1: [1, 3, 5], 2: [2, 3], 3: [1, 2, 3, 4], 4: [0, 3, 4, 5], 5: [1, 4, 5]}
 _state_size = 6
 
 
-def _graph_mdp(state_size: int, edge_info: Dict[int, List[int]]) -> MDP:
+def _graph_mdp(state_size: int, edge_info: Dict[int, List[int]]) -> Mdp:
     """
     Constructs a Graph MDP from a given state size and edge information.
     
@@ -57,7 +57,7 @@ def _graph_mdp(state_size: int, edge_info: Dict[int, List[int]]) -> MDP:
     terminal = jnp.zeros((state_size,))
     initial = jnp.ones((state_size,)) / state_size
 
-    return MDP(transition, reward / 100, initial, terminal, name=f"GraphMDP")
+    return Mdp(transition, reward / 100, initial, terminal)
 
 
 graph_mdp = partial(_graph_mdp, state_size=_state_size, edge_info=_edge_info)

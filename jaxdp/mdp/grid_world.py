@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxdp import mdp
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 
 
 # Example board
@@ -33,7 +33,7 @@ def _flatten_state(board, indices, char):
     return (board[indices[:, 0], indices[:, 1]] == char_map[char]).astype("float")
 
 
-def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
+def grid_world(board: List[str], p_slip: float = 0.0) -> Mdp:
     """
     Constructs a Markov Decision Process (MDP) for a grid world environment.
 
@@ -132,4 +132,4 @@ def grid_world(board: List[str], p_slip: float = 0.0) -> MDP:
             (1 - p_slip) * _transition[act_ind] +
             p_slip * _transition[jnp.array(slip_ind)].mean(0))
 
-    return MDP(transition, reward, initial, terminal, name="GridWorld")
+    return Mdp(transition, reward, initial, terminal)
