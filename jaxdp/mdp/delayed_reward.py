@@ -3,11 +3,11 @@ import jax.numpy as jnp
 import jax.random as jrd
 import jax
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 from jax.typing import ArrayLike as KeyType
 
 
-def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: KeyType) -> MDP:
+def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: KeyType) -> Mdp:
     # TODO: Add test
     # TODO: Add documentation
     state_size = int((action_size ** (delay + 1) - 1) / (action_size - 1))
@@ -34,4 +34,4 @@ def delayed_reward_mdp(delay: int, action_size: int, reward_std: float, key: Key
     terminal = jnp.concatenate(
         [jnp.zeros((state_size - n_leafs,)), jnp.ones((n_leafs,))])
 
-    return MDP(transition, reward, initial, terminal, name=f"DelayedRewardMDP(delay=f{delay})")
+    return Mdp(transition, reward, initial, terminal)

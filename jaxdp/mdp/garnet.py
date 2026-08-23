@@ -3,12 +3,12 @@ import jax.numpy as jnp
 import jax.random as jrd
 import jax
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 from jax.typing import ArrayLike as KeyType
 
 
 def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType,
-               min_reward: float = 0, max_reward: float = 1.0) -> MDP:
+               min_reward: float = 0, max_reward: float = 1.0) -> Mdp:
     """
     Constructs a Garnet MDP.
 
@@ -56,5 +56,4 @@ def garnet_mdp(state_size: int, action_size: int, branch_size: int, key: KeyType
     reward = jrd.uniform(reward_key, (action_size, state_size, state_size),
                          minval=min_reward, maxval=max_reward)
 
-    return MDP(transition, reward, initial, terminal,
-               name=f"GarnetMDP[#branch={branch_size}]")
+    return Mdp(transition, reward, initial, terminal)

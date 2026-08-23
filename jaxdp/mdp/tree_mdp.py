@@ -2,10 +2,10 @@
     https://proceedings.mlr.press/v139/kozuno21a/kozuno21a.pdf
 """
 import jax.numpy as jnp
-from jaxdp.mdp import MDP
+from jaxdp.mdp import Mdp
 
 
-def _tree_mdp(depth: int) -> MDP:
+def _tree_mdp(depth: int) -> Mdp:
     """
     Constructs a binary tree MDP of given depth.
       - The state space consists of nodes in a complete binary tree.
@@ -27,8 +27,8 @@ def _tree_mdp(depth: int) -> MDP:
           /     \
          /       \
         1         2
-       / \       / \
-      /   \     /   \
+       / \\       / \\
+      /   \\     /   \\
    3(+1) 4(0) 5(0) 6(+0.5)
 
     Args:
@@ -62,7 +62,7 @@ def _tree_mdp(depth: int) -> MDP:
         .at[n_non_leaf:].set(1.0)
     )
 
-    return MDP(transition, reward, initial, terminal, name=f"TreeMDP[depth={depth}]")
+    return Mdp(transition, reward, initial, terminal)
 
 
 tree_mdp = _tree_mdp
