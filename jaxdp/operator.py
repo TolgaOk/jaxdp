@@ -107,15 +107,15 @@ class Bellman:
 
 
 @chex.dataclass(frozen=True)
-class Optimality:
+class BellmanOptimality:
     """Discounted Bellman optimality operator."""
 
     def q(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Apply optimality to action values."""
+        """Apply Bellman optimality to action values."""
         return state_action_value(mdp, greedy_state_value(value), gamma)
 
     def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Apply optimality to state values."""
+        """Apply Bellman optimality to state values."""
         return greedy_state_value(state_action_value(mdp, value, gamma))
 
 
@@ -123,7 +123,7 @@ __all__ = [
     "Expected",
     "PolicyEvaluation",
     "Bellman",
-    "Optimality",
+    "BellmanOptimality",
     "greedy_state_value",
     "state_action_value",
 ]

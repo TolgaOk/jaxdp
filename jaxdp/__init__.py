@@ -5,8 +5,8 @@ from jaxdp.distribution import Occupancy, Stationary, eigenvalues
 from jaxdp.mdp.mdp import MDP, Mdp
 from jaxdp.operator import (
     Bellman,
+    BellmanOptimality,
     Expected,
-    Optimality,
     PolicyEvaluation,
     greedy_state_value,
     state_action_value,
@@ -21,7 +21,7 @@ __all__ = [
     "Expected",
     "PolicyEvaluation",
     "Bellman",
-    "Optimality",
+    "BellmanOptimality",
     "greedy_state_value",
     "state_action_value",
     "Occupancy",
