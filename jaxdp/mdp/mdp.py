@@ -40,21 +40,18 @@ class Mdp:
         reward: Transition rewards with shape ``(..., A, S, S)``.
         initial: Initial-state distributions with shape ``(..., S)``.
         terminal: Terminal-state indicators with shape ``(..., S)``.
-        features: State features with shape ``(..., S, F)``.
     """
 
     transition: jax.Array
     reward: jax.Array
     initial: jax.Array
     terminal: jax.Array
-    features: jax.Array
 
     _ARRAY_NAMES: ClassVar[tuple[str, ...]] = (
         "transition",
         "reward",
         "initial",
         "terminal",
-        "features",
     )
     _ATOL: ClassVar[float] = 1e-5
 
@@ -64,7 +61,6 @@ class Mdp:
         reward: ArrayLike,
         initial: ArrayLike,
         terminal: ArrayLike,
-        features: ArrayLike | None = None,
         validate: bool = True,
     ) -> None:
         transition_array = _as_real_array(transition, "transition")
@@ -75,21 +71,10 @@ class Mdp:
         if transition_array.ndim < 3:
             raise ValueError("transition shape must be (..., A, S, S)")
 
-        state_size = transition_array.shape[-1]
-        batch_shape = transition_array.shape[:-3]
-        if features is None:
-            feature_array = jnp.broadcast_to(
-                jnp.eye(state_size, dtype=transition_array.dtype),
-                (*batch_shape, state_size, state_size),
-            )
-        else:
-            feature_array = _as_real_array(features, "features")
-
         object.__setattr__(self, "transition", transition_array)
         object.__setattr__(self, "reward", reward_array)
         object.__setattr__(self, "initial", initial_array)
         object.__setattr__(self, "terminal", terminal_array)
-        object.__setattr__(self, "features", feature_array)
 
         self._validate_shapes()
         if validate:
@@ -111,25 +96,10 @@ class Mdp:
             raise ValueError(f"initial shape must be {(*batch_shape, state_size)}")
         if self.terminal.shape != (*batch_shape, state_size):
             raise ValueError(f"terminal shape must be {(*batch_shape, state_size)}")
-        if (
-            self.features.ndim != len(batch_shape) + 2
-            or self.features.shape[:-2] != batch_shape
-            or self.features.shape[-2] != state_size
-            or self.features.shape[-1] < 1
-        ):
-            raise ValueError("features shape must be (..., S, F) with the shared batch shape")
-
     def validate(self) -> None:
         """Validate concrete probabilities, numerical values, and terminal-state semantics."""
         if any(
-            isinstance(array, core.Tracer)
-            for array in (
-                self.transition,
-                self.reward,
-                self.initial,
-                self.terminal,
-                self.features,
-            )
+            isinstance(getattr(self, field), core.Tracer) for field in self._ARRAY_NAMES
         ):
             return
 
@@ -193,11 +163,6 @@ class Mdp:
         return self.transition.shape[-3]
 
     @property
-    def feature_size(self) -> int:
-        """Number of state features."""
-        return self.features.shape[-1]
-
-    @property
     def batch_shape(self) -> tuple[int, ...]:
         """Shared leading batch shape."""
         return self.transition.shape[:-3]
@@ -218,7 +183,7 @@ class Mdp:
             data = json.load(file)
 
         data.pop("name", None)
-        required = cls._ARRAY_NAMES[:-1]
+        required = cls._ARRAY_NAMES
         missing = [field for field in required if field not in data]
         if missing:
             raise ValueError(f"missing MDP arrays: {', '.join(missing)}")
@@ -228,10 +193,7 @@ class Mdp:
         if unknown:
             raise ValueError(f"unknown MDP fields: {', '.join(unknown)}")
 
-        arrays = {field: data[field] for field in required}
-        if "features" in data:
-            arrays["features"] = data["features"]
-        return cls(**arrays)
+        return cls(**{field: data[field] for field in required})
 
     def save_mdp_as_json(self, file_path: str | PathLike[str]) -> None:
         """Save every defining MDP array to a JSON file."""

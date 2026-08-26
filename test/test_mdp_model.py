@@ -7,7 +7,7 @@ import pytest
 from jaxdp.mdp import MDP, Mdp
 
 
-def _arrays() -> tuple[jax.Array, ...]:
+def _arrays() -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
     transition = jnp.array(
         [
             [[1.0, 0.0], [0.0, 1.0]],
@@ -20,8 +20,8 @@ def _arrays() -> tuple[jax.Array, ...]:
     return transition, reward, initial, terminal
 
 
-def _mdp(features: jax.Array | None = None) -> Mdp:
-    return Mdp(*_arrays(), features=features)
+def _mdp() -> Mdp:
+    return Mdp(*_arrays())
 
 
 def _initial_mass(mdp: Mdp) -> jax.Array:
@@ -38,16 +38,14 @@ def test_mdp_exposes_canonical_shapes_and_types() -> None:
     assert mdp.reward.shape == (2, 2, 2)
     assert mdp.initial.shape == (2,)
     assert mdp.terminal.shape == (2,)
-    assert mdp.features.shape == (2, 2)
     assert mdp.state_size == 2
     assert mdp.action_size == 2
-    assert mdp.feature_size == 2
     assert mdp.batch_shape == ()
     assert jnp.issubdtype(mdp.terminal.dtype, jnp.floating)
     assert jnp.allclose(_initial_mass(mdp), 1.0)
 
 
-def test_mdp_supports_direct_batches_and_batched_default_features() -> None:
+def test_mdp_supports_direct_batches() -> None:
     transition, reward, initial, terminal = _arrays()
     mdp = Mdp(
         jnp.stack((transition, transition)),
@@ -57,8 +55,6 @@ def test_mdp_supports_direct_batches_and_batched_default_features() -> None:
     )
 
     assert mdp.batch_shape == (2,)
-    assert mdp.features.shape == (2, 2, 2)
-    assert jnp.allclose(mdp.features, jnp.stack((jnp.eye(2), jnp.eye(2))))
 
 
 def test_mdp_is_an_immutable_jax_pytree() -> None:
@@ -67,7 +63,7 @@ def test_mdp_is_an_immutable_jax_pytree() -> None:
     copied = jax.jit(lambda item: item)(mdp)
     stacked = jax.tree.map(lambda *items: jnp.stack(items), mdp, mdp)
 
-    assert len(leaves) == 5
+    assert len(leaves) == 4
     assert jnp.allclose(copied.transition, mdp.transition)
     assert stacked.batch_shape == (2,)
     assert jnp.allclose(jax.vmap(_initial_mass)(stacked), jnp.ones(2))
@@ -93,8 +89,6 @@ def test_mdp_rejects_inconsistent_shapes() -> None:
         Mdp(transition, reward, initial[:1], terminal)
     with pytest.raises(ValueError, match="terminal shape"):
         Mdp(transition, reward, initial, terminal[:1])
-    with pytest.raises(ValueError, match="features shape"):
-        Mdp(transition, reward, initial, terminal, features=jnp.ones((3, 2)))
 
 
 def test_mdp_rejects_invalid_probabilities_and_values() -> None:
@@ -125,8 +119,7 @@ def test_mdp_enforces_terminal_state_semantics() -> None:
 
 
 def test_mdp_json_round_trip_preserves_all_arrays(tmp_path) -> None:
-    features = jnp.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
-    mdp = _mdp(features)
+    mdp = _mdp()
     path = tmp_path / "mdp.json"
 
     mdp.save_mdp_as_json(path)
