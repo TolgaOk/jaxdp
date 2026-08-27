@@ -1,28 +1,26 @@
+import chex
 import jax
 import jax.numpy as jnp
-import jax.random as jrd
 from flax import struct
 
 from jaxdp.mdp import MDP
-from jaxdp.typehints import F, QType, StaticMeta
 
 
-@struct.dataclass
-class Transition:
+class Transition(struct.PyTreeNode):
     """
     Protocol dataclass for MDP transitions.
 
     Contains all information about a single transition (s, a, r, s', done).
     """
 
-    state: F["S"]  # Current state (one-hot)
-    action: F["A"]  # Action taken (one-hot)
-    reward: F[""]  # Reward received (scalar)
-    next_state: F["S"]  # Next state reached (one-hot)
-    terminal: F[""]  # Terminal flag (scalar)
+    state: jax.Array  # Current state (one-hot)
+    action: jax.Array  # Action taken (one-hot)
+    reward: jax.Array  # Reward received (scalar)
+    next_state: jax.Array  # Next state reached (one-hot)
+    terminal: jax.Array  # Terminal flag (scalar)
 
 
-class q_learning(metaclass=StaticMeta):
+class q_learning:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Q-Learning: Off-policy TD Control
@@ -31,20 +29,21 @@ class q_learning(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    @struct.dataclass
-    class State:
-        q_vals: QType  # Q-values [A, S]
-        gamma: F[""]  # Discount factor (scalar)
-        alpha: F[""]  # Learning rate (scalar)
+    class State(struct.PyTreeNode):
+        q_vals: jax.Array  # Q-values [A, S]
+        gamma: jax.Array  # Discount factor (scalar)
+        alpha: jax.Array  # Learning rate (scalar)
 
+    @staticmethod
     def init(
-        mdp: MDP, key: jrd.PRNGKey, gamma: float, alpha: float, init_q: float = 0.0
+        mdp: MDP, key: chex.PRNGKey, gamma: float, alpha: float, init_q: float = 0.0
     ) -> "q_learning.State":
         q_vals = jnp.full((mdp.action_size, mdp.state_size), init_q)
 
         return q_learning.State(q_vals=q_vals, gamma=jnp.array(gamma), alpha=jnp.array(alpha))
 
-    def _compute_delta(state: "q_learning.State", transition: Transition) -> F["A S"]:
+    @staticmethod
+    def _compute_delta(state: "q_learning.State", transition: Transition) -> jax.Array:
         """
         Compute Q-value update delta for a single transition without alpha scaling.
 
@@ -68,6 +67,7 @@ class q_learning(metaclass=StaticMeta):
 
         return delta
 
+    @staticmethod
     def update(state: "q_learning.State", transition: Transition) -> "q_learning.State":
         """
         Update Q-values based on a single transition.
@@ -82,6 +82,7 @@ class q_learning(metaclass=StaticMeta):
         delta = q_learning._compute_delta(state, transition)
         return state.replace(q_vals=state.q_vals + state.alpha * delta)
 
+    @staticmethod
     def batch_update(state: "q_learning.State", transitions: Transition) -> "q_learning.State":
         """
         Update Q-values based on a batch of transitions.

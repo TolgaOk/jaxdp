@@ -15,10 +15,3 @@ python benchmark.py multi_seed_vi      # Multi-seed comparison in GridWorld
 python benchmark.py multi_gamma_vi     # Multi-gamma comparison in GridWorld
 python benchmark.py benchmark          # Full algorithm comparison
 ```
-
-> [!NOTE]  
-> We use `StaticMeta` to create static classes and use them only as namespaces.
-> ```python
-> class vi(metaclass=StaticMeta)
-> ```
-> With that you can call any attribute via `vi.` notation.

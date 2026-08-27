@@ -12,13 +12,12 @@ The `examples` directory contains implementations and benchmarks of planning alg
 
 ```python
 """ Momentum accelerated Value Iteration. """
-@struct.dataclass
-class State:
-    q_val: jnp.ndarray
-    prev_q_val: jnp.ndarray
-    gamma: jnp.ndarray
-    beta: jnp.ndarray
-    alpha: jnp.ndarray
+class State(struct.PyTreeNode):
+    q_val: jax.Array
+    prev_q_val: jax.Array
+    gamma: jax.Array
+    beta: jax.Array
+    alpha: jax.Array
 
 
 bellman_optimality = jaxdp.BellmanOptimality()

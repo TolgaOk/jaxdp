@@ -3,6 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+import chex
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
@@ -21,13 +22,12 @@ jax.config.update("jax_enable_x64", True)
 bellman_optimality = BellmanOptimality()
 
 
-@struct.dataclass
-class Metrics:
-    l1: jnp.ndarray
-    l2: jnp.ndarray
-    linf: jnp.ndarray
-    bellman_err: jnp.ndarray
-    iteration: jnp.ndarray
+class Metrics(struct.PyTreeNode):
+    l1: jax.Array
+    l2: jax.Array
+    linf: jax.Array
+    bellman_err: jax.Array
+    iteration: jax.Array
 
 
 def compute_metrics(prev_state, new_state, mdp, step):
@@ -63,13 +63,13 @@ class LoopArgs:
 def loop(mdp: MDP,
          alg_state: Any,
          args: LoopArgs,
-         update_fn: Callable[[Any, MDP, jnp.ndarray], Any],
-         metrics_fn: Callable[[Any, Any, MDP, jnp.ndarray], Any],
+         update_fn: Callable[[Any, MDP, jax.Array], Any],
+         metrics_fn: Callable[[Any, Any, MDP, jax.Array], Any],
          callback: Callable[[int, Any], None] | None = None,
          ) -> tuple[Any, Any]:
     """Run a fixed number of updates and collect their metrics."""
 
-    def scan_body(state: Any, iter_idx: jnp.ndarray) -> tuple[Any, Any]:
+    def scan_body(state: Any, iter_idx: jax.Array) -> tuple[Any, Any]:
         prev_state = state
         new_state = update_fn(state, mdp, iter_idx)
 
@@ -101,7 +101,7 @@ def grid_mdp_factory() -> MDP:
     return grid_world(board=board, p_slip=0.0)
 
 
-def garnet_mdp_factory(key: jrd.PRNGKey, state_size: int,
+def garnet_mdp_factory(key: chex.PRNGKey, state_size: int,
                        action_size: int, branch_size: int
                        ) -> MDP:
     """ Create a Garnet MDP """

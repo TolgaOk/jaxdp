@@ -1,6 +1,6 @@
+import jax.numpy as jnp
 from rich.console import Console
 from rich.table import Table
-import jax.numpy as jnp
 
 
 def log_results(results, alg_name):
@@ -21,7 +21,7 @@ def log_results(results, alg_name):
     table.add_column("Episodes", justify="right", style="white")
     table.add_column("Eval Return", justify="right", style="white")
 
-    for mdp_name, (metrics, q_vals) in results.items():
+    for mdp_name, (metrics, _q_vals) in results.items():
         bellman_err = float(metrics.bellman_err[-1])
         max_linf = float(jnp.max(metrics.linf))
         n_updates = int(jnp.sum(metrics.linf > 0))

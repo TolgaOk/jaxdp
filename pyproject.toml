@@ -9,6 +9,8 @@ readme = "README.md"
 description = "A Dynamic Programming package for discrete MDPs implemented in JAX"
 license = {text = "MIT License"}
 
+[tool.ty.src]
+exclude = ["setup.py"]
 
 [tool.ruff]
 # Set line length
@@ -43,10 +45,8 @@ select = [
 # Ignore specific rules that contradict our design choices
 ignore = [
     "N801",  # Class name should use CapWords convention - we use lowercase for algorithm classes (vi, pi, etc.)
-    "N805",  # First argument of a method should be named `self` - we use static methods with explicit typing
     "N999",  # Invalid module name - allow files starting with underscore for private/experimental code
     "F821",  # Undefined name - allow type variable names in type annotations (N, S, A, etc.)
-    "F722",  # Syntax error in forward annotation - our custom F["..."] type system
     "C408",  # Unnecessary `dict()` call - sometimes explicit dict() is clearer
 ]
 

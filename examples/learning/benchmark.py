@@ -1,9 +1,10 @@
-from typing import Any
+from typing import Any, Literal
 
-import click
+import chex
 import jax
 import jax.numpy as jnp
 import jax.random as jrd
+import tyro
 from algorithms import Transition, q_learning
 from flax import struct
 from policies import epsilon_greedy
@@ -16,14 +17,13 @@ from jaxdp.mdp.sampler.mdp import sample_initial, sample_step
 from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.operator import BellmanOptimality
 from jaxdp.policy import Greedy
-from jaxdp.typehints import F, PiType, StaticMeta
 
 jax.config.update("jax_enable_x64", True)
 
 bellman_optimality = BellmanOptimality()
 
 
-class metrics(metaclass=StaticMeta):
+class metrics:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Metrics Namespace
@@ -32,26 +32,26 @@ class metrics(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    @struct.dataclass
-    class State:
+    class State(struct.PyTreeNode):
         """Metrics collected during training"""
 
-        l1: F[""]  # L1 norm of Q-value change (scalar)
-        l2: F[""]  # L2 norm of Q-value change (scalar)
-        linf: F[""]  # L-infinity norm of Q-value change (scalar)
-        bellman_err: F[""]  # Bellman error (scalar)
-        iteration: F[""]  # Iteration number (scalar)
-        ep_return: F["..."]  # Episode returns [n_envs] - NaN if episode not complete
-        ep_len: F["..."]  # Episode lengths [n_envs] - NaN if episode not complete
-        eval_mean_return: F[""]  # Mean evaluation return (scalar) - NaN if no eval
-        eval_std_return: F[""]  # Std evaluation return (scalar) - NaN if no eval
+        l1: jax.Array  # L1 norm of Q-value change (scalar)
+        l2: jax.Array  # L2 norm of Q-value change (scalar)
+        linf: jax.Array  # L-infinity norm of Q-value change (scalar)
+        bellman_err: jax.Array  # Bellman error (scalar)
+        iteration: jax.Array  # Iteration number (scalar)
+        ep_return: jax.Array  # Episode returns [n_envs] - NaN if episode not complete
+        ep_len: jax.Array  # Episode lengths [n_envs] - NaN if episode not complete
+        eval_mean_return: jax.Array  # Mean evaluation return (scalar) - NaN if no eval
+        eval_std_return: jax.Array  # Std evaluation return (scalar) - NaN if no eval
 
+    @staticmethod
     def compute(
         prev: "loop.State",
         new: "loop.State",
         args: "loop.Args",
-        step: int,
-        dones: F["..."],
+        step: jax.Array,
+        dones: jax.Array,
         eval_results: "loop.EvalResult",
     ) -> "metrics.State":
         """Compute metrics for the current iteration
@@ -94,7 +94,7 @@ class metrics(metaclass=StaticMeta):
         )
 
 
-class sampler(metaclass=StaticMeta):
+class sampler:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Sampler Namespace
@@ -103,32 +103,31 @@ class sampler(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    @struct.dataclass
-    class StepResult:
+    class StepResult(struct.PyTreeNode):
         """Result from sampling a single step"""
 
-        action: F["A"]  # Action taken (one-hot) [n_actions]
-        next_state: F["S"]  # Next state (one-hot) [n_states]
-        reward: F[""]  # Reward received (scalar)
-        terminal: F[""]  # Terminal flag (scalar)
-        timeout: F[""]  # Timeout flag (scalar)
-        stepped_state: F["S"]  # Actual next state for continuing (one-hot) [n_states]
-        ep_step: F[""]  # Episode step counter (scalar)
+        action: jax.Array  # Action taken (one-hot) [n_actions]
+        next_state: jax.Array  # Next state (one-hot) [n_states]
+        reward: jax.Array  # Reward received (scalar)
+        terminal: jax.Array  # Terminal flag (scalar)
+        timeout: jax.Array  # Timeout flag (scalar)
+        stepped_state: jax.Array  # Actual next state for continuing (one-hot) [n_states]
+        ep_step: jax.Array  # Episode step counter (scalar)
 
-    @struct.dataclass
-    class EpisodeResult:
+    class EpisodeResult(struct.PyTreeNode):
         """Result from sampling a complete episode"""
 
-        total_return: F[""]  # Total episode return (scalar)
-        episode_length: F[""]  # Episode length (scalar)
+        total_return: jax.Array  # Total episode return (scalar)
+        episode_length: jax.Array  # Episode length (scalar)
 
+    @staticmethod
     def step(
         mdp: MDP,
-        policy: PiType,
-        mdp_state: F["S"],
-        ep_step: F[""],
+        policy: jax.Array,
+        mdp_state: jax.Array,
+        ep_step: jax.Array,
         max_ep_len: int,
-        key: jrd.PRNGKey,
+        key: chex.PRNGKey,
     ) -> "sampler.StepResult":
         """
         Sample a single step from the MDP using the given policy.
@@ -163,13 +162,14 @@ class sampler(metaclass=StaticMeta):
             ep_step=new_ep_step,
         )
 
+    @staticmethod
     def step_batch(
         mdp: MDP,
-        policy: PiType,
-        mdp_states: F["... S"],
-        ep_steps: F["..."],
+        policy: jax.Array,
+        mdp_states: jax.Array,
+        ep_steps: jax.Array,
         max_ep_len: int,
-        keys: jrd.PRNGKey,
+        keys: chex.PRNGKey,
     ) -> "sampler.StepResult":
         """
         Sample a single step for a batch of environments.
@@ -192,8 +192,9 @@ class sampler(metaclass=StaticMeta):
 
         return results
 
+    @staticmethod
     def episode(
-        mdp: MDP, policy: PiType, max_ep_len: int, key: jrd.PRNGKey
+        mdp: MDP, policy: jax.Array, max_ep_len: int, key: chex.PRNGKey
     ) -> "sampler.EpisodeResult":
         """
         Sample a complete episode from the MDP using the given policy.
@@ -226,7 +227,7 @@ class sampler(metaclass=StaticMeta):
         return sampler.EpisodeResult(total_return=final_return, episode_length=final_ep_step)
 
 
-class loop(metaclass=StaticMeta):
+class loop:
     """
     ◈─────────────────────────────────────────────────────────────────────────◈
     Training Loop for Value-based RL Algorithms
@@ -237,19 +238,17 @@ class loop(metaclass=StaticMeta):
     ◈─────────────────────────────────────────────────────────────────────────◈
     """
 
-    @struct.dataclass
-    class State:
+    class State(struct.PyTreeNode):
         """Training loop state - manages MDP interaction and episode tracking"""
 
         alg_state: Any  # q_learning.State
         policy_state: Any  # epsilon_greedy.State or soft_policy.State, etc.
-        mdp_state: F["... S"]  # MDP states [n_envs, n_states]
-        ep_step: F["..."]  # Episode step counters [n_envs]
-        ep_return: F["..."]  # Current episode returns [n_envs]
-        last_return: F["..."]  # Last completed episode returns [n_envs]
+        mdp_state: jax.Array  # MDP states [n_envs, n_states]
+        ep_step: jax.Array  # Episode step counters [n_envs]
+        ep_return: jax.Array  # Current episode returns [n_envs]
+        last_return: jax.Array  # Last completed episode returns [n_envs]
 
-    @struct.dataclass
-    class Args:
+    class Args(struct.PyTreeNode):
         """Training loop arguments - static configuration"""
 
         value_fn: Any  # Algorithm namespace (e.g., q_learning)
@@ -263,15 +262,15 @@ class loop(metaclass=StaticMeta):
         n_eval_episodes: int = 10  # Number of episodes for evaluation
         eval_seed: int = 42  # Seed for evaluation
 
-    @struct.dataclass
-    class EvalResult:
+    class EvalResult(struct.PyTreeNode):
         """Evaluation results"""
 
-        mean_return: F[""]  # Mean return across eval episodes (scalar)
-        std_return: F[""]  # Std return across eval episodes (scalar)
-        mean_length: F[""]  # Mean episode length (scalar)
-        std_length: F[""]  # Std episode length (scalar)
+        mean_return: jax.Array  # Mean return across eval episodes (scalar)
+        std_return: jax.Array  # Std return across eval episodes (scalar)
+        mean_length: jax.Array  # Mean episode length (scalar)
+        std_length: jax.Array  # Std episode length (scalar)
 
+    @staticmethod
     def init(alg_state: Any, policy_state: Any, args: "loop.Args") -> "loop.State":
         """Initialize loop state with algorithm and policy states
 
@@ -300,6 +299,7 @@ class loop(metaclass=StaticMeta):
             last_return=last_return,
         )
 
+    @staticmethod
     def train(state: "loop.State", args: "loop.Args") -> tuple["loop.State", Any]:
         """Run training loop for n_steps with specified value function and policy
 
@@ -353,7 +353,10 @@ class loop(metaclass=StaticMeta):
                 should_eval,
                 lambda s: loop.evaluate(s, args),
                 lambda s: loop.EvalResult(
-                    mean_return=jnp.nan, std_return=jnp.nan, mean_length=jnp.nan, std_length=jnp.nan
+                    mean_return=jnp.asarray(jnp.nan),
+                    std_return=jnp.asarray(jnp.nan),
+                    mean_length=jnp.asarray(jnp.nan),
+                    std_length=jnp.asarray(jnp.nan),
                 ),
                 new_state,
             )
@@ -368,6 +371,7 @@ class loop(metaclass=StaticMeta):
         final_state, all_metrics = jax.lax.scan(step_fn, state, steps_and_keys)
         return final_state, all_metrics
 
+    @staticmethod
     def evaluate(state: "loop.State", args: "loop.Args") -> "loop.EvalResult":
         """Evaluate the learned policy (greedy, no exploration)
 
@@ -407,7 +411,7 @@ def grid_mdp_factory() -> MDP:
 
 
 def garnet_mdp_factory(
-    key: jrd.PRNGKey, state_size: int, action_size: int, branch_size: int
+    key: chex.PRNGKey, state_size: int, action_size: int, branch_size: int
 ) -> MDP:
     """
     Create a random Garnet MDP.
@@ -688,22 +692,18 @@ def q_learning_benchmark():
     return results
 
 
-@click.command()
-@click.argument(
-    "benchmark_type",
-    type=click.Choice(
-        [
-            "q_learning",
-            "parallel_envs",
-            "multi_seed",
-            "q_learning_garnet",
-            "q_learning_graph",
-            "benchmark",
-        ]
-    ),
-)
-def main(benchmark_type):
-    """Run JAX Learning benchmarks"""
+Benchmark = Literal[
+    "q_learning",
+    "parallel_envs",
+    "multi_seed",
+    "q_learning_garnet",
+    "q_learning_graph",
+    "benchmark",
+]
+
+
+def main(benchmark_type: Benchmark, /) -> None:
+    """Run a learning benchmark."""
     if benchmark_type == "q_learning":
         q_learning_grid_world()
     elif benchmark_type == "parallel_envs":
@@ -719,4 +719,4 @@ def main(benchmark_type):
 
 
 if __name__ == "__main__":
-    main()
+    tyro.cli(main)

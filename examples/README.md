@@ -14,10 +14,7 @@ See [planning/README.md](planning/README.md) for detailed usage instructions.
 
 ### `learning/`
 Sample-based reinforcement learning algorithms that learn from experience without requiring a model:
-- **TD Learning** (`td`)
 - **Q-Learning** (`q_learning`)
-- **SARSA** (`sarsa`)
-- **Expected SARSA** (`expected_sarsa`)
 
 See [learning/README.md](learning/README.md) for detailed usage instructions.
 
@@ -30,17 +27,17 @@ python benchmark.py vi                 # Value iteration in GridWorld
 python benchmark.py benchmark          # Full algorithm comparison
 ```
 
-### Running Learning Examples (Coming Soon)
+### Running Learning Examples
 ```bash
 cd learning
-python benchmark.py td                 # TD learning in GridWorld
-python benchmark.py benchmark          # Full algorithm comparison
+python benchmark.py q_learning         # Q-learning in GridWorld
+python benchmark.py benchmark          # Full environment comparison
 ```
 
 ## Design Philosophy
 
 All examples follow a consistent design pattern:
-- **StaticMeta Classes**: Algorithms are organized as static namespaces
+- **Typed state**: Algorithm state uses JAX-compatible dataclasses
 - **JAX-First**: Leverages JAX's `vmap`, `scan`, and JIT compilation
 - **Composable**: Reusable components for algorithms, metrics, and benchmarking
 - **Educational**: Clear, readable code demonstrating RL concepts

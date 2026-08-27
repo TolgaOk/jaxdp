@@ -1,8 +1,9 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
+
 
 # Read requirements from requirements.txt
 def read_requirements():
-    with open('requirements.txt', 'r') as f:
+    with open('requirements.txt') as f:
         return [line.strip() for line in f if line.strip() and not line.startswith('#')]
 
 setup(

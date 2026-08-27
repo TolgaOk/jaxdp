@@ -2,12 +2,11 @@ import unittest
 
 import jax.numpy as jnp
 import jax.random as jrd
+from algorithms import Transition, q_learning
+from benchmark import loop
+from policies import epsilon_greedy, soft_policy
 
 from jaxdp.mdp.grid_world import grid_world
-
-from algorithms import Transition, q_learning
-from policies import epsilon_greedy, soft_policy
-from benchmark import loop, metrics
 
 
 class TestQLearningAlgorithm(unittest.TestCase):
