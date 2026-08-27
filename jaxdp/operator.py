@@ -1,71 +1,131 @@
-"""Value-space maps and Bellman operators for finite MDPs."""
+"""Transition, resolvent, and Bellman operators for finite MDPs."""
 
 import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import MDP, MRP
 
 _ATOL = 1e-5
 
 
 @chex.dataclass(frozen=True)
-class ValueMap:
-    r"""Namespace for maps between state- and action-value spaces.
+class TransOp:
+    r"""Namespace for terminal-aware transition operators.
 
-    ``to_q`` applies the one-step state-to-action backup
-
-    .. math::
-
-        (\mathcal{B}_\gamma v)(s,a)
-        = r(s,a)
-        + \gamma \sum_{s'\in\mathcal{S}}\bar P(s'\mid s,a)v(s'),
-
-    The barred transition kernel masks values after terminal successors. ``to_v`` applies the
-    greedy action reduction
+    For an MRP and an MDP, respectively, ``s`` and ``sa`` apply
 
     .. math::
 
-        (\mathcal{M}q)(s) = \max_{a\in\mathcal{A}}q(s,a).
+        (\bar{\mathcal{P}}_{S}x)(s)
+        = \sum_{s'\in\mathcal{S}}
+          P(s'\mid s)(1-\tau(s'))x(s'),
+        \qquad
+        (\bar{\mathcal{P}}_{SA}x)(s,a)
+        = \sum_{s'\in\mathcal{S}}
+          P(s'\mid s,a)(1-\tau(s'))x(s').
+
+    The inputs are arbitrary state vectors. Terminal successors do not contribute.
 
     Methods:
-        to_q: Map state values to one-step action values.
-        to_v: Map action values to greedy state values.
+        s: Apply an MRP transition operator to a state vector.
+        sa: Apply an MDP transition operator to a state vector.
     """
 
-    def to_q(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Map state values to one-step action values.
+    def s(self, mrp: MRP, vec: jax.Array) -> jax.Array:
+        """Apply an MRP transition operator to a state vector.
+
+        Args:
+            mrp: Finite Markov reward process.
+            vec: State vector with shape ``(S,)``.
+
+        Returns:
+            State vector with shape ``(S,)``.
+        """
+        chex.assert_shape(vec, (mrp.state_size,))
+        return jnp.einsum(
+            "xs,x,x->s",
+            mrp.transition,
+            vec,
+            1 - mrp.terminal,
+        )
+
+    def sa(self, mdp: MDP, vec: jax.Array) -> jax.Array:
+        """Apply an MDP transition operator to a state vector.
 
         Args:
             mdp: Finite Markov decision process.
-            v_val: State values with shape ``(S,)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
+            vec: State vector with shape ``(S,)``.
 
         Returns:
-            Action values with shape ``(A, S)``.
+            State-action vector with shape ``(A, S)``.
         """
-        gamma_array = _assert_gamma(gamma)
-        chex.assert_shape(v_val, (mdp.state_size,))
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        expected_next = jnp.einsum(
+        chex.assert_shape(vec, (mdp.state_size,))
+        return jnp.einsum(
             "axs,x,x->as",
             mdp.transition,
-            v_val,
+            vec,
             1 - mdp.terminal,
         )
-        return reward + gamma_array * expected_next
 
-    def to_v(self, q_val: jax.Array) -> jax.Array:
-        """Map action values to greedy state values.
+
+@chex.dataclass(frozen=True)
+class AdjTransOp:
+    r"""Namespace for adjoints of terminal-aware transition operators.
+
+    For an MRP and an MDP, respectively, ``s`` and ``sa`` apply
+
+    .. math::
+
+        (\bar{\mathcal{P}}_{S}^{*}\rho)(s')
+        = (1-\tau(s'))\sum_{s\in\mathcal{S}}P(s'\mid s)\rho(s),
+        \qquad
+        (\bar{\mathcal{P}}_{SA}^{*}\xi)(s')
+        = (1-\tau(s'))\sum_{s,a}P(s'\mid s,a)\xi(s,a).
+
+    These operators push measures to continuing successor states. Their output need not sum to
+    one because mass entering terminal states is removed.
+
+    Methods:
+        s: Apply an MRP transition adjoint to a state measure.
+        sa: Apply an MDP transition adjoint to a state-action measure.
+    """
+
+    def s(self, mrp: MRP, dist: jax.Array) -> jax.Array:
+        """Apply an MRP transition adjoint to a state measure.
 
         Args:
-            q_val: Action values with shape ``(A, S)``.
+            mrp: Finite Markov reward process.
+            dist: State measure with shape ``(S,)``.
 
         Returns:
-            Greedy state values with shape ``(S,)``.
+            Continuing successor-state measure with shape ``(S,)``.
         """
-        chex.assert_rank(q_val, 2)
-        return jnp.max(q_val, axis=0)
+        chex.assert_shape(dist, (mrp.state_size,))
+        return jnp.einsum(
+            "xs,s,x->x",
+            mrp.transition,
+            dist,
+            1 - mrp.terminal,
+        )
+
+    def sa(self, mdp: MDP, dist: jax.Array) -> jax.Array:
+        """Apply an MDP transition adjoint to a state-action measure.
+
+        Args:
+            mdp: Finite Markov decision process.
+            dist: State-action measure with shape ``(A, S)``.
+
+        Returns:
+            Continuing successor-state measure with shape ``(S,)``.
+        """
+        chex.assert_shape(dist, (mdp.action_size, mdp.state_size))
+        return jnp.einsum(
+            "axs,as,x->x",
+            mdp.transition,
+            dist,
+            1 - mdp.terminal,
+        )
 
 
 @chex.dataclass(frozen=True)
@@ -190,18 +250,11 @@ class BellmanOp:
         Returns:
             Updated action values with shape ``(A, S)``.
         """
-        gamma_array = _assert_gamma(gamma)
         _assert_policy(mdp, policy)
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         next_v_val = jnp.einsum("as,as->s", policy, q_val)
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        expected_next = jnp.einsum(
-            "axs,x,x->as",
-            mdp.transition,
-            next_v_val,
-            1 - mdp.terminal,
-        )
-        return reward + gamma_array * expected_next
+        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, next_v_val)
 
     def v(
         self,
@@ -221,17 +274,10 @@ class BellmanOp:
         Returns:
             Updated state values with shape ``(S,)``.
         """
-        gamma_array = _assert_gamma(gamma)
         _assert_policy(mdp, policy)
         chex.assert_shape(v_val, (mdp.state_size,))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        expected_next = jnp.einsum(
-            "axs,x,x->as",
-            mdp.transition,
-            v_val,
-            1 - mdp.terminal,
-        )
-        q_val = reward + gamma_array * expected_next
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
         return jnp.einsum("as,as->s", policy, q_val)
 
 
@@ -265,8 +311,9 @@ class BellmanOptOp:
         Returns:
             Updated action values with shape ``(A, S)``.
         """
-        value_map = ValueMap()
-        return value_map.to_q(mdp, value_map.to_v(q_val), gamma)
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, jnp.max(q_val, axis=0))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Bellman optimality operator to state values.
@@ -279,8 +326,9 @@ class BellmanOptOp:
         Returns:
             Updated state values with shape ``(S,)``.
         """
-        value_map = ValueMap()
-        return value_map.to_v(value_map.to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return jnp.max(q_val, axis=0)
 
 
 @chex.dataclass(frozen=True)
@@ -321,7 +369,9 @@ class SoftBellmanOptOp:
         Returns:
             Updated action values with shape ``(A, S)``.
         """
-        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the soft Bellman optimality operator to state values.
@@ -334,7 +384,9 @@ class SoftBellmanOptOp:
         Returns:
             Updated state values with shape ``(S,)``.
         """
-        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
         chex.assert_rank(q_val, 2)
@@ -382,7 +434,9 @@ class MellowmaxBellmanOptOp:
         Returns:
             Updated action values with shape ``(A, S)``.
         """
-        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Mellowmax Bellman optimality operator to state values.
@@ -395,7 +449,9 @@ class MellowmaxBellmanOptOp:
         Returns:
             Updated state values with shape ``(S,)``.
         """
-        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
         chex.assert_rank(q_val, 2)
@@ -446,7 +502,9 @@ class BoltzmannBellmanOp:
         Returns:
             Updated action values with shape ``(A, S)``.
         """
-        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Boltzmann Bellman operator to state values.
@@ -459,7 +517,9 @@ class BoltzmannBellmanOp:
         Returns:
             Updated state values with shape ``(S,)``.
         """
-        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
         chex.assert_rank(q_val, 2)
@@ -518,7 +578,8 @@ def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
 
 
 __all__ = [
-    "ValueMap",
+    "TransOp",
+    "AdjTransOp",
     "Resolvent",
     "BellmanOp",
     "BellmanOptOp",

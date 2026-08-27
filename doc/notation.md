@@ -254,16 +254,67 @@ $$
 
 `Stationary.v` solves this equation and `Stationary.q` combines its solution with $\pi$.
 
-## Bellman building blocks
+## Transition and Bellman building blocks
 
-jaxdp uses $\mathcal{B}_\gamma$ for the one-step Bellman backup from state values to action
-values:
+The terminal-aware transition operators for an MRP and an MDP are
+
+$$
+(\bar{\mathcal{P}}_S x)(s)
+= \sum_{s'\in\mathcal{S}}
+  P_S(s'\mid s)(1-\tau(s'))x(s'),
+$$
+
+and
+
+$$
+(\bar{\mathcal{P}}_{SA}x)(s,a)
+= \sum_{s'\in\mathcal{S}}
+  P(s'\mid s,a)(1-\tau(s'))x(s').
+$$
+
+`TransOp.s(mrp, vec)` applies $\bar{\mathcal{P}}_S$ and returns shape `(S,)`.
+`TransOp.sa(mdp, vec)` applies $\bar{\mathcal{P}}_{SA}$ and returns shape `(A, S)`.
+Both accept an arbitrary state vector; terminal successors do not contribute.
+
+Their adjoints push state and state-action measures to continuing successor states:
+
+$$
+(\bar{\mathcal{P}}_S^*\rho)(s')
+=(1-\tau(s'))\sum_{s\in\mathcal{S}}P_S(s'\mid s)\rho(s),
+$$
+
+and
+
+$$
+(\bar{\mathcal{P}}_{SA}^*\xi)(s')
+=(1-\tau(s'))\sum_{s,a}P(s'\mid s,a)\xi(s,a).
+$$
+
+`AdjTransOp.s(mrp, dist)` and `AdjTransOp.sa(mdp, dist)` implement these maps. They satisfy
+
+$$
+\langle \bar{\mathcal{P}}_S x,\rho\rangle
+=\langle x,\bar{\mathcal{P}}_S^*\rho\rangle,
+\qquad
+\langle \bar{\mathcal{P}}_{SA}x,\xi\rangle
+=\langle x,\bar{\mathcal{P}}_{SA}^*\xi\rangle.
+$$
+
+Their output may have mass below one because terminal successor mass is removed. The raw adjoint
+$\mathcal{P}^*$ instead preserves terminal mass and is used for full distribution propagation.
+
+The expected immediate state-action reward and one-step Bellman backup are
+
+$$
+r(s,a)=\sum_{s'\in\mathcal{S}}P(s'\mid s,a)R(s,a,s'),
+$$
+
+and
 
 $$
 \mathcal{B}_\gamma:V\longrightarrow Q,
 \qquad
-\mathcal{B}_\gamma v
-= r + \gamma\bar{\mathcal{P}}v.
+\mathcal{B}_\gamma v = r + \gamma\bar{\mathcal{P}}_{SA}v.
 $$
 
 Equivalently,
@@ -275,8 +326,8 @@ $$
 $$
 
 Its domain is $\mathbb{R}^{|\mathcal{S}|}$ and its codomain is
-$\mathbb{R}^{|\mathcal{S}| \times |\mathcal{A}|}$. `ValueMap.to_q(mdp, v_val, gamma)` applies
-$\mathcal{B}_\gamma$ and returns the code representation with shape `(A, S)`.
+$\mathbb{R}^{|\mathcal{S}| \times |\mathcal{A}|}$. Bellman and policy namespaces compose the
+expected reward, discount, and `TransOp.sa` directly.
 
 Two reductions map action values back to state values. Policy reduction is
 
@@ -290,8 +341,8 @@ $$
 (\mathcal{M}q)(s) = \max_{a \in \mathcal{A}} q(s,a).
 $$
 
-`ValueMap.to_v(q_val)` exposes greedy reduction. Policy reduction remains a building block of the
-Bellman policy operator.
+Policy and greedy reductions remain explicit building blocks of the corresponding Bellman
+operators.
 
 ## Bellman policy operators
 
@@ -585,15 +636,17 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `Greedy.v` |
 | $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `Soft.v` |
 | $\mathcal{G}_{\epsilon}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `EpsilonGreedy.v` |
-| $\mathcal{P},\bar{\mathcal{P}}$ | $V\to Q$ | Public form under review |
-| $\mathcal{P}^{\pi}$ | $V\to V$ | Public form under review |
+| $\bar{\mathcal{P}}_{SA}$ | $V\to Q$ | `TransOp.sa` |
+| $\bar{\mathcal{P}}_S$ | $V\to V$ | `TransOp.s` |
+| $\bar{\mathcal{P}}_{SA}^*$ | $\mathcal{D}_{SA}\to\mathcal{D}_S$ | `AdjTransOp.sa` |
+| $\bar{\mathcal{P}}_S^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | `AdjTransOp.s` |
 | $(\mathcal{P}^{\pi})^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | Used by `Occupancy` |
 | $\rho_n$ | $\mathrm{MDP}\times\Pi\times\mathbb{N}\to\Delta_S$ | `Occupancy.v` |
 | $\xi_n$ | $\mathrm{MDP}\times\Pi\times\mathbb{N}\to\Delta_{SA}$ | `Occupancy.q` |
 | $\rho_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_S$ | `Stationary.v` |
 | $\xi_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_{SA}$ | `Stationary.q` |
-| $\mathcal{B}_\gamma$ | $V \rightarrow Q$ | `ValueMap.to_q` |
-| $\mathcal{M}$ | $Q \rightarrow V$ | `ValueMap.to_v` |
+| $\mathcal{B}_\gamma$ | $V \rightarrow Q$ | Expected reward plus `TransOp.sa` |
+| $\mathcal{M}$ | $Q \rightarrow V$ | Used by `BellmanOptOp` |
 | $\mathcal{R}_{S,\gamma}$ | $V \rightarrow V$ | `Resolvent.s` |
 | $\mathcal{R}^{\pi}_{SA,\gamma}$ | $Q \rightarrow Q$ | `Resolvent.sa` |
 | $\mathcal{T}^{\pi}_{V}$ | $V \rightarrow V$ | `BellmanOp.v` |

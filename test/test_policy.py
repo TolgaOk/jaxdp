@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import pytest
 
 from jaxdp.mdp import MDP
-from jaxdp.operator import ValueMap
+from jaxdp.operator import TransOp
 from jaxdp.policy import EpsilonGreedy, Greedy, Soft
 
 
@@ -39,7 +39,8 @@ def _two_state_mdp() -> MDP:
 def test_policy_components_share_q_v_api() -> None:
     mdp = _two_state_mdp()
     v_val = jnp.array([4.0, 8.0])
-    q_val = ValueMap().to_q(mdp, v_val, gamma=0.5)
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    q_val = reward + 0.5 * TransOp().sa(mdp, v_val)
     policies = (
         Greedy(),
         Soft(temperature=2.0),

@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxdp.mdp.mdp import MDP
-from jaxdp.operator import ValueMap
+from jaxdp.operator import TransOp, _assert_gamma
 
 
 @chex.dataclass(frozen=True)
@@ -52,7 +52,9 @@ class Greedy:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        return self.q(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self.q(q_val)
 
 
 @chex.dataclass(frozen=True)
@@ -108,7 +110,9 @@ class Soft:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        return self.q(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self.q(q_val)
 
 
 @chex.dataclass(frozen=True)
@@ -164,7 +168,9 @@ class EpsilonGreedy:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        return self.q(ValueMap().to_q(mdp, v_val, gamma))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        return self.q(q_val)
 
 
 __all__ = ["Greedy", "Soft", "EpsilonGreedy"]

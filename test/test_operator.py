@@ -7,14 +7,15 @@ import pytest
 
 import jaxdp
 from jaxdp.distribution import Expectation
-from jaxdp.mdp import MDP
+from jaxdp.mdp import MDP, make_mrp
 from jaxdp.operator import (
+    AdjTransOp,
     BellmanOp,
     BellmanOptOp,
     BoltzmannBellmanOp,
     MellowmaxBellmanOptOp,
     SoftBellmanOptOp,
-    ValueMap,
+    TransOp,
 )
 from jaxdp.planning import PolicyEvaluation
 from jaxdp.policy import Greedy
@@ -45,6 +46,8 @@ def _two_state_mdp() -> MDP:
 
 
 def test_public_bellman_names() -> None:
+    assert jaxdp.TransOp is TransOp
+    assert jaxdp.AdjTransOp is AdjTransOp
     assert jaxdp.BellmanOp is BellmanOp
     assert jaxdp.BellmanOptOp is BellmanOptOp
     assert jaxdp.SoftBellmanOptOp is SoftBellmanOptOp
@@ -53,18 +56,55 @@ def test_public_bellman_names() -> None:
     assert not hasattr(jaxdp, "Bellman")
     assert not hasattr(jaxdp, "BellmanOptimality")
     assert not hasattr(jaxdp, "Optimality")
+    assert not hasattr(jaxdp, "ValueMap")
 
 
-def test_value_conversions_and_expectation() -> None:
+def test_transition_operators_and_expectation() -> None:
     mdp = _two_state_mdp()
     v_val = jnp.array([4.0, 8.0])
-    q_val = ValueMap().to_q(mdp, v_val, gamma=0.5)
+    trans_op = TransOp()
+    adj_trans_op = AdjTransOp()
+    sa_vec = trans_op.sa(mdp, v_val)
+    mrp = make_mrp(mdp, jnp.full((2, 2), 0.5))
+    s_vec = trans_op.s(mrp, v_val)
+    s_dist = jnp.array([0.25, 0.75])
+    sa_dist = jnp.array([[0.1, 0.2], [0.3, 0.4]])
+    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    q_val = reward + 0.5 * sa_vec
     dist = Greedy().q(q_val) * mdp.initial
 
+    assert jnp.array_equal(sa_vec, jnp.array([[4.0, 8.0], [8.0, 4.0]]))
+    assert jnp.array_equal(s_vec, jnp.array([6.0, 6.0]))
+    assert jnp.allclose(
+        jnp.sum(s_vec * s_dist),
+        jnp.sum(v_val * adj_trans_op.s(mrp, s_dist)),
+    )
+    assert jnp.allclose(
+        jnp.sum(sa_vec * sa_dist),
+        jnp.sum(v_val * adj_trans_op.sa(mdp, sa_dist)),
+    )
     assert jnp.allclose(q_val, jnp.array([[2.0, 5.0], [6.0, 5.0]]))
-    assert jnp.array_equal(ValueMap().to_v(q_val), jnp.array([6.0, 5.0]))
     assert Expectation().s(v_val, mdp.initial) == 4.0
     assert Expectation().sa(q_val, dist) == 6.0
+
+
+def test_transition_operators_compose_with_jax() -> None:
+    mdp = _two_state_mdp()
+    mrp = make_mrp(mdp, jnp.full((2, 2), 0.5))
+    trans_op = TransOp()
+    adj_trans_op = AdjTransOp()
+    vec = jnp.array([[4.0, 8.0], [8.0, 4.0]])
+    dist = jnp.full((2, 2, 2), 0.25)
+
+    backward = jax.jit(jax.vmap(lambda item: trans_op.sa(mdp, item)))(vec)
+    forward = jax.jit(jax.vmap(lambda item: adj_trans_op.sa(mdp, item)))(dist)
+    state_forward = jax.jit(jax.vmap(lambda item: adj_trans_op.s(mrp, item)))(vec)
+
+    assert is_dataclass(trans_op)
+    assert is_dataclass(adj_trans_op)
+    assert backward.shape == (2, mdp.action_size, mdp.state_size)
+    assert forward.shape == (2, mdp.state_size)
+    assert state_forward.shape == vec.shape
 
 
 def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
@@ -75,9 +115,16 @@ def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
         terminal=jnp.array([0.0, 1.0]),
     )
 
+    vec = jnp.array([0.0, 100.0])
+    mrp = make_mrp(mdp, jnp.ones((1, 2)))
+
+    assert jnp.array_equal(TransOp().sa(mdp, vec), jnp.zeros((1, 2)))
+    assert jnp.array_equal(TransOp().s(mrp, vec), jnp.zeros(2))
+    assert jnp.array_equal(AdjTransOp().sa(mdp, jnp.ones((1, 2))), jnp.zeros(2))
+    assert jnp.array_equal(AdjTransOp().s(mrp, jnp.ones(2)), jnp.zeros(2))
     assert jnp.array_equal(
-        ValueMap().to_q(mdp, jnp.array([0.0, 100.0]), gamma=0.9),
-        jnp.array([[2.0, 0.0]]),
+        BellmanOptOp().v(mdp, vec, gamma=0.9),
+        jnp.array([2.0, 0.0]),
     )
     assert jnp.array_equal(
         PolicyEvaluation().v(mdp, jnp.ones((1, 2)), gamma=0.9),
@@ -120,7 +167,7 @@ def test_smooth_bellman_operators_match_action_reductions() -> None:
     v_val = jnp.array([4.0, 8.0])
     q_val = jnp.array([[2.0, 5.0], [6.0, 5.0]])
     temperature = 2.0
-    immediate_q = ValueMap().to_q(mdp, v_val, gamma=0.0)
+    immediate_q = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
     soft_v = temperature * jax.nn.logsumexp(immediate_q / temperature, axis=0)
     mellowmax_v = soft_v - temperature * jnp.log(immediate_q.shape[0])
     boltzmann_policy = jax.nn.softmax(immediate_q / temperature, axis=0)
@@ -138,14 +185,18 @@ def test_smooth_bellman_operators_match_action_reductions() -> None:
     mellowmax_q = soft_q - temperature * jnp.log(q_val.shape[0])
     boltzmann_q = jnp.sum(jax.nn.softmax(q_val / temperature, axis=0) * q_val, axis=0)
 
-    assert jnp.allclose(soft.q(mdp, q_val, 0.5), ValueMap().to_q(mdp, soft_q, 0.5))
+    trans_op = TransOp()
+    assert jnp.allclose(
+        soft.q(mdp, q_val, 0.5),
+        immediate_q + 0.5 * trans_op.sa(mdp, soft_q),
+    )
     assert jnp.allclose(
         mellowmax.q(mdp, q_val, 0.5),
-        ValueMap().to_q(mdp, mellowmax_q, 0.5),
+        immediate_q + 0.5 * trans_op.sa(mdp, mellowmax_q),
     )
     assert jnp.allclose(
         boltzmann.q(mdp, q_val, 0.5),
-        ValueMap().to_q(mdp, boltzmann_q, 0.5),
+        immediate_q + 0.5 * trans_op.sa(mdp, boltzmann_q),
     )
 
 

@@ -18,10 +18,12 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(q\in\mathbb{R}^{\lvert\mathcal{S}\rvert\times\lvert\mathcal{A}\rvert}\) | `q_val[a, s]` | Action values, `(A, S)` |
 | \(\rho(s)\) | `dist[s]` | State distribution, `(S,)` |
 | \(\xi(s,a)\) | `dist[a, s]` | State-action distribution, `(A, S)` |
-| \(x_S,x_{SA}\) | `vec` | Generic resolvent input in `(S,)` or `(A, S)` |
+| \(x_S,x_{SA}\) | `vec` | Generic operator input in `(S,)` or `(A, S)` |
 | \((\mathrm{MDP},\pi)\mapsto\mathrm{MRP}\) | `make_mrp` | Policy-induced reward process |
-| \(\mathcal{B}_\gamma:V\to Q\) | `ValueMap.to_q` | One-step state-to-action backup |
-| \(\mathcal{M}:Q\to V\) | `ValueMap.to_v` | Greedy action reduction |
+| \(\bar{\mathcal{P}}_Sx_S\) | `TransOp.s` | Terminal-aware MRP transition, `(S,)` |
+| \(\bar{\mathcal{P}}_{SA}x_S\) | `TransOp.sa` | Terminal-aware MDP transition, `(A, S)` |
+| \(\bar{\mathcal{P}}_S^*x_S\) | `AdjTransOp.s` | Continuing MRP successor mass, `(S,)` |
+| \(\bar{\mathcal{P}}_{SA}^*x_{SA}\) | `AdjTransOp.sa` | Continuing MDP successor mass, `(S,)` |
 | \((I-\gamma\mathcal{P}_S)^{-1}\) | `Resolvent.s` | State-space resolvent |
 | \((I-\gamma\mathcal{P}^{\pi}_{SA})^{-1}\) | `Resolvent.sa` | State-action resolvent via an `S`-sized solve |
 | \(\mathcal{T}^{\pi}_{V},\mathcal{T}^{\pi}_{Q}\) | `BellmanOp.v`, `BellmanOp.q` | Bellman policy operators |
