@@ -1,10 +1,10 @@
-"""Backward value operators for finite MDPs."""
+"""Backward value operators for finite MDPs and MRPs."""
 
 import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp import MDP, MRP
 
 _ATOL = 1e-5
 
@@ -36,20 +36,18 @@ class Expected:
 
 @chex.dataclass(frozen=True)
 class PolicyEvaluation:
-    """Exact discounted policy evaluation."""
+    """Exact discounted MRP evaluation."""
 
-    def q(self, mdp: MDP, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Return exact action values for a policy."""
+    def q(self, mdp: MDP, mrp: MRP, gamma: float | jax.Array) -> jax.Array:
+        """Return exact action values using MDP actions and MRP state values."""
         gamma_array = _assert_gamma(gamma)
-        _assert_policy(mdp, policy)
-        value = _policy_value(mdp, policy, gamma_array)
+        value = _policy_value(mrp, gamma_array)
         return _state_action_value(mdp, value, gamma_array)
 
-    def v(self, mdp: MDP, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Return exact state values for a policy using a linear solve."""
+    def v(self, mrp: MRP, gamma: float | jax.Array) -> jax.Array:
+        """Return exact MRP state values using a linear solve."""
         gamma_array = _assert_gamma(gamma)
-        _assert_policy(mdp, policy)
-        return _policy_value(mdp, policy, gamma_array)
+        return _policy_value(mrp, gamma_array)
 
 
 @chex.dataclass(frozen=True)
@@ -101,13 +99,6 @@ def _reward(mdp: MDP) -> jax.Array:
     return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
 
 
-def _policy_dynamics(mdp: MDP, policy: jax.Array) -> tuple[jax.Array, jax.Array]:
-    transition = jnp.einsum("as,axs->xs", policy, mdp.transition)
-    reward = jnp.einsum("as,asx,axs->s", policy, mdp.reward, mdp.transition)
-    continuation = transition * (1 - mdp.terminal[:, None])
-    return continuation, reward
-
-
 def _state_action_value(mdp: MDP, value: jax.Array, gamma: jax.Array) -> jax.Array:
     chex.assert_shape(value, (mdp.state_size,))
     continuation = jnp.einsum(
@@ -119,11 +110,12 @@ def _state_action_value(mdp: MDP, value: jax.Array, gamma: jax.Array) -> jax.Arr
     return _reward(mdp) + gamma * continuation
 
 
-def _policy_value(mdp: MDP, policy: jax.Array, gamma: jax.Array) -> jax.Array:
-    transition, reward = _policy_dynamics(mdp, policy)
+def _policy_value(mrp: MRP, gamma: jax.Array) -> jax.Array:
+    continuation = mrp.transition * (1 - mrp.terminal)[..., :, None]
     return jnp.linalg.solve(
-        jnp.eye(mdp.state_size, dtype=mdp.transition.dtype) - gamma * transition.T,
-        reward,
+        jnp.eye(mrp.state_size, dtype=mrp.transition.dtype)
+        - gamma * jnp.swapaxes(continuation, -1, -2),
+        mrp.reward,
     )
 
 

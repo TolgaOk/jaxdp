@@ -2,7 +2,7 @@ from jaxdp import distribution as distribution
 from jaxdp import operator as operator
 from jaxdp import policy as policy
 from jaxdp.distribution import Occupancy, Stationary, eigenvalues
-from jaxdp.mdp import MDP
+from jaxdp.mdp import MDP, MRP, make_mrp
 from jaxdp.operator import (
     Bellman,
     BellmanOptimality,
@@ -17,6 +17,8 @@ __all__ = [
     "operator",
     "policy",
     "MDP",
+    "MRP",
+    "make_mrp",
     "Expected",
     "PolicyEvaluation",
     "Bellman",

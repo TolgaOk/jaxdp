@@ -17,7 +17,8 @@ import jaxdp
 
 
 def evaluate_policy(policy):
-    return jaxdp.PolicyEvaluation().v(mdp, policy, 0.99)
+    mrp = jaxdp.make_mrp(mdp, policy)
+    return jaxdp.PolicyEvaluation().v(mrp, 0.99)
 
 
 checked_evaluate = chex.chexify(
