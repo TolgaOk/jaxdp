@@ -28,7 +28,28 @@ def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
     Returns:
         Grid-world MDP in row-major state order.
     """
-    rows = _validate_board(board, p_slip)
+    if isinstance(board, str) or not board:
+        raise ValueError("board must be a nonempty sequence of rows")
+    if any(not isinstance(row, str) or not row for row in board):
+        raise ValueError("board rows must be nonempty strings")
+    if any(len(row) != len(board[0]) for row in board):
+        raise ValueError("board rows must have equal length")
+
+    invalid = set().union(*(set(row) for row in board)) - _VALID_CELLS
+    if invalid:
+        raise ValueError(f"board contains invalid cells: {sorted(invalid)}")
+    if sum(row.count("P") for row in board) != 1:
+        raise ValueError("board must contain exactly one initial cell 'P'")
+
+    slip = jnp.asarray(p_slip)
+    chex.assert_shape(slip, (), custom_message="p_slip must be scalar")
+    chex.assert_tree_all_finite(slip, custom_message="p_slip must be finite")
+    chex.assert_trees_all_equal(
+        (slip >= 0) & (slip <= 1),
+        jnp.asarray(True),
+        custom_message="p_slip must be in [0, 1]",
+    )
+    rows = tuple(board)
     positions = tuple(
         (row, column)
         for row, cells in enumerate(rows)
@@ -66,30 +87,6 @@ def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
     mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
     mdp.validate()
     return mdp
-
-
-def _validate_board(board: Sequence[str], p_slip: float) -> tuple[str, ...]:
-    if isinstance(board, str) or not board:
-        raise ValueError("board must be a nonempty sequence of rows")
-    if any(not isinstance(row, str) or not row for row in board):
-        raise ValueError("board rows must be nonempty strings")
-    if any(len(row) != len(board[0]) for row in board):
-        raise ValueError("board rows must have equal length")
-
-    invalid = set().union(*(set(row) for row in board)) - _VALID_CELLS
-    if invalid:
-        raise ValueError(f"board contains invalid cells: {sorted(invalid)}")
-    if sum(row.count("P") for row in board) != 1:
-        raise ValueError("board must contain exactly one initial cell 'P'")
-    slip = jnp.asarray(p_slip)
-    chex.assert_shape(slip, (), custom_message="p_slip must be scalar")
-    chex.assert_tree_all_finite(slip, custom_message="p_slip must be finite")
-    chex.assert_trees_all_equal(
-        (slip >= 0) & (slip <= 1),
-        jnp.asarray(True),
-        custom_message="p_slip must be in [0, 1]",
-    )
-    return tuple(board)
 
 
 __all__ = ["grid_world"]

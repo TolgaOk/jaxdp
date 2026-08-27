@@ -12,16 +12,24 @@ _ATOL = 1e-5
 
 @dataclass(frozen=True)
 class MRP:
-    """Finite Markov reward process.
+    r"""Finite Markov reward process.
+
+    .. math::
+
+        \mathcal{R}=(P,r,\mu,\tau)
 
     The transition convention is ``transition[..., s_next, s]``. Rewards are expected immediate
-    state rewards, and every array uses the same leading batch shape.
+    state rewards, and every array uses the same leading batch shape. Terminal states are absorbing
+    with zero outgoing reward; truncation is external to this model.
 
     Attributes:
-        transition: Column-stochastic transition arrays with shape ``(..., S, S)``.
-        reward: Expected immediate rewards with shape ``(..., S)``.
-        initial: Initial-state distributions with shape ``(..., S)``.
+        transition: Column-stochastic transition probabilities with shape ``(..., S, S)``.
+        reward: Expected immediate state rewards with shape ``(..., S)``.
+        initial: Initial state distribution with shape ``(..., S)``.
         terminal: Terminal-state indicators with shape ``(..., S)``.
+
+    Methods:
+        validate: Validate shapes, probabilities, and terminal semantics.
     """
 
     transition: jax.Array
@@ -36,12 +44,6 @@ class MRP:
 
     def validate(self) -> None:
         """Validate shapes, values, and terminal semantics with Chex."""
-        self._validate_shapes()
-        self._validate_finite()
-        self._validate_probabilities()
-        self._validate_terminal()
-
-    def _validate_shapes(self) -> None:
         chex.assert_shape(
             self.transition,
             (..., None, None),
@@ -72,10 +74,8 @@ class MRP:
             custom_message="terminal shape must match the MRP batch and state dimensions",
         )
 
-    def _validate_finite(self) -> None:
         chex.assert_tree_all_finite(self, custom_message="MRP arrays must be finite")
 
-    def _validate_probabilities(self) -> None:
         chex.assert_trees_all_equal(
             jnp.all(self.transition >= 0),
             jnp.asarray(True),
@@ -104,7 +104,6 @@ class MRP:
             custom_message="initial probabilities must sum to one",
         )
 
-    def _validate_terminal(self) -> None:
         chex.assert_trees_all_equal(
             jnp.all((self.terminal == 0) | (self.terminal == 1)),
             jnp.asarray(True),
@@ -132,21 +131,15 @@ class MRP:
 
 
 def make_mrp(mdp: MDP, policy: jax.Array) -> MRP:
-    """Create an MRP by fixing a policy in an MDP."""
-    _assert_policy(mdp, policy)
-    transition = jnp.einsum("...as,...axs->...xs", policy, mdp.transition)
-    reward = jnp.einsum("...as,...asx,...axs->...s", policy, mdp.reward, mdp.transition)
-    mrp = MRP(
-        transition=transition,
-        reward=reward,
-        initial=mdp.initial,
-        terminal=mdp.terminal,
-    )
-    mrp.validate()
-    return mrp
+    """Induce a finite MRP by fixing a policy in an MDP.
 
+    Args:
+        mdp: Finite Markov decision process.
+        policy: Action probabilities with shape ``(..., A, S)``.
 
-def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
+    Returns:
+        Policy-induced MRP.
+    """
     policy_shape = (*mdp.transition.shape[:-3], mdp.action_size, mdp.state_size)
     chex.assert_shape(
         policy,
@@ -167,6 +160,17 @@ def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
         rtol=0.0,
         custom_message="policy probabilities must sum to one for each state",
     )
+
+    transition = jnp.einsum("...as,...axs->...xs", policy, mdp.transition)
+    reward = jnp.einsum("...as,...asx,...axs->...s", policy, mdp.reward, mdp.transition)
+    mrp = MRP(
+        transition=transition,
+        reward=reward,
+        initial=mdp.initial,
+        terminal=mdp.terminal,
+    )
+    mrp.validate()
+    return mrp
 
 
 __all__ = ["MRP", "make_mrp"]

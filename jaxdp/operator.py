@@ -1,122 +1,286 @@
-"""Backward value operators for finite MDPs and MRPs."""
+"""Value-space maps and Bellman operators for finite MDPs."""
 
 import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP, MRP
+from jaxdp.mdp import MDP
 
 _ATOL = 1e-5
 
 
-def greedy_state_value(value: jax.Array) -> jax.Array:
-    """Return greedy state values from an ``(A, S)`` action-value array."""
-    chex.assert_rank(value, 2)
-    return jnp.max(value, axis=0)
-
-
-def state_action_value(mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-    """Return one-step action values from an ``(S,)`` state-value array."""
-    return _state_action_value(mdp, value, _assert_gamma(gamma))
-
-
 @chex.dataclass(frozen=True)
-class Expected:
-    """Initial-distribution expectation."""
+class ValueMap:
+    r"""Namespace for maps between state- and action-value spaces.
 
-    def q(self, mdp: MDP, value: jax.Array) -> jax.Array:
-        """Return the expected greedy action value."""
-        return self.v(mdp, greedy_state_value(value))
+    ``to_q`` applies the one-step state-to-action backup
 
-    def v(self, mdp: MDP, value: jax.Array) -> jax.Array:
-        """Return the expected state value."""
-        chex.assert_shape(value, (mdp.state_size,))
-        return jnp.sum(mdp.initial * value)
+    .. math::
 
+        (\mathcal{B}_\gamma v)(s,a)
+        = r(s,a)
+        + \gamma \sum_{s'\in\mathcal{S}}\bar P(s'\mid s,a)v(s'),
 
-@chex.dataclass(frozen=True)
-class PolicyEvaluation:
-    """Exact discounted MRP evaluation."""
+    The barred transition kernel masks values after terminal successors. ``to_v`` applies the
+    greedy action reduction
 
-    def q(self, mdp: MDP, mrp: MRP, gamma: float | jax.Array) -> jax.Array:
-        """Return exact action values using MDP actions and MRP state values."""
+    .. math::
+
+        (\mathcal{M}q)(s) = \max_{a\in\mathcal{A}}q(s,a).
+
+    Methods:
+        to_q: Map state values to one-step action values.
+        to_v: Map action values to greedy state values.
+    """
+
+    def to_q(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Map state values to one-step action values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Action values with shape ``(A, S)``.
+        """
         gamma_array = _assert_gamma(gamma)
-        value = _policy_value(mrp, gamma_array)
-        return _state_action_value(mdp, value, gamma_array)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        expected_next = jnp.einsum(
+            "axs,x,x->as",
+            mdp.transition,
+            v_val,
+            1 - mdp.terminal,
+        )
+        return reward + gamma_array * expected_next
 
-    def v(self, mrp: MRP, gamma: float | jax.Array) -> jax.Array:
-        """Return exact MRP state values using a linear solve."""
-        gamma_array = _assert_gamma(gamma)
-        return _policy_value(mrp, gamma_array)
+    def to_v(self, q_val: jax.Array) -> jax.Array:
+        """Map action values to greedy state values.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            Greedy state values with shape ``(S,)``.
+        """
+        chex.assert_rank(q_val, 2)
+        return jnp.max(q_val, axis=0)
 
 
 @chex.dataclass(frozen=True)
-class Bellman:
-    """Discounted Bellman policy operator."""
+class Resolvent:
+    r"""Namespace for discounted transition resolvents.
+
+    For the policy-induced terminal-masked transition operators on state and state-action vectors,
+    ``s`` and ``sa`` apply
+
+    .. math::
+
+        \mathcal{R}_{S,\gamma}(\mathcal{P}_{S})
+        = \left(I-\gamma\mathcal{P}_{S}\right)^{-1},
+        \qquad
+        \mathcal{R}^{\pi}_{SA,\gamma}
+        = \left(I-\gamma\bar{\mathcal{P}}\Pi_\pi\right)^{-1}.
+
+    Their inputs are arbitrary vectors on the corresponding finite spaces. The state-action
+    resolvent uses the identity
+
+    .. math::
+
+        \mathcal{R}^{\pi}_{SA,\gamma}x
+        = x + \gamma\bar{\mathcal{P}}
+          \mathcal{R}_{S,\gamma}(\bar{\mathcal{P}}^{\pi}_{S})\Pi_\pi x,
+
+    which requires only a state-sized linear solve.
+
+    Methods:
+        s: Apply a state-space resolvent.
+        sa: Apply a policy-induced state-action-space resolvent.
+    """
+
+    def s(self, p_s: jax.Array, vec: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the state-space resolvent to a vector.
+
+        Args:
+            p_s: State transition operator with shape ``(S, S)`` and storage order
+                ``p_s[s_next, s]``. Include terminal masking in this operator when required.
+            vec: State-space vector with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Resolved state-space vector with shape ``(S,)``.
+        """
+        gamma_array = _assert_gamma(gamma)
+        chex.assert_rank(p_s, 2)
+        state_size = p_s.shape[-1]
+        chex.assert_shape(p_s, (state_size, state_size))
+        chex.assert_shape(vec, (state_size,))
+        return jnp.linalg.solve(
+            jnp.eye(state_size, dtype=p_s.dtype) - gamma_array * p_s.T,
+            vec,
+        )
+
+    def sa(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        vec: jax.Array,
+        gamma: float | jax.Array,
+    ) -> jax.Array:
+        """Apply the policy-induced state-action resolvent to a vector.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            vec: State-action-space vector with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Resolved state-action-space vector with shape ``(A, S)``.
+        """
+        gamma_array = jnp.asarray(gamma)
+        _assert_policy(mdp, policy)
+        chex.assert_shape(vec, (mdp.action_size, mdp.state_size))
+        p_s = jnp.einsum("as,axs,x->xs", policy, mdp.transition, 1 - mdp.terminal)
+        s_vec = jnp.einsum("as,as->s", policy, vec)
+        resolved_s_vec = self.s(p_s, s_vec, gamma_array)
+        return vec + gamma_array * jnp.einsum(
+            "axs,x,x->as",
+            mdp.transition,
+            resolved_s_vec,
+            1 - mdp.terminal,
+        )
+
+
+@chex.dataclass(frozen=True)
+class BellmanOp:
+    r"""Namespace for discounted Bellman policy operators.
+
+    For a policy, ``v`` and ``q`` apply
+
+    .. math::
+
+        \mathcal{T}^{\pi}_{V} = \Pi_\pi \mathcal{B}_\gamma,
+        \qquad
+        \mathcal{T}^{\pi}_{Q} = \mathcal{B}_\gamma \Pi_\pi,
+
+    Here the backup maps state values to action values and the policy map averages actions.
+
+    Methods:
+        q: Apply the action-value Bellman policy operator.
+        v: Apply the state-value Bellman policy operator.
+    """
 
     def q(
         self,
         mdp: MDP,
         policy: jax.Array,
-        value: jax.Array,
+        q_val: jax.Array,
         gamma: float | jax.Array,
     ) -> jax.Array:
-        """Apply the Bellman policy operator to action values."""
+        """Apply the Bellman policy operator to action values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            q_val: Action values with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated action values with shape ``(A, S)``.
+        """
         gamma_array = _assert_gamma(gamma)
         _assert_policy(mdp, policy)
-        chex.assert_shape(value, (mdp.action_size, mdp.state_size))
-        next_value = jnp.einsum("as,as->s", policy, value)
-        return _state_action_value(mdp, next_value, gamma_array)
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        next_v_val = jnp.einsum("as,as->s", policy, q_val)
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        expected_next = jnp.einsum(
+            "axs,x,x->as",
+            mdp.transition,
+            next_v_val,
+            1 - mdp.terminal,
+        )
+        return reward + gamma_array * expected_next
 
     def v(
         self,
         mdp: MDP,
         policy: jax.Array,
-        value: jax.Array,
+        v_val: jax.Array,
         gamma: float | jax.Array,
     ) -> jax.Array:
-        """Apply the Bellman policy operator to state values."""
+        """Apply the Bellman policy operator to state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
         gamma_array = _assert_gamma(gamma)
         _assert_policy(mdp, policy)
-        action_value = _state_action_value(mdp, value, gamma_array)
-        return jnp.einsum("as,as->s", policy, action_value)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        expected_next = jnp.einsum(
+            "axs,x,x->as",
+            mdp.transition,
+            v_val,
+            1 - mdp.terminal,
+        )
+        q_val = reward + gamma_array * expected_next
+        return jnp.einsum("as,as->s", policy, q_val)
 
 
 @chex.dataclass(frozen=True)
-class BellmanOptimality:
-    """Discounted Bellman optimality operator."""
+class BellmanOptOp:
+    r"""Namespace for discounted Bellman optimality operators.
 
-    def q(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Apply Bellman optimality to action values."""
-        return state_action_value(mdp, greedy_state_value(value), gamma)
+    The ``v`` and ``q`` methods apply
 
-    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Apply Bellman optimality to state values."""
-        return greedy_state_value(state_action_value(mdp, value, gamma))
+    .. math::
 
+        \mathcal{T}^{*}_{V} = \mathcal{M}\mathcal{B}_\gamma,
+        \qquad
+        \mathcal{T}^{*}_{Q} = \mathcal{B}_\gamma\mathcal{M},
 
-def _reward(mdp: MDP) -> jax.Array:
-    return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    Here the backup maps state values to action values and the greedy map takes their maximum.
 
+    Methods:
+        q: Apply the action-value Bellman optimality operator.
+        v: Apply the state-value Bellman optimality operator.
+    """
 
-def _state_action_value(mdp: MDP, value: jax.Array, gamma: jax.Array) -> jax.Array:
-    chex.assert_shape(value, (mdp.state_size,))
-    continuation = jnp.einsum(
-        "axs,x,x->as",
-        mdp.transition,
-        value,
-        1 - mdp.terminal,
-    )
-    return _reward(mdp) + gamma * continuation
+    def q(self, mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Bellman optimality operator to action values.
 
+        Args:
+            mdp: Finite Markov decision process.
+            q_val: Action values with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
 
-def _policy_value(mrp: MRP, gamma: jax.Array) -> jax.Array:
-    continuation = mrp.transition * (1 - mrp.terminal)[..., :, None]
-    return jnp.linalg.solve(
-        jnp.eye(mrp.state_size, dtype=mrp.transition.dtype)
-        - gamma * jnp.swapaxes(continuation, -1, -2),
-        mrp.reward,
-    )
+        Returns:
+            Updated action values with shape ``(A, S)``.
+        """
+        value_map = ValueMap()
+        return value_map.to_q(mdp, value_map.to_v(q_val), gamma)
+
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Bellman optimality operator to state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
+        value_map = ValueMap()
+        return value_map.to_v(value_map.to_q(mdp, v_val, gamma))
 
 
 def _assert_gamma(gamma: float | jax.Array) -> jax.Array:
@@ -154,10 +318,8 @@ def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
 
 
 __all__ = [
-    "Expected",
-    "PolicyEvaluation",
-    "Bellman",
-    "BellmanOptimality",
-    "greedy_state_value",
-    "state_action_value",
+    "ValueMap",
+    "Resolvent",
+    "BellmanOp",
+    "BellmanOptOp",
 ]

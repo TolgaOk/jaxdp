@@ -79,5 +79,7 @@ def test_eigenvalues_describe_the_policy_transition() -> None:
 
 
 def test_occupancy_rejects_negative_steps() -> None:
+    mdp = _periodic_mdp()
+
     with pytest.raises(AssertionError, match="steps"):
-        Occupancy(steps=-1)
+        Occupancy(steps=-1).v(mdp, jnp.ones((1, 2)))

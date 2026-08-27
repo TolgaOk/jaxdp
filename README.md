@@ -2,6 +2,8 @@
 
 **`jaxdp`** is a Python package providing functional implementations of dynamic programming (DP) algorithms for finite state-action Markov decision processes (MDPs) within the <img src="https://raw.githubusercontent.com/google/jax/main/images/jax_logo_250px.png" width = 24px alt="logo"></img> ecosystem. By leveraging JAX transformations, you can accelerate DP algorithms (including GPU acceleration) through vectorized execution across multiple MDP instances, initial values, and parameters.
 
+See the concise [naming and notation reference](doc/README.md) for the mathematical API.
+
 ## Vectorization
 
 **`jaxdp`** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
@@ -17,15 +19,14 @@ import jaxdp
 
 
 def evaluate_policy(policy):
-    mrp = jaxdp.make_mrp(mdp, policy)
-    return jaxdp.PolicyEvaluation().v(mrp, 0.99)
+    return jaxdp.PolicyEvaluation().v(mdp, policy, 0.99)
 
 
 checked_evaluate = chex.chexify(
     jax.jit(jax.vmap(evaluate_policy)),
     async_check=False,
 )
-values = checked_evaluate(policies)
+v_vals = checked_evaluate(policies)
 ```
 
 ### Algorithm Example
@@ -42,20 +43,20 @@ class State(struct.PyTreeNode):
     alpha: jax.Array
 
 
-bellman_optimality = jaxdp.BellmanOptimality()
+bellman_opt_op = jaxdp.BellmanOptOp()
 
 
 def update(s: State, mdp: MDP, step: int) -> State:
     diff = s.q_val - s.prev_q_val
-    b_residual = bellman_optimality.q(mdp, s.q_val, s.gamma) - s.q_val
-    next_q = s.q_val + s.alpha * b_residual + s.beta * diff
+    b_residual = bellman_opt_op.q(mdp, s.q_val, s.gamma) - s.q_val
+    next_q_val = s.q_val + s.alpha * b_residual + s.beta * diff
     
-    return s.replace(q_val=next_q, prev_q_val=s.q_val)
+    return s.replace(q_val=next_q_val, prev_q_val=s.q_val)
 ```
 
 You can vectorize the update function to run across:
 
-- Multiple initial **values**
+- Multiple initial **state or action values**
 - Multiple **gamma** or **beta** values  
 - Multiple **MDP** instances
 
@@ -102,7 +103,7 @@ mdps = [make_garnet(state_size=300, action_size=10, key=key,
         for key in jax.random.split(key, n_mdp)]
 
 # Stacked MDP
-stacked_mdp = jax.tree_map(lambda *mdps: jnp.stack(mdps), *mdps)
+stacked_mdp = jax.tree.map(lambda *mdps: jnp.stack(mdps), *mdps)
 ```
 
 Once stacked, MDPs can be provided to vectorized functions:

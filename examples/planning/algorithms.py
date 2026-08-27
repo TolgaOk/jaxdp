@@ -4,11 +4,12 @@ import jax.numpy as jnp
 import jax.random as jrd
 from flax import struct
 
-from jaxdp.mdp import MDP, make_mrp
-from jaxdp.operator import BellmanOptimality, PolicyEvaluation
+from jaxdp.mdp import MDP
+from jaxdp.operator import BellmanOptOp
+from jaxdp.planning import PolicyEvaluation
 from jaxdp.policy import Greedy
 
-bellman_optimality = BellmanOptimality()
+bellman_optimality = BellmanOptOp()
 evaluation = PolicyEvaluation()
 
 
@@ -91,6 +92,6 @@ class pi:
     @staticmethod
     def update(state: "pi.State", mdp: MDP, step: jax.Array) -> "pi.State":
         policy = Greedy().q(state.q_vals)
-        q_vals = evaluation.q(mdp, make_mrp(mdp, policy), state.gamma)
+        q_vals = evaluation.q(mdp, policy, state.gamma)
 
         return state.replace(q_vals=q_vals)

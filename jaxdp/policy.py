@@ -1,47 +1,92 @@
 """Policy components for finite Markov decision processes."""
 
-from typing import Protocol
-
 import chex
 import jax
 import jax.numpy as jnp
 
 from jaxdp.mdp.mdp import MDP
-from jaxdp.operator import state_action_value
-
-
-class Policy(Protocol):
-    """Policy constructed from action or state values."""
-
-    def q(self, value: jax.Array) -> jax.Array: ...
-    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array: ...
+from jaxdp.operator import ValueMap
 
 
 @chex.dataclass(frozen=True)
 class Greedy:
-    """Greedy value-based policy."""
+    r"""Namespace for greedy policy selection.
 
-    def q(self, value: jax.Array) -> jax.Array:
-        """Return a greedy policy for an ``(A, S)`` action-value array."""
-        return _greedy(value)
+    The ``q`` and ``v`` methods apply
 
-    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Return a greedy policy after one-step state-value lookahead."""
-        return self.q(state_action_value(mdp, value, gamma))
+    .. math::
+
+        \mathcal{G}:Q\to\Pi,
+        \qquad
+        \mathcal{G}\mathcal{B}_\gamma:V\to\Pi.
+
+    Methods:
+        q: Select a greedy policy from action values.
+        v: Select a greedy policy from state values.
+    """
+
+    def q(self, q_val: jax.Array) -> jax.Array:
+        """Select a greedy policy from action values.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        chex.assert_rank(q_val, 2)
+        return jax.nn.one_hot(
+            jnp.argmax(q_val, axis=0),
+            q_val.shape[0],
+            axis=0,
+        )
+
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Select a greedy policy from state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        return self.q(ValueMap().to_q(mdp, v_val, gamma))
 
 
 @chex.dataclass(frozen=True)
 class Soft:
-    """Softmax value-based policy.
+    r"""Namespace for temperature-scaled softmax policy selection.
+
+    For a positive temperature, the ``q`` and ``v`` methods apply
+
+    .. math::
+
+        \mathcal{S}_\eta:Q\to\Pi,
+        \qquad
+        \mathcal{S}_\eta\mathcal{B}_\gamma:V\to\Pi.
 
     Attributes:
         temperature: Positive softmax temperature.
+
+    Methods:
+        q: Select a softmax policy from action values.
+        v: Select a softmax policy from state values.
     """
 
     temperature: float
 
-    def __post_init__(self) -> None:
-        """Validate the temperature."""
+    def q(self, q_val: jax.Array) -> jax.Array:
+        """Select a softmax policy from action values.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        chex.assert_rank(q_val, 2)
         temperature = jnp.asarray(self.temperature)
         chex.assert_shape(temperature, (), custom_message="temperature must be scalar")
         chex.assert_tree_all_finite(temperature, custom_message="temperature must be finite")
@@ -50,29 +95,53 @@ class Soft:
             jnp.asarray(True),
             custom_message="temperature must be positive",
         )
+        return jax.nn.softmax(q_val / temperature, axis=0)
 
-    def q(self, value: jax.Array) -> jax.Array:
-        """Return a softmax policy for an ``(A, S)`` action-value array."""
-        chex.assert_rank(value, 2)
-        return jax.nn.softmax(value / self.temperature, axis=0)
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Select a softmax policy from state values.
 
-    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Return a softmax policy after one-step state-value lookahead."""
-        return self.q(state_action_value(mdp, value, gamma))
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        return self.q(ValueMap().to_q(mdp, v_val, gamma))
 
 
 @chex.dataclass(frozen=True)
 class EpsilonGreedy:
-    """Epsilon-greedy value-based policy.
+    r"""Namespace for epsilon-greedy policy selection.
+
+    For an exploration probability in the closed unit interval, the ``q`` and ``v`` methods apply
+
+    .. math::
+
+        \mathcal{G}_\epsilon:Q\to\Pi,
+        \qquad
+        \mathcal{G}_\epsilon\mathcal{B}_\gamma:V\to\Pi.
 
     Attributes:
         epsilon: Uniform exploration probability in the closed interval ``[0, 1]``.
+
+    Methods:
+        q: Select an epsilon-greedy policy from action values.
+        v: Select an epsilon-greedy policy from state values.
     """
 
     epsilon: float
 
-    def __post_init__(self) -> None:
-        """Validate epsilon."""
+    def q(self, q_val: jax.Array) -> jax.Array:
+        """Select an epsilon-greedy policy from action values.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
         epsilon = jnp.asarray(self.epsilon)
         chex.assert_shape(epsilon, (), custom_message="epsilon must be scalar")
         chex.assert_tree_all_finite(epsilon, custom_message="epsilon must be finite")
@@ -81,24 +150,21 @@ class EpsilonGreedy:
             jnp.asarray(True),
             custom_message="epsilon must be in [0, 1]",
         )
+        greedy = Greedy().q(q_val)
+        return (1 - epsilon) * greedy + epsilon / q_val.shape[0]
 
-    def q(self, value: jax.Array) -> jax.Array:
-        """Return an epsilon-greedy policy for an ``(A, S)`` action-value array."""
-        greedy = _greedy(value)
-        return (1 - self.epsilon) * greedy + self.epsilon / value.shape[0]
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Select an epsilon-greedy policy from state values.
 
-    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
-        """Return an epsilon-greedy policy after one-step state-value lookahead."""
-        return self.q(state_action_value(mdp, value, gamma))
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
 
-
-def _greedy(value: jax.Array) -> jax.Array:
-    chex.assert_rank(value, 2)
-    return jax.nn.one_hot(
-        jnp.argmax(value, axis=0),
-        value.shape[0],
-        axis=0,
-    )
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        return self.q(ValueMap().to_q(mdp, v_val, gamma))
 
 
-__all__ = ["Policy", "Greedy", "Soft", "EpsilonGreedy"]
+__all__ = ["Greedy", "Soft", "EpsilonGreedy"]

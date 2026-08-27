@@ -59,15 +59,15 @@ def step(
 
     next_episode_step = state.episode_step + 1
     timeout = next_episode_step >= max_episode_length
-    done = jnp.logical_or(terminal, timeout)
+    episode_end = jnp.logical_or(terminal, timeout)
     reset_obs, reset_env_state = env.reset_env(env_reset_key, env_param)
 
     def select(reset: jax.Array, stepped: jax.Array) -> jax.Array:
-        return jax.lax.select(done, reset, stepped)
+        return jax.lax.select(episode_end, reset, stepped)
 
-    continuation_env_state = jax.tree.map(select, reset_env_state, stepped_env_state)
-    continuation_obs = jax.lax.select(done, reset_obs, next_obs)
-    episode_step = jnp.where(done, 0, next_episode_step)
+    next_sample_env = jax.tree.map(select, reset_env_state, stepped_env_state)
+    next_sample_obs = jax.lax.select(episode_end, reset_obs, next_obs)
+    episode_step = jnp.where(episode_end, 0, next_episode_step)
     rewards, lengths, reward_queue, length_queue = _update_episode(
         state.rewards,
         state.lengths,
@@ -88,8 +88,8 @@ def step(
     )
     next_state = replace(
         state,
-        last_obs=continuation_obs,
-        env=continuation_env_state,
+        last_obs=next_sample_obs,
+        env=next_sample_env,
         episode_step=episode_step,
         rewards=rewards,
         lengths=lengths,

@@ -15,12 +15,12 @@ from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.sampler.mdp import sample_initial, sample_step
 from jaxdp.mdp.simple_graph import graph_mdp
-from jaxdp.operator import BellmanOptimality
+from jaxdp.operator import BellmanOptOp
 from jaxdp.policy import Greedy
 
 jax.config.update("jax_enable_x64", True)
 
-bellman_optimality = BellmanOptimality()
+bellman_optimality = BellmanOptOp()
 
 
 class metrics:

@@ -1,4 +1,4 @@
-"""Forward state and action-state distributions for finite MDPs."""
+"""Distribution functionals and forward maps for finite MDPs."""
 
 import chex
 import jax
@@ -7,71 +7,207 @@ import jax.numpy as jnp
 from jaxdp.mdp import MDP
 from jaxdp.operator import _assert_policy
 
+_ATOL = 1e-5
+
+
+@chex.dataclass(frozen=True)
+class Expectation:
+    r"""Namespace for expectations over finite distributions.
+
+    The ``s`` and ``sa`` methods evaluate
+
+    .. math::
+
+        \mathbb{E}_{\rho}[v]
+        = \sum_{s\in\mathcal{S}}\rho(s)v(s),
+        \qquad
+        \mathbb{E}_{\xi}[q]
+        = \sum_{s\in\mathcal{S}}\sum_{a\in\mathcal{A}}\xi(s,a)q(s,a).
+
+    Methods:
+        s: Evaluate a state-value expectation.
+        sa: Evaluate a state-action-value expectation.
+    """
+
+    def s(self, v_val: jax.Array, dist: jax.Array) -> jax.Array:
+        """Return the expectation of state values under a state distribution.
+
+        Args:
+            v_val: State values with shape ``(S,)``.
+            dist: State distribution with shape ``(S,)``.
+
+        Returns:
+            Scalar expectation with shape ``()``.
+        """
+        chex.assert_rank(v_val, 1)
+        chex.assert_equal_shape((v_val, dist))
+        self._assert_dist(dist)
+        return jnp.sum(dist * v_val)
+
+    def sa(self, q_val: jax.Array, dist: jax.Array) -> jax.Array:
+        """Return the expectation of action values under a state-action distribution.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+            dist: State-action distribution with shape ``(A, S)``.
+
+        Returns:
+            Scalar expectation with shape ``()``.
+        """
+        chex.assert_rank(q_val, 2)
+        chex.assert_equal_shape((q_val, dist))
+        self._assert_dist(dist)
+        return jnp.sum(dist * q_val)
+
+    @staticmethod
+    def _assert_dist(dist: jax.Array) -> None:
+        chex.assert_tree_all_finite(dist, custom_message="distribution must be finite")
+        chex.assert_trees_all_equal(
+            jnp.all(dist >= 0),
+            jnp.asarray(True),
+            custom_message="distribution probabilities must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(dist),
+            jnp.ones((), dtype=dist.dtype),
+            atol=_ATOL,
+            rtol=0.0,
+            custom_message="distribution probabilities must sum to one",
+        )
+
 
 @chex.dataclass(frozen=True)
 class Occupancy:
-    """Finite-step distribution propagation from the MDP initial distribution."""
+    r"""Namespace for finite-step state and state-action distributions.
+
+    Starting from the MDP initial distribution, the configured number of steps applies
+
+    .. math::
+
+        \rho_{k+1}(s')
+        = \sum_{s\in\mathcal{S}}P^\pi(s'\mid s)\rho_k(s),
+        \qquad
+        \xi_k(s,a)=\rho_k(s)\pi(a\mid s).
+
+    Attributes:
+        steps: Nonnegative number of transitions from the initial distribution.
+
+    Methods:
+        q: Return the finite-step state-action distribution.
+        v: Return the finite-step state distribution.
+    """
 
     steps: int
 
-    def __post_init__(self) -> None:
-        """Validate the step count."""
-        steps = jnp.asarray(self.steps)
-        chex.assert_shape(steps, (), custom_message="steps must be scalar")
-        chex.assert_type(steps, int, custom_message="steps must be an integer")
-        chex.assert_trees_all_equal(
-            steps >= 0,
-            jnp.asarray(True),
-            custom_message="steps must be nonnegative",
-        )
-
     def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the action-state distribution after the configured number of steps."""
+        """Return the state-action distribution after the configured number of steps.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+
+        Returns:
+            State-action distribution with shape ``(A, S)``.
+        """
         return policy * self.v(mdp, policy)
 
     def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the state distribution after the configured number of steps."""
-        transition = _policy_transition(mdp, policy)
+        """Return the state distribution after the configured number of steps.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+
+        Returns:
+            State distribution with shape ``(S,)``.
+        """
+        chex.assert_type(self.steps, int, custom_message="steps must be an integer")
+        chex.assert_scalar_non_negative(self.steps, custom_message="steps must be nonnegative")
+        p_s = _policy_transition(mdp, policy)
         return jax.lax.fori_loop(
             0,
             self.steps,
-            lambda _, distribution: transition @ distribution,
+            lambda _, dist: p_s @ dist,
             mdp.initial,
         )
 
 
 @chex.dataclass(frozen=True)
 class Stationary:
-    """Invariant distribution of the policy-induced Markov chain."""
+    r"""Namespace for invariant state and state-action distributions.
+
+    ``v`` returns the normalized minimum-norm solution of
+
+    .. math::
+
+        \rho_\infty(s')
+        = \sum_{s\in\mathcal{S}}P^\pi(s'\mid s)\rho_\infty(s),
+        \qquad
+        \sum_{s\in\mathcal{S}}\rho_\infty(s)=1.
+
+    The ``q`` method combines the invariant state distribution with the policy:
+
+    .. math::
+
+        \xi_\infty(s,a)=\rho_\infty(s)\pi(a\mid s).
+
+    Methods:
+        q: Return the invariant state-action distribution.
+        v: Return the invariant state distribution.
+    """
 
     def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the invariant action-state distribution."""
+        """Return the invariant state-action distribution for the induced chain.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+
+        Returns:
+            Invariant state-action distribution with shape ``(A, S)``.
+        """
         return policy * self.v(mdp, policy)
 
     def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the normalized minimum-norm invariant state distribution."""
-        transition = _policy_transition(mdp, policy)
+        """Return the invariant state distribution for the induced chain.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+
+        Returns:
+            Normalized minimum-norm invariant state distribution with shape ``(S,)``.
+        """
+        p_s = _policy_transition(mdp, policy)
         state_size = mdp.state_size
         system = jnp.concatenate(
             (
-                transition - jnp.eye(state_size, dtype=transition.dtype),
-                jnp.ones((1, state_size), dtype=transition.dtype),
+                p_s - jnp.eye(state_size, dtype=p_s.dtype),
+                jnp.ones((1, state_size), dtype=p_s.dtype),
             ),
             axis=0,
         )
         target = jnp.concatenate(
             (
-                jnp.zeros(state_size, dtype=transition.dtype),
-                jnp.ones(1, dtype=transition.dtype),
+                jnp.zeros(state_size, dtype=p_s.dtype),
+                jnp.ones(1, dtype=p_s.dtype),
             )
         )
-        distribution = jnp.linalg.lstsq(system, target, rcond=None)[0]
-        distribution = jnp.maximum(distribution, 0)
-        return distribution / jnp.sum(distribution)
+        dist = jnp.linalg.lstsq(system, target, rcond=None)[0]
+        dist = jnp.maximum(dist, 0)
+        return dist / jnp.sum(dist)
 
 
 def eigenvalues(mdp: MDP, policy: jax.Array) -> jax.Array:
-    """Return eigenvalues of the policy-induced transition matrix."""
+    """Return the eigenvalues of the policy-induced transition matrix.
+
+    Args:
+        mdp: Finite Markov decision process.
+        policy: Action probabilities with shape ``(A, S)``.
+
+    Returns:
+        Complex eigenvalues with shape ``(S,)``.
+    """
     return jnp.linalg.eigvals(_policy_transition(mdp, policy))
 
 
@@ -80,4 +216,4 @@ def _policy_transition(mdp: MDP, policy: jax.Array) -> jax.Array:
     return jnp.einsum("as,axs->xs", policy, mdp.transition)
 
 
-__all__ = ["Occupancy", "Stationary", "eigenvalues"]
+__all__ = ["Expectation", "Occupancy", "Stationary", "eigenvalues"]

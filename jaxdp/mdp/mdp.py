@@ -10,16 +10,24 @@ _ATOL = 1e-5
 
 @dataclass(frozen=True)
 class MDP:
-    """Finite Markov decision process.
+    r"""Finite Markov decision process.
+
+    .. math::
+
+        \mathcal{M}=(P,R,\mu,\tau)
 
     The transition convention is ``transition[..., a, s_next, s]`` and the reward convention is
-    ``reward[..., a, s, s_next]``. Every array uses the same leading batch shape.
+    ``reward[..., a, s, s_next]``. Every array uses the same leading batch shape. Terminal states
+    are absorbing with zero outgoing reward; truncation is external to this model.
 
     Attributes:
-        transition: Column-stochastic transition arrays with shape ``(..., A, S, S)``.
+        transition: Column-stochastic transition probabilities with shape ``(..., A, S, S)``.
         reward: Transition rewards with shape ``(..., A, S, S)``.
-        initial: Initial-state distributions with shape ``(..., S)``.
+        initial: Initial state distribution with shape ``(..., S)``.
         terminal: Terminal-state indicators with shape ``(..., S)``.
+
+    Methods:
+        validate: Validate shapes, probabilities, and terminal semantics.
     """
 
     transition: jax.Array
@@ -39,12 +47,6 @@ class MDP:
 
     def validate(self) -> None:
         """Validate shapes, values, and terminal semantics with Chex."""
-        self._validate_shapes()
-        self._validate_finite()
-        self._validate_probabilities()
-        self._validate_terminal()
-
-    def _validate_shapes(self) -> None:
         chex.assert_shape(self.transition, (..., None, None, None))
         chex.assert_axis_dimension_gt(self.transition, -3, 0)
         chex.assert_axis_dimension_gt(self.transition, -1, 0)
@@ -67,10 +69,8 @@ class MDP:
             custom_message="terminal shape must match the MDP batch and state dimensions",
         )
 
-    def _validate_finite(self) -> None:
         chex.assert_tree_all_finite(self, custom_message="MDP arrays must be finite")
 
-    def _validate_probabilities(self) -> None:
         chex.assert_trees_all_equal(
             jnp.all(self.transition >= 0),
             jnp.asarray(True),
@@ -99,7 +99,6 @@ class MDP:
             custom_message="initial probabilities must sum to one",
         )
 
-    def _validate_terminal(self) -> None:
         chex.assert_trees_all_equal(
             jnp.all((self.terminal == 0) | (self.terminal == 1)),
             jnp.asarray(True),

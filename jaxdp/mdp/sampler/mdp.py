@@ -86,7 +86,7 @@ def sample_step(
     mdp: MDP,
     max_episode_len: int,
 ) -> tuple[RolloutData, jax.Array, jax.Array]:
-    """Sample one transition and return the reset-aware continuation state."""
+    """Sample one transition and return the reset-aware next sampling state."""
     action_key, state_key, reset_key = jrd.split(key, 3)
     action_probability = jnp.einsum("as,s->a", policy, state)
     action_index = jrd.categorical(action_key, jnp.log(action_probability))
@@ -104,9 +104,13 @@ def sample_step(
 
     next_episode_step = episode_step + 1
     timeout = next_episode_step >= max_episode_len
-    done = jnp.logical_or(terminal, timeout)
-    continuation_state = jnp.where(done, sample_initial(reset_key, mdp), next_state)
-    next_episode_step = jnp.where(done, jnp.zeros_like(next_episode_step), next_episode_step)
+    episode_end = jnp.logical_or(terminal, timeout)
+    next_sample_state = jnp.where(episode_end, sample_initial(reset_key, mdp), next_state)
+    next_episode_step = jnp.where(
+        episode_end,
+        jnp.zeros_like(next_episode_step),
+        next_episode_step,
+    )
 
     return (
         RolloutData(
@@ -117,7 +121,7 @@ def sample_step(
             terminal=terminal,
             timeout=timeout,
         ),
-        continuation_state,
+        next_sample_state,
         next_episode_step,
     )
 
@@ -129,10 +133,10 @@ def step(
     mdp: MDP,
     max_episode_len: int,
 ) -> tuple[RolloutData, State]:
-    """Sample one transition and advance the continuing sampler state."""
+    """Sample one transition and advance the reset-aware sampler state."""
     (
         step_data,
-        continuation_state,
+        next_sample_state,
         episode_step,
     ) = sample_step(
         key,
@@ -142,10 +146,23 @@ def step(
         mdp,
         max_episode_len,
     )
+    rewards, lengths, reward_queue, length_queue = _update_episode(
+        sampler_state.rewards,
+        sampler_state.lengths,
+        sampler_state.episode_reward_queue,
+        sampler_state.episode_length_queue,
+        step_data.reward,
+        step_data.terminal,
+        step_data.timeout,
+    )
     next_sampler_state = replace(
-        _update_state(sampler_state, step_data),
-        last_state=continuation_state,
+        sampler_state,
+        last_state=next_sample_state,
         episode_step=episode_step,
+        rewards=rewards,
+        lengths=lengths,
+        episode_reward_queue=reward_queue,
+        episode_length_queue=length_queue,
     )
     return step_data, next_sampler_state
 
@@ -197,33 +214,14 @@ def _update_episode(
     terminal: jax.Array,
     timeout: jax.Array,
 ) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    done = jnp.logical_or(terminal, timeout)
+    episode_end = jnp.logical_or(terminal, timeout)
     total_reward = reward + rewards
     total_length = 1 + lengths
     return (
-        jnp.where(done, 0, total_reward),
-        jnp.where(done, 0, total_length),
-        _queue_push(reward_queue, total_reward, done),
-        _queue_push(length_queue, total_length, done),
-    )
-
-
-def _update_state(state: State, step_data: RolloutData) -> State:
-    rewards, lengths, reward_queue, length_queue = _update_episode(
-        state.rewards,
-        state.lengths,
-        state.episode_reward_queue,
-        state.episode_length_queue,
-        step_data.reward,
-        step_data.terminal,
-        step_data.timeout,
-    )
-    return replace(
-        state,
-        rewards=rewards,
-        lengths=lengths,
-        episode_reward_queue=reward_queue,
-        episode_length_queue=length_queue,
+        jnp.where(episode_end, 0, total_reward),
+        jnp.where(episode_end, 0, total_length),
+        _queue_push(reward_queue, total_reward, episode_end),
+        _queue_push(length_queue, total_length, episode_end),
     )
 
 

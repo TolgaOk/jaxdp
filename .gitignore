@@ -7,7 +7,6 @@
 .mypy_cache
 documents/
 logs/
-doc/
 dev/
 examples/data
 examples/figures

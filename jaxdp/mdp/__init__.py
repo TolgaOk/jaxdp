@@ -1,3 +1,5 @@
+"""Finite MDP models, transformations, and factories."""
+
 from jaxdp.mdp.mdp import MDP
 from jaxdp.mdp.mrp import MRP, make_mrp
 

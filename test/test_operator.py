@@ -6,15 +6,11 @@ import jax.numpy as jnp
 import pytest
 
 import jaxdp
-from jaxdp.mdp import MDP, make_mrp
-from jaxdp.operator import (
-    Bellman,
-    BellmanOptimality,
-    Expected,
-    PolicyEvaluation,
-    greedy_state_value,
-    state_action_value,
-)
+from jaxdp.distribution import Expectation
+from jaxdp.mdp import MDP
+from jaxdp.operator import BellmanOp, BellmanOptOp, ValueMap
+from jaxdp.planning import PolicyEvaluation
+from jaxdp.policy import Greedy
 
 
 def _two_state_mdp() -> MDP:
@@ -41,20 +37,24 @@ def _two_state_mdp() -> MDP:
     )
 
 
-def test_public_name_is_bellman_optimality() -> None:
-    assert jaxdp.BellmanOptimality is BellmanOptimality
+def test_public_bellman_names() -> None:
+    assert jaxdp.BellmanOp is BellmanOp
+    assert jaxdp.BellmanOptOp is BellmanOptOp
+    assert not hasattr(jaxdp, "Bellman")
+    assert not hasattr(jaxdp, "BellmanOptimality")
     assert not hasattr(jaxdp, "Optimality")
 
 
 def test_value_conversions_and_expectation() -> None:
     mdp = _two_state_mdp()
-    value = jnp.array([4.0, 8.0])
-    q = state_action_value(mdp, value, gamma=0.5)
+    v_val = jnp.array([4.0, 8.0])
+    q_val = ValueMap().to_q(mdp, v_val, gamma=0.5)
+    dist = Greedy().q(q_val) * mdp.initial
 
-    assert jnp.allclose(q, jnp.array([[2.0, 5.0], [6.0, 5.0]]))
-    assert jnp.array_equal(greedy_state_value(q), jnp.array([6.0, 5.0]))
-    assert Expected().v(mdp, value) == 4.0
-    assert Expected().q(mdp, q) == 6.0
+    assert jnp.allclose(q_val, jnp.array([[2.0, 5.0], [6.0, 5.0]]))
+    assert jnp.array_equal(ValueMap().to_v(q_val), jnp.array([6.0, 5.0]))
+    assert Expectation().s(v_val, mdp.initial) == 4.0
+    assert Expectation().sa(q_val, dist) == 6.0
 
 
 def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
@@ -66,23 +66,23 @@ def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
     )
 
     assert jnp.array_equal(
-        state_action_value(mdp, jnp.array([0.0, 100.0]), gamma=0.9),
+        ValueMap().to_q(mdp, jnp.array([0.0, 100.0]), gamma=0.9),
         jnp.array([[2.0, 0.0]]),
     )
-    mrp = make_mrp(mdp, jnp.ones((1, 2)))
-
-    assert jnp.array_equal(PolicyEvaluation().v(mrp, gamma=0.9), jnp.array([2.0, 0.0]))
+    assert jnp.array_equal(
+        PolicyEvaluation().v(mdp, jnp.ones((1, 2)), gamma=0.9),
+        jnp.array([2.0, 0.0]),
+    )
 
 
 def test_policy_evaluation_matches_analytical_solution() -> None:
     mdp = _two_state_mdp()
     policy = jnp.array([[0.0, 0.0], [1.0, 1.0]])
-    mrp = make_mrp(mdp, policy)
     evaluate = PolicyEvaluation()
 
-    assert jnp.allclose(evaluate.v(mrp, 0.5), jnp.array([14.0 / 3.0, 16.0 / 3.0]))
+    assert jnp.allclose(evaluate.v(mdp, policy, 0.5), jnp.array([14.0 / 3.0, 16.0 / 3.0]))
     assert jnp.allclose(
-        evaluate.q(mdp, mrp, 0.5),
+        evaluate.q(mdp, policy, 0.5),
         jnp.array([[7.0 / 3.0, 11.0 / 3.0], [14.0 / 3.0, 16.0 / 3.0]]),
     )
 
@@ -93,8 +93,8 @@ def test_bellman_operators() -> None:
     value = jnp.array([4.0, 8.0])
     q = jnp.array([[2.0, 5.0], [6.0, 5.0]])
 
-    bellman = Bellman()
-    bellman_optimality = BellmanOptimality()
+    bellman = BellmanOp()
+    bellman_optimality = BellmanOptOp()
 
     assert jnp.allclose(bellman.v(mdp, policy, value, 0.5), jnp.array([4.0, 5.0]))
     assert jnp.allclose(bellman.q(mdp, policy, q, 0.5), jnp.array([[2.0, 3.5], [4.5, 5.0]]))
@@ -109,20 +109,19 @@ def test_bellman_operators() -> None:
 def test_discounted_operators_reject_invalid_gamma(gamma: float) -> None:
     mdp = _two_state_mdp()
     policy = jnp.full((2, 2), 0.5)
-    mrp = make_mrp(mdp, policy)
     value = jnp.zeros(2)
 
     with pytest.raises(AssertionError, match="gamma"):
-        PolicyEvaluation().v(mrp, gamma)
+        PolicyEvaluation().v(mdp, policy, gamma)
     with pytest.raises(AssertionError, match="gamma"):
-        Bellman().v(mdp, policy, value, gamma)
+        BellmanOp().v(mdp, policy, value, gamma)
     with pytest.raises(AssertionError, match="gamma"):
-        BellmanOptimality().v(mdp, value, gamma)
+        BellmanOptOp().v(mdp, value, gamma)
 
 
 def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
     mdp = _two_state_mdp()
-    operator = BellmanOptimality()
+    operator = BellmanOptOp()
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
     gammas = jnp.array([0.5, 0.25])
     apply = chex.chexify(
@@ -141,7 +140,7 @@ def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
 def test_operator_validation_composes_with_jit_and_vmap() -> None:
     mdp = _two_state_mdp()
     value = jnp.zeros(2)
-    operator = BellmanOptimality()
+    operator = BellmanOptOp()
     apply_gamma = chex.chexify(
         jax.jit(jax.vmap(lambda gamma: operator.v(mdp, value, gamma))),
         async_check=False,
@@ -153,14 +152,11 @@ def test_operator_validation_composes_with_jit_and_vmap() -> None:
 
     evaluate = PolicyEvaluation()
     policies = jnp.full((2, mdp.action_size, mdp.state_size), 0.5)
-    make = chex.chexify(
-        jax.jit(jax.vmap(lambda policy: make_mrp(mdp, policy))),
-        async_check=False,
-    )
-    mrps = make(policies)
-    apply_mrp = chex.chexify(
-        jax.jit(jax.vmap(lambda mrp: evaluate.v(mrp, 0.5))),
+    apply_policy = chex.chexify(
+        jax.jit(jax.vmap(lambda policy: evaluate.v(mdp, policy, 0.5))),
         async_check=False,
     )
 
-    assert apply_mrp(mrps).shape == (2, mdp.state_size)
+    assert apply_policy(policies).shape == (2, mdp.state_size)
+    with pytest.raises(AssertionError, match="policy"):
+        apply_policy(policies.at[1, 0, 0].set(0.75))
