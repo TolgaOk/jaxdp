@@ -6,7 +6,15 @@ from jaxdp import planning as planning
 from jaxdp import policy as policy
 from jaxdp.distribution import Expectation, Occupancy, Stationary, eigenvalues
 from jaxdp.mdp import MDP, MRP, make_mrp
-from jaxdp.operator import BellmanOp, BellmanOptOp, Resolvent, ValueMap
+from jaxdp.operator import (
+    BellmanOp,
+    BellmanOptOp,
+    BoltzmannBellmanOp,
+    MellowmaxBellmanOptOp,
+    Resolvent,
+    SoftBellmanOptOp,
+    ValueMap,
+)
 from jaxdp.planning import PolicyEvaluation, PolicyIteration, ValueIteration
 from jaxdp.policy import EpsilonGreedy, Greedy, Soft
 
@@ -22,6 +30,9 @@ __all__ = [
     "Resolvent",
     "BellmanOp",
     "BellmanOptOp",
+    "SoftBellmanOptOp",
+    "MellowmaxBellmanOptOp",
+    "BoltzmannBellmanOp",
     "Greedy",
     "Soft",
     "EpsilonGreedy",

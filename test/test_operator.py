@@ -8,7 +8,14 @@ import pytest
 import jaxdp
 from jaxdp.distribution import Expectation
 from jaxdp.mdp import MDP
-from jaxdp.operator import BellmanOp, BellmanOptOp, ValueMap
+from jaxdp.operator import (
+    BellmanOp,
+    BellmanOptOp,
+    BoltzmannBellmanOp,
+    MellowmaxBellmanOptOp,
+    SoftBellmanOptOp,
+    ValueMap,
+)
 from jaxdp.planning import PolicyEvaluation
 from jaxdp.policy import Greedy
 
@@ -40,6 +47,9 @@ def _two_state_mdp() -> MDP:
 def test_public_bellman_names() -> None:
     assert jaxdp.BellmanOp is BellmanOp
     assert jaxdp.BellmanOptOp is BellmanOptOp
+    assert jaxdp.SoftBellmanOptOp is SoftBellmanOptOp
+    assert jaxdp.MellowmaxBellmanOptOp is MellowmaxBellmanOptOp
+    assert jaxdp.BoltzmannBellmanOp is BoltzmannBellmanOp
     assert not hasattr(jaxdp, "Bellman")
     assert not hasattr(jaxdp, "BellmanOptimality")
     assert not hasattr(jaxdp, "Optimality")
@@ -103,6 +113,95 @@ def test_bellman_operators() -> None:
         bellman_optimality.q(mdp, q, 0.5),
         jnp.array([[3.0, 3.5], [4.5, 6.0]]),
     )
+
+
+def test_smooth_bellman_operators_match_action_reductions() -> None:
+    mdp = _two_state_mdp()
+    v_val = jnp.array([4.0, 8.0])
+    q_val = jnp.array([[2.0, 5.0], [6.0, 5.0]])
+    temperature = 2.0
+    immediate_q = ValueMap().to_q(mdp, v_val, gamma=0.0)
+    soft_v = temperature * jax.nn.logsumexp(immediate_q / temperature, axis=0)
+    mellowmax_v = soft_v - temperature * jnp.log(immediate_q.shape[0])
+    boltzmann_policy = jax.nn.softmax(immediate_q / temperature, axis=0)
+    boltzmann_v = jnp.sum(boltzmann_policy * immediate_q, axis=0)
+
+    soft = SoftBellmanOptOp(temperature=temperature)
+    mellowmax = MellowmaxBellmanOptOp(temperature=temperature)
+    boltzmann = BoltzmannBellmanOp(temperature=temperature)
+
+    assert jnp.allclose(soft.v(mdp, v_val, 0.0), soft_v)
+    assert jnp.allclose(mellowmax.v(mdp, v_val, 0.0), mellowmax_v)
+    assert jnp.allclose(boltzmann.v(mdp, v_val, 0.0), boltzmann_v)
+
+    soft_q = temperature * jax.nn.logsumexp(q_val / temperature, axis=0)
+    mellowmax_q = soft_q - temperature * jnp.log(q_val.shape[0])
+    boltzmann_q = jnp.sum(jax.nn.softmax(q_val / temperature, axis=0) * q_val, axis=0)
+
+    assert jnp.allclose(soft.q(mdp, q_val, 0.5), ValueMap().to_q(mdp, soft_q, 0.5))
+    assert jnp.allclose(
+        mellowmax.q(mdp, q_val, 0.5),
+        ValueMap().to_q(mdp, mellowmax_q, 0.5),
+    )
+    assert jnp.allclose(
+        boltzmann.q(mdp, q_val, 0.5),
+        ValueMap().to_q(mdp, boltzmann_q, 0.5),
+    )
+
+
+def test_soft_and_mellowmax_differ_by_uniform_policy_cost() -> None:
+    mdp = _two_state_mdp()
+    temperature = 0.75
+    v_val = jnp.array([4.0, 8.0])
+    difference = SoftBellmanOptOp(temperature=temperature).v(
+        mdp,
+        v_val,
+        0.5,
+    ) - MellowmaxBellmanOptOp(temperature=temperature).v(mdp, v_val, 0.5)
+
+    assert jnp.allclose(difference, temperature * jnp.log(mdp.action_size))
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        SoftBellmanOptOp(temperature=0.0),
+        MellowmaxBellmanOptOp(temperature=-1.0),
+        BoltzmannBellmanOp(temperature=float("inf")),
+        BoltzmannBellmanOp(temperature=float("nan")),
+    ],
+)
+def test_smooth_bellman_operators_reject_invalid_temperature(
+    operator: SoftBellmanOptOp | MellowmaxBellmanOptOp | BoltzmannBellmanOp,
+) -> None:
+    with pytest.raises(AssertionError, match="temperature"):
+        operator.v(_two_state_mdp(), jnp.zeros(2), gamma=0.5)
+
+
+@pytest.mark.parametrize(
+    "operator",
+    [
+        SoftBellmanOptOp(temperature=1.0),
+        MellowmaxBellmanOptOp(temperature=1.0),
+        BoltzmannBellmanOp(temperature=1.0),
+    ],
+)
+def test_smooth_bellman_operators_compose_with_jax(
+    operator: SoftBellmanOptOp | MellowmaxBellmanOptOp | BoltzmannBellmanOp,
+) -> None:
+    mdp = _two_state_mdp()
+    values = jnp.array([[4.0, 8.0], [10_000.0, 10_000.0]])
+    apply = chex.chexify(
+        jax.jit(jax.vmap(lambda v_val: operator.v(mdp, v_val, gamma=0.5))),
+        async_check=False,
+    )
+    result = apply(values)
+    gradient = jax.grad(lambda v_val: jnp.sum(operator.v(mdp, v_val, gamma=0.5)))(values[0])
+
+    assert is_dataclass(operator)
+    assert result.shape == values.shape
+    assert jnp.all(jnp.isfinite(result))
+    assert jnp.all(jnp.isfinite(gradient))
 
 
 @pytest.mark.parametrize("gamma", [-0.1, 1.0, jnp.inf, jnp.nan])

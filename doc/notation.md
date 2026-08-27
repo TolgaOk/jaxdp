@@ -354,6 +354,46 @@ $$
 `BellmanOptOp.v(mdp, v_val, gamma)` applies $\mathcal{T}^{*}_{V}$, while
 `BellmanOptOp.q(mdp, q_val, gamma)` applies $\mathcal{T}^{*}_{Q}$.
 
+## Smooth Bellman operators
+
+For temperature $\tau>0$, three smooth action reductions are
+
+$$
+(\mathcal{L}_{\tau}q)(s)
+= \tau\log\sum_{a\in\mathcal{A}}\exp\left(\frac{q(s,a)}{\tau}\right),
+$$
+
+$$
+(\operatorname{mm}_{\tau}q)(s)
+= \tau\log\left(
+  \frac{1}{|\mathcal{A}|}\sum_{a\in\mathcal{A}}
+  \exp\left(\frac{q(s,a)}{\tau}\right)\right),
+$$
+
+and
+
+$$
+(\operatorname{boltz}_{\tau}q)(s)
+= \sum_{a\in\mathcal{A}}
+  \frac{\exp(q(s,a)/\tau)}{\sum_b\exp(q(s,b)/\tau)}q(s,a).
+$$
+
+Each reduction $F_{\tau}:Q\to V$ induces state- and action-value Bellman maps
+
+$$
+\mathcal{T}^{F}_{V,\tau}=F_{\tau}\mathcal{B}_{\gamma},
+\qquad
+\mathcal{T}^{F}_{Q,\tau}=\mathcal{B}_{\gamma}F_{\tau}.
+$$
+
+`SoftBellmanOptOp`, `MellowmaxBellmanOptOp`, and `BoltzmannBellmanOp` apply these
+compositions through their `v` and `q` methods. Soft reduction is the conjugate of negative
+Shannon entropy. Mellowmax is the conjugate of KL divergence to the uniform policy and differs
+from soft reduction by $\tau\log|\mathcal{A}|$. Boltzmann expectation is distinct from both: at a
+fixed temperature it is not generally a sup-norm non-expansion and is therefore not named an
+optimality operator. A time-varying temperature belongs to planner state rather than these fixed
+components.
+
 ## Transformations of operators
 
 Some mathematical maps take an operator as input and construct another operator. Let
@@ -560,6 +600,12 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{T}^{\pi}_{Q}$ | $Q \rightarrow Q$ | `BellmanOp.q` |
 | $\mathcal{T}^{*}_{V}$ | $V \rightarrow V$ | `BellmanOptOp.v` |
 | $\mathcal{T}^{*}_{Q}$ | $Q \rightarrow Q$ | `BellmanOptOp.q` |
+| $\mathcal{T}^{\mathrm{soft}}_{V,\tau}$ | $V \rightarrow V$ | `SoftBellmanOptOp.v` |
+| $\mathcal{T}^{\mathrm{soft}}_{Q,\tau}$ | $Q \rightarrow Q$ | `SoftBellmanOptOp.q` |
+| $\mathcal{T}^{\mathrm{mm}}_{V,\tau}$ | $V \rightarrow V$ | `MellowmaxBellmanOptOp.v` |
+| $\mathcal{T}^{\mathrm{mm}}_{Q,\tau}$ | $Q \rightarrow Q$ | `MellowmaxBellmanOptOp.q` |
+| $\mathcal{T}^{\mathrm{boltz}}_{V,\tau}$ | $V \rightarrow V$ | `BoltzmannBellmanOp.v` |
+| $\mathcal{T}^{\mathrm{boltz}}_{Q,\tau}$ | $Q \rightarrow Q$ | `BoltzmannBellmanOp.q` |
 | $v^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow V$ | `PolicyEvaluation.v` |
 | $q^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow Q$ | `PolicyEvaluation.q` |
 | $(\mathcal{T}^{*}_{V})^n$ | $V \rightarrow V$ | `ValueIteration.v` |

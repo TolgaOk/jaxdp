@@ -283,6 +283,191 @@ class BellmanOptOp:
         return value_map.to_v(value_map.to_q(mdp, v_val, gamma))
 
 
+@chex.dataclass(frozen=True)
+class SoftBellmanOptOp:
+    r"""Namespace for entropy-regularized Bellman optimality operators.
+
+    For a positive temperature, the action reduction and resulting operators are
+
+    .. math::
+
+        \mathcal{L}_{\tau}q(s)
+        = \tau\log\sum_{a\in\mathcal{A}}\exp\left(\frac{q(s,a)}{\tau}\right),
+        \qquad
+        \mathcal{T}^{\mathrm{soft}}_{V,\tau}
+        = \mathcal{L}_{\tau}\mathcal{B}_{\gamma},
+        \qquad
+        \mathcal{T}^{\mathrm{soft}}_{Q,\tau}
+        = \mathcal{B}_{\gamma}\mathcal{L}_{\tau}.
+
+    Attributes:
+        temperature: Positive entropy temperature.
+
+    Methods:
+        q: Apply the action-value soft Bellman optimality operator.
+        v: Apply the state-value soft Bellman optimality operator.
+    """
+
+    temperature: float
+
+    def q(self, mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the soft Bellman optimality operator to action values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            q_val: Action values with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated action values with shape ``(A, S)``.
+        """
+        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the soft Bellman optimality operator to state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
+        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+
+    def _reduce(self, q_val: jax.Array) -> jax.Array:
+        chex.assert_rank(q_val, 2)
+        temperature = _assert_temperature(self.temperature)
+        return temperature * jax.nn.logsumexp(q_val / temperature, axis=0)
+
+
+@chex.dataclass(frozen=True)
+class MellowmaxBellmanOptOp:
+    r"""Namespace for Mellowmax Bellman optimality operators.
+
+    For a positive temperature, the action reduction and resulting operators are
+
+    .. math::
+
+        \operatorname{mm}_{\tau}q(s)
+        = \tau\log\left(
+          \frac{1}{|\mathcal{A}|}\sum_{a\in\mathcal{A}}
+          \exp\left(\frac{q(s,a)}{\tau}\right)\right),
+        \qquad
+        \mathcal{T}^{\mathrm{mm}}_{V,\tau}
+        = \operatorname{mm}_{\tau}\mathcal{B}_{\gamma},
+        \qquad
+        \mathcal{T}^{\mathrm{mm}}_{Q,\tau}
+        = \mathcal{B}_{\gamma}\operatorname{mm}_{\tau}.
+
+    Attributes:
+        temperature: Positive Mellowmax temperature.
+
+    Methods:
+        q: Apply the action-value Mellowmax Bellman optimality operator.
+        v: Apply the state-value Mellowmax Bellman optimality operator.
+    """
+
+    temperature: float
+
+    def q(self, mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Mellowmax Bellman optimality operator to action values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            q_val: Action values with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated action values with shape ``(A, S)``.
+        """
+        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Mellowmax Bellman optimality operator to state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
+        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+
+    def _reduce(self, q_val: jax.Array) -> jax.Array:
+        chex.assert_rank(q_val, 2)
+        temperature = _assert_temperature(self.temperature)
+        action_size = jnp.asarray(q_val.shape[0], dtype=temperature.dtype)
+        return temperature * (jax.nn.logsumexp(q_val / temperature, axis=0) - jnp.log(action_size))
+
+
+@chex.dataclass(frozen=True)
+class BoltzmannBellmanOp:
+    r"""Namespace for Boltzmann Bellman operators.
+
+    For a positive temperature, the action reduction and resulting operators are
+
+    .. math::
+
+        \operatorname{boltz}_{\tau}q(s)
+        = \sum_{a\in\mathcal{A}}
+          \frac{\exp(q(s,a)/\tau)}{\sum_b\exp(q(s,b)/\tau)}q(s,a),
+        \qquad
+        \mathcal{T}^{\mathrm{boltz}}_{V,\tau}
+        = \operatorname{boltz}_{\tau}\mathcal{B}_{\gamma},
+        \qquad
+        \mathcal{T}^{\mathrm{boltz}}_{Q,\tau}
+        = \mathcal{B}_{\gamma}\operatorname{boltz}_{\tau}.
+
+    Unlike the regularized optimality reductions, fixed-temperature Boltzmann expectation is not
+    generally a sup-norm non-expansion.
+
+    Attributes:
+        temperature: Positive Boltzmann temperature.
+
+    Methods:
+        q: Apply the action-value Boltzmann Bellman operator.
+        v: Apply the state-value Boltzmann Bellman operator.
+    """
+
+    temperature: float
+
+    def q(self, mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Boltzmann Bellman operator to action values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            q_val: Action values with shape ``(A, S)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated action values with shape ``(A, S)``.
+        """
+        return ValueMap().to_q(mdp, self._reduce(q_val), gamma)
+
+    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+        """Apply the Boltzmann Bellman operator to state values.
+
+        Args:
+            mdp: Finite Markov decision process.
+            v_val: State values with shape ``(S,)``.
+            gamma: Scalar discount in the interval ``[0, 1)``.
+
+        Returns:
+            Updated state values with shape ``(S,)``.
+        """
+        return self._reduce(ValueMap().to_q(mdp, v_val, gamma))
+
+    def _reduce(self, q_val: jax.Array) -> jax.Array:
+        chex.assert_rank(q_val, 2)
+        temperature = _assert_temperature(self.temperature)
+        policy = jax.nn.softmax(q_val / temperature, axis=0)
+        return jnp.sum(policy * q_val, axis=0)
+
+
 def _assert_gamma(gamma: float | jax.Array) -> jax.Array:
     gamma_array = jnp.asarray(gamma)
     chex.assert_shape(gamma_array, (), custom_message="gamma must be scalar")
@@ -293,6 +478,21 @@ def _assert_gamma(gamma: float | jax.Array) -> jax.Array:
         custom_message="gamma must be in [0, 1)",
     )
     return gamma_array
+
+
+def _assert_temperature(temperature: float | jax.Array) -> jax.Array:
+    temperature_array = jnp.asarray(temperature)
+    chex.assert_shape(temperature_array, (), custom_message="temperature must be scalar")
+    chex.assert_tree_all_finite(
+        temperature_array,
+        custom_message="temperature must be finite",
+    )
+    chex.assert_trees_all_equal(
+        temperature_array > 0,
+        jnp.asarray(True),
+        custom_message="temperature must be positive",
+    )
+    return temperature_array
 
 
 def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
@@ -322,4 +522,7 @@ __all__ = [
     "Resolvent",
     "BellmanOp",
     "BellmanOptOp",
+    "SoftBellmanOptOp",
+    "MellowmaxBellmanOptOp",
+    "BoltzmannBellmanOp",
 ]
