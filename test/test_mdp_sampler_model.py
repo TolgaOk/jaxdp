@@ -1,19 +1,31 @@
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
-from jaxdp.mdp.sampler.mdp import State, _queue_push, rollout, sample_step, step
+from jaxdp.mdp import MDP
+from jaxdp.mdp.sampler.mdp import (
+    State,
+    _queue_push,
+    rollout,
+    sample_initial,
+    sample_step,
+    step,
+)
 
 
-def _terminal_mdp() -> Mdp:
+def _terminal_mdp() -> MDP:
     transition = jnp.array([[[0.0, 0.0], [1.0, 1.0]]])
     reward = jnp.zeros((1, 2, 2)).at[0, 0, 1].set(3.0)
     initial = jnp.array([1.0, 0.0])
     terminal = jnp.array([0.0, 1.0])
-    return Mdp(transition, reward, initial, terminal)
+    return MDP(
+        transition=transition,
+        reward=reward,
+        initial=initial,
+        terminal=terminal,
+    )
 
 
-def _sampler_state(mdp: Mdp) -> State:
+def _sampler_state(mdp: MDP) -> State:
     return State(
         last_state=mdp.initial,
         episode_step=jnp.array(0),
@@ -22,6 +34,14 @@ def _sampler_state(mdp: Mdp) -> State:
         episode_reward_queue=jnp.full(2, jnp.nan),
         episode_length_queue=jnp.full(2, jnp.nan),
     )
+
+
+def test_sample_initial_uses_the_mdp_distribution_under_jit() -> None:
+    mdp = _terminal_mdp()
+    state = jax.jit(sample_initial)(jax.random.key(0), mdp)
+
+    assert state.shape == (mdp.state_size,)
+    assert jnp.array_equal(state, mdp.initial)
 
 
 def test_step_keeps_transition_successor_separate_from_reset_state() -> None:
@@ -61,7 +81,7 @@ def test_sample_step_returns_the_successor_and_continuation_separately() -> None
 
 
 def test_sample_step_matches_action_and_transition_probabilities() -> None:
-    mdp = Mdp(
+    mdp = MDP(
         transition=jnp.array(
             [
                 [[0.25, 0.0], [0.75, 1.0]],
@@ -75,9 +95,9 @@ def test_sample_step_matches_action_and_transition_probabilities() -> None:
     policy = jnp.array([[0.25, 0.5], [0.75, 0.5]])
     keys = jax.random.split(jax.random.key(0), 20_000)
 
-    data = jax.vmap(
-        lambda key: sample_step(key, mdp.initial, jnp.array(0), policy, mdp, 10)[0]
-    )(keys)
+    data = jax.vmap(lambda key: sample_step(key, mdp.initial, jnp.array(0), policy, mdp, 10)[0])(
+        keys
+    )
 
     assert jnp.allclose(jnp.mean(data.action, axis=0), jnp.array([0.25, 0.75]), atol=0.02)
     assert jnp.allclose(

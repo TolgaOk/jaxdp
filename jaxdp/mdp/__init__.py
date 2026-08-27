@@ -1,4 +1,4 @@
-from jaxdp.mdp.mdp import MDP, Mdp
+from jaxdp.mdp.mdp import MDP
 
 # isort: split
 
@@ -11,7 +11,6 @@ from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.mdp.tree_mdp import tree_mdp
 
 __all__ = [
-    "Mdp",
     "MDP",
     "grid_world",
     "garnet_mdp",

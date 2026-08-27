@@ -5,11 +5,11 @@ import jax.numpy as jnp
 import pytest
 
 from jaxdp.distribution import Occupancy, Stationary, eigenvalues
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
-def _periodic_mdp() -> Mdp:
-    return Mdp(
+def _periodic_mdp() -> MDP:
+    return MDP(
         transition=jnp.array([[[0.0, 1.0], [1.0, 0.0]]]),
         reward=jnp.zeros((1, 2, 2)),
         initial=jnp.array([1.0, 0.0]),
@@ -38,7 +38,7 @@ def test_stationary_returns_an_invariant_distribution_for_a_periodic_chain() -> 
 
 
 def test_stationary_selects_the_minimum_norm_distribution_when_nonunique() -> None:
-    mdp = Mdp(
+    mdp = MDP(
         transition=jnp.eye(2)[None, ...],
         reward=jnp.zeros((1, 2, 2)),
         initial=jnp.array([1.0, 0.0]),

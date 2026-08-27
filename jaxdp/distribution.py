@@ -4,10 +4,10 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
-def _policy_transition(mdp: Mdp, policy: jax.Array) -> jax.Array:
+def _policy_transition(mdp: MDP, policy: jax.Array) -> jax.Array:
     return jnp.einsum("as,axs->xs", policy, mdp.transition)
 
 
@@ -21,11 +21,11 @@ class Occupancy:
         if self.steps < 0:
             raise ValueError("steps must be nonnegative")
 
-    def q(self, mdp: Mdp, policy: jax.Array) -> jax.Array:
+    def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the action-state distribution after the configured number of steps."""
         return policy * self.v(mdp, policy)
 
-    def v(self, mdp: Mdp, policy: jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the state distribution after the configured number of steps."""
         transition = _policy_transition(mdp, policy)
         return jax.lax.fori_loop(
@@ -40,11 +40,11 @@ class Occupancy:
 class Stationary:
     """Invariant distribution of the policy-induced Markov chain."""
 
-    def q(self, mdp: Mdp, policy: jax.Array) -> jax.Array:
+    def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the invariant action-state distribution."""
         return policy * self.v(mdp, policy)
 
-    def v(self, mdp: Mdp, policy: jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the normalized minimum-norm invariant state distribution."""
         transition = _policy_transition(mdp, policy)
         state_size = mdp.state_size
@@ -66,7 +66,7 @@ class Stationary:
         return distribution / jnp.sum(distribution)
 
 
-def eigenvalues(mdp: Mdp, policy: jax.Array) -> jax.Array:
+def eigenvalues(mdp: MDP, policy: jax.Array) -> jax.Array:
     """Return eigenvalues of the policy-induced transition matrix."""
     return jnp.linalg.eigvals(_policy_transition(mdp, policy))
 

@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import pytest
 
 import jaxdp
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 from jaxdp.operator import (
     Bellman,
     BellmanOptimality,
@@ -16,7 +16,7 @@ from jaxdp.operator import (
 )
 
 
-def _two_state_mdp() -> Mdp:
+def _two_state_mdp() -> MDP:
     transition = jnp.array(
         [
             [[1.0, 0.0], [0.0, 1.0]],
@@ -32,7 +32,7 @@ def _two_state_mdp() -> Mdp:
         .at[1, 1, 0]
         .set(3.0)
     )
-    return Mdp(
+    return MDP(
         transition=transition,
         reward=reward,
         initial=jnp.array([1.0, 0.0]),
@@ -57,7 +57,7 @@ def test_value_conversions_and_expectation() -> None:
 
 
 def test_state_action_value_does_not_bootstrap_terminal_successors() -> None:
-    mdp = Mdp(
+    mdp = MDP(
         transition=jnp.array([[[0.0, 0.0], [1.0, 1.0]]]),
         reward=jnp.zeros((1, 2, 2)).at[0, 0, 1].set(2.0),
         initial=jnp.array([1.0, 0.0]),

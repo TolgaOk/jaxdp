@@ -2,10 +2,10 @@
 
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
-def sequential_mdp(state_size: int) -> Mdp:
+def sequential_mdp(state_size: int) -> MDP:
     """Create the sequential MDP from accelerated value-iteration studies.
 
     Args:
@@ -33,7 +33,9 @@ def sequential_mdp(state_size: int) -> Mdp:
 
     initial = jnp.zeros(state_size).at[0].set(1.0)
     terminal = jnp.zeros(state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["sequential_mdp"]

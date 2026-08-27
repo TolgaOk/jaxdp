@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrd
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
 @chex.dataclass(frozen=True)
@@ -34,11 +34,17 @@ class RolloutData:
     timeout: jax.Array
 
 
+def sample_initial(key: chex.PRNGKey, mdp: MDP) -> jax.Array:
+    """Sample a one-hot state from the MDP initial distribution."""
+    state = jrd.categorical(key, jnp.log(mdp.initial), axis=-1)
+    return jax.nn.one_hot(state, mdp.state_size, dtype=mdp.initial.dtype)
+
+
 def rollout(
     key: chex.PRNGKey,
     sampler_state: State,
     policy: jax.Array,
-    mdp: Mdp,
+    mdp: MDP,
     rollout_len: int,
     max_episode_len: int,
 ) -> tuple[RolloutData, State]:
@@ -121,7 +127,7 @@ def sample_step(
     state: jax.Array,
     episode_step: jax.Array,
     policy: jax.Array,
-    mdp: Mdp,
+    mdp: MDP,
     max_episode_len: int,
 ) -> tuple[RolloutData, jax.Array, jax.Array]:
     """Sample one transition and return the reset-aware continuation state."""
@@ -143,7 +149,7 @@ def sample_step(
     next_episode_step = episode_step + 1
     timeout = next_episode_step >= max_episode_len
     done = jnp.logical_or(terminal, timeout)
-    continuation_state = jnp.where(done, mdp.init_state(reset_key), next_state)
+    continuation_state = jnp.where(done, sample_initial(reset_key, mdp), next_state)
     next_episode_step = jnp.where(done, jnp.zeros_like(next_episode_step), next_episode_step)
 
     return (
@@ -164,7 +170,7 @@ def step(
     key: chex.PRNGKey,
     sampler_state: State,
     policy: jax.Array,
-    mdp: Mdp,
+    mdp: MDP,
     max_episode_len: int,
 ) -> tuple[RolloutData, State]:
     """Sample one transition and advance the continuing sampler state."""
@@ -188,10 +194,10 @@ def step(
     return step_data, next_sampler_state
 
 
-def init_sampler_state(key: chex.PRNGKey, mdp: Mdp, queue_size: int) -> State:
+def init_sampler_state(key: chex.PRNGKey, mdp: MDP, queue_size: int) -> State:
     """Initialize sampler state and empty episode-statistic queues."""
     return State(
-        last_state=mdp.init_state(key),
+        last_state=sample_initial(key, mdp),
         episode_step=jnp.array(0),
         rewards=jnp.array(0.0),
         lengths=jnp.array(0),
@@ -224,6 +230,7 @@ def refresh_queues(state: State) -> State:
 __all__ = [
     "State",
     "RolloutData",
+    "sample_initial",
     "rollout",
     "sample_step",
     "step",

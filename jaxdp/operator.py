@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 from jax import core
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
 def _validate_gamma(gamma: float | jax.Array) -> None:
@@ -20,11 +20,11 @@ def _validate_gamma(gamma: float | jax.Array) -> None:
         raise ValueError("gamma must be finite and in the interval [0, 1)")
 
 
-def _reward(mdp: Mdp) -> jax.Array:
+def _reward(mdp: MDP) -> jax.Array:
     return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
 
 
-def _policy_dynamics(mdp: Mdp, policy: jax.Array) -> tuple[jax.Array, jax.Array]:
+def _policy_dynamics(mdp: MDP, policy: jax.Array) -> tuple[jax.Array, jax.Array]:
     transition = jnp.einsum("as,axs->xs", policy, mdp.transition)
     reward = jnp.einsum("as,asx,axs->s", policy, mdp.reward, mdp.transition)
     continuation = transition * (1 - mdp.terminal[:, None])
@@ -36,7 +36,7 @@ def greedy_state_value(value: jax.Array) -> jax.Array:
     return jnp.max(value, axis=0)
 
 
-def state_action_value(mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+def state_action_value(mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
     """Return one-step action values from an ``(S,)`` state-value array."""
     _validate_gamma(gamma)
     continuation = jnp.einsum(
@@ -52,11 +52,11 @@ def state_action_value(mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> 
 class Expected:
     """Initial-distribution expectation."""
 
-    def q(self, mdp: Mdp, value: jax.Array) -> jax.Array:
+    def q(self, mdp: MDP, value: jax.Array) -> jax.Array:
         """Return the expected greedy action value."""
         return self.v(mdp, greedy_state_value(value))
 
-    def v(self, mdp: Mdp, value: jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, value: jax.Array) -> jax.Array:
         """Return the expected state value."""
         return jnp.sum(mdp.initial * value)
 
@@ -65,11 +65,11 @@ class Expected:
 class PolicyEvaluation:
     """Exact discounted policy evaluation."""
 
-    def q(self, mdp: Mdp, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def q(self, mdp: MDP, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Return exact action values for a policy."""
         return state_action_value(mdp, self.v(mdp, policy, gamma), gamma)
 
-    def v(self, mdp: Mdp, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Return exact state values for a policy using a linear solve."""
         _validate_gamma(gamma)
         transition, reward = _policy_dynamics(mdp, policy)
@@ -85,7 +85,7 @@ class Bellman:
 
     def q(
         self,
-        mdp: Mdp,
+        mdp: MDP,
         policy: jax.Array,
         value: jax.Array,
         gamma: float | jax.Array,
@@ -96,7 +96,7 @@ class Bellman:
 
     def v(
         self,
-        mdp: Mdp,
+        mdp: MDP,
         policy: jax.Array,
         value: jax.Array,
         gamma: float | jax.Array,
@@ -110,11 +110,11 @@ class Bellman:
 class BellmanOptimality:
     """Discounted Bellman optimality operator."""
 
-    def q(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def q(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply Bellman optimality to action values."""
         return state_action_value(mdp, greedy_state_value(value), gamma)
 
-    def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply Bellman optimality to state values."""
         return greedy_state_value(state_action_value(mdp, value, gamma))
 

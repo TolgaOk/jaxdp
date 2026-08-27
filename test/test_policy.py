@@ -27,7 +27,12 @@ def _two_state_mdp() -> MDP:
     )
     initial = jnp.array([1.0, 0.0])
     terminal = jnp.zeros(2)
-    return MDP(transition, reward, initial, terminal)
+    return MDP(
+        transition=transition,
+        reward=reward,
+        initial=initial,
+        terminal=terminal,
+    )
 
 
 def _apply_q(policy: Policy, value: jax.Array) -> jax.Array:

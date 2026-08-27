@@ -7,7 +7,7 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp.mdp import Mdp
+from jaxdp.mdp.mdp import MDP
 from jaxdp.operator import state_action_value
 
 
@@ -15,7 +15,7 @@ class Policy(Protocol):
     """Policy constructed from action or state values."""
 
     def q(self, value: jax.Array) -> jax.Array: ...
-    def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array: ...
+    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array: ...
 
 
 def _greedy(value: jax.Array) -> jax.Array:
@@ -34,7 +34,7 @@ class Greedy:
         """Return a greedy policy for an ``(A, S)`` action-value array."""
         return _greedy(value)
 
-    def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Return a greedy policy after one-step state-value lookahead."""
         return self.q(state_action_value(mdp, value, gamma))
 
@@ -58,7 +58,7 @@ class Soft:
         """Return a softmax policy for an ``(A, S)`` action-value array."""
         return jax.nn.softmax(value / self.temperature, axis=0)
 
-    def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Return a softmax policy after one-step state-value lookahead."""
         return self.q(state_action_value(mdp, value, gamma))
 
@@ -83,7 +83,7 @@ class EpsilonGreedy:
         greedy = _greedy(value)
         return (1 - self.epsilon) * greedy + self.epsilon / value.shape[0]
 
-    def v(self, mdp: Mdp, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    def v(self, mdp: MDP, value: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Return an epsilon-greedy policy after one-step state-value lookahead."""
         return self.q(state_action_value(mdp, value, gamma))
 

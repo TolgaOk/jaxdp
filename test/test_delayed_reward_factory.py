@@ -2,13 +2,13 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from jaxdp.mdp import Mdp, delayed_reward_mdp
+from jaxdp.mdp import MDP, delayed_reward_mdp
 
 
 def test_delayed_reward_mdp_arrays() -> None:
     mdp = delayed_reward_mdp(2, 2, 0.0, jax.random.key(0))
 
-    assert isinstance(mdp, Mdp)
+    assert isinstance(mdp, MDP)
     assert mdp.transition.shape == (2, 7, 7)
     assert mdp.reward.shape == mdp.transition.shape
     assert jnp.allclose(mdp.transition.sum(axis=-2), 1.0)

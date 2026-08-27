@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrd
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
 def garnet_mdp(
@@ -17,7 +17,7 @@ def garnet_mdp(
     branch_size: int,
     min_reward: float = 0.0,
     max_reward: float = 1.0,
-) -> Mdp:
+) -> MDP:
     """Create a random finite MDP with a fixed number of successors per state-action pair.
 
     Args:
@@ -66,7 +66,9 @@ def garnet_mdp(
     reward = min_reward + (max_reward - min_reward) * reward_unit
     initial = jnp.full(state_size, 1 / state_size)
     terminal = jnp.zeros(state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["garnet_mdp"]

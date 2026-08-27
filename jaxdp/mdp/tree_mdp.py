@@ -3,10 +3,10 @@
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
-def tree_mdp(depth: int) -> Mdp:
+def tree_mdp(depth: int) -> MDP:
     """Create a binary tree with rewarded outer leaves.
 
     Args:
@@ -38,7 +38,9 @@ def tree_mdp(depth: int) -> Mdp:
         .set(0.5)
     )
     initial = jax.nn.one_hot(0, state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["tree_mdp"]

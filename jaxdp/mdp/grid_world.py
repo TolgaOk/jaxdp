@@ -6,7 +6,7 @@ from collections.abc import Sequence
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 _ACTIONS = ((1, 0), (0, 1), (-1, 0), (0, -1))
 _SLIP_ACTIONS = ((1, 3), (0, 2), (1, 3), (0, 2))
@@ -31,7 +31,7 @@ def _validate_board(board: Sequence[str], p_slip: float) -> tuple[str, ...]:
     return tuple(board)
 
 
-def grid_world(board: Sequence[str], p_slip: float = 0.0) -> Mdp:
+def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
     """Create a four-action MDP from a character grid.
 
     ``P`` is the initial cell, ``@`` is a terminal goal, ``=`` is a nonterminal absorbing
@@ -81,7 +81,9 @@ def grid_world(board: Sequence[str], p_slip: float = 0.0) -> Mdp:
         index for index, (row, column) in enumerate(positions) if rows[row][column] == "P"
     )
     initial = jax.nn.one_hot(initial_index, state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["grid_world"]

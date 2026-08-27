@@ -2,7 +2,7 @@
 
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 _EDGES = {
     0: (0, 4),
@@ -15,7 +15,7 @@ _EDGES = {
 _STATE_SIZE = 6
 
 
-def graph_mdp() -> Mdp:
+def graph_mdp() -> MDP:
     """Create the fixed six-state graph MDP."""
     transition = jnp.zeros((_STATE_SIZE, _STATE_SIZE, _STATE_SIZE))
     for state, actions in _EDGES.items():
@@ -43,7 +43,9 @@ def graph_mdp() -> Mdp:
     )
     initial = jnp.full(_STATE_SIZE, 1 / _STATE_SIZE)
     terminal = jnp.zeros(_STATE_SIZE)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["graph_mdp"]

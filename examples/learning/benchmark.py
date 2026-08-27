@@ -12,7 +12,7 @@ from utils import log_results
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
-from jaxdp.mdp.sampler.mdp import sample_step
+from jaxdp.mdp.sampler.mdp import sample_initial, sample_step
 from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.operator import BellmanOptimality
 from jaxdp.policy import Greedy
@@ -207,7 +207,7 @@ class sampler(metaclass=StaticMeta):
         Returns:
             EpisodeResult containing total return and episode length
         """
-        mdp_state = mdp.init_state(key)
+        mdp_state = sample_initial(key, mdp)
         ep_step = jnp.array(0.0)
         ep_return = jnp.array(0.0)
         done = jnp.array(False)
@@ -286,7 +286,7 @@ class loop(metaclass=StaticMeta):
         key = jrd.PRNGKey(args.seed)
 
         env_keys = jrd.split(key, args.n_envs)
-        mdp_state = jax.vmap(args.mdp.init_state)(env_keys)
+        mdp_state = jax.vmap(sample_initial, in_axes=(0, None))(env_keys, args.mdp)
         ep_step = jnp.zeros(args.n_envs)
         ep_return = jnp.zeros(args.n_envs)
         last_return = jnp.zeros(args.n_envs)

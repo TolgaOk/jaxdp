@@ -2,10 +2,10 @@
 
 import jax.numpy as jnp
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
-def forest_mdp(rotation: int) -> Mdp:
+def forest_mdp(rotation: int) -> MDP:
     """Create a forest MDP with wait and harvest actions.
 
     Args:
@@ -30,7 +30,9 @@ def forest_mdp(rotation: int) -> Mdp:
     reward = jnp.zeros_like(transition).at[1, state, 0].set(state)
     initial = jnp.zeros(state_size).at[0].set(1.0)
     terminal = jnp.zeros(state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["forest_mdp"]

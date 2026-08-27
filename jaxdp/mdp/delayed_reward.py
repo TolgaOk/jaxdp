@@ -7,7 +7,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrd
 
-from jaxdp.mdp import Mdp
+from jaxdp.mdp import MDP
 
 
 def delayed_reward_mdp(
@@ -15,7 +15,7 @@ def delayed_reward_mdp(
     action_size: int,
     reward_std: float,
     key: chex.PRNGKey,
-) -> Mdp:
+) -> MDP:
     """Create a deterministic tree whose payoff is revealed at its leaves.
 
     The first root branch has mean payoff ``1`` and every other root branch has mean payoff ``-1``.
@@ -73,7 +73,9 @@ def delayed_reward_mdp(
     ].set(reward_value)
 
     initial = jax.nn.one_hot(0, state_size)
-    return Mdp(transition, reward, initial, terminal)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
 
 __all__ = ["delayed_reward_mdp"]
