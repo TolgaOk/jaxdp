@@ -55,16 +55,18 @@ def test_absorbing_reward_cell_is_nonterminal() -> None:
         (("###", "#P?", "###"), 0.0, "invalid cells"),
         (("###", "# #", "###"), 0.0, "exactly one"),
         (("####", "#PP#", "####"), 0.0, "exactly one"),
-        (("###", "#P#", "###"), -0.1, "p_slip"),
-        (("###", "#P#", "###"), 1.1, "p_slip"),
-        (("###", "#P#", "###"), float("inf"), "p_slip"),
-        (("###", "#P#", "###"), float("nan"), "p_slip"),
     ],
 )
-def test_grid_world_rejects_invalid_inputs(
+def test_grid_world_rejects_invalid_board(
     board: Sequence[str],
     p_slip: float,
     message: str,
 ) -> None:
     with pytest.raises(ValueError, match=message):
         grid_world(board, p_slip)
+
+
+@pytest.mark.parametrize("p_slip", [-0.1, 1.1, float("inf"), float("nan")])
+def test_grid_world_rejects_invalid_slip_probability(p_slip: float) -> None:
+    with pytest.raises(AssertionError, match="p_slip"):
+        grid_world(("###", "#P#", "###"), p_slip)

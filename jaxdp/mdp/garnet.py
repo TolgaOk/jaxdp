@@ -1,7 +1,5 @@
 """Random Garnet MDP factory."""
 
-import math
-
 import chex
 import jax
 import jax.numpy as jnp
@@ -31,16 +29,22 @@ def garnet_mdp(
     Returns:
         Random Garnet MDP.
     """
-    if state_size < 1:
-        raise ValueError("state_size must be positive")
-    if action_size < 1:
-        raise ValueError("action_size must be positive")
-    if branch_size < 1:
-        raise ValueError("branch_size must be positive")
-    if not math.isfinite(min_reward) or not math.isfinite(max_reward):
-        raise ValueError("reward bounds must be finite")
-    if min_reward > max_reward:
-        raise ValueError("min_reward must not exceed max_reward")
+    chex.assert_type(
+        [state_size, action_size, branch_size],
+        int,
+        custom_message="state_size, action_size, and branch_size must be integers",
+    )
+    chex.assert_scalar_positive(state_size, custom_message="state_size must be positive")
+    chex.assert_scalar_positive(action_size, custom_message="action_size must be positive")
+    chex.assert_scalar_positive(branch_size, custom_message="branch_size must be positive")
+
+    reward_bounds = jnp.asarray((min_reward, max_reward))
+    chex.assert_tree_all_finite(reward_bounds, custom_message="reward bounds must be finite")
+    chex.assert_trees_all_equal(
+        reward_bounds[0] <= reward_bounds[1],
+        jnp.asarray(True),
+        custom_message="min_reward must not exceed max_reward",
+    )
 
     branch_key, transition_key, reward_key = jrd.split(key, 3)
     successor_size = min(branch_size, state_size)

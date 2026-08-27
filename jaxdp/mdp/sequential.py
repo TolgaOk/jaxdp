@@ -1,5 +1,6 @@
 """Sequential finite MDP factory."""
 
+import chex
 import jax.numpy as jnp
 
 from jaxdp.mdp import MDP
@@ -14,8 +15,8 @@ def sequential_mdp(state_size: int) -> MDP:
     Returns:
         Sequential MDP with advance and stay actions.
     """
-    if state_size < 1:
-        raise ValueError("state_size must be positive")
+    chex.assert_type(state_size, int, custom_message="state_size must be an integer")
+    chex.assert_scalar_positive(state_size, custom_message="state_size must be positive")
 
     state = jnp.arange(state_size)
     transition = (

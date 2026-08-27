@@ -80,13 +80,11 @@ def loop(mdp: MDP,
 
         return new_state, metrics
 
-    final_state, all_metrics = jax.lax.scan(
-        scan_body,
-        alg_state,
-        jnp.arange(args.n_iters)
+    run_scan = chex.chexify(
+        lambda state, steps: jax.lax.scan(scan_body, state, steps),
+        async_check=False,
     )
-
-    return final_state, all_metrics
+    return run_scan(alg_state, jnp.arange(args.n_iters))
 
 
 def grid_mdp_factory() -> MDP:

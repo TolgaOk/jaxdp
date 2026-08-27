@@ -22,7 +22,7 @@ def test_forest_supports_zero_rotation_and_rejects_negative_rotation() -> None:
     mdp = forest_mdp(rotation=0)
 
     assert mdp.transition.shape == (2, 1, 1)
-    with pytest.raises(ValueError, match="rotation"):
+    with pytest.raises(AssertionError, match="rotation"):
         forest_mdp(rotation=-1)
 
 
@@ -39,7 +39,7 @@ def test_tree_has_absorbing_leaves_and_outer_leaf_rewards() -> None:
 
 
 def test_tree_rejects_nonpositive_depth() -> None:
-    with pytest.raises(ValueError, match="depth"):
+    with pytest.raises(AssertionError, match="depth"):
         tree_mdp(depth=0)
 
 

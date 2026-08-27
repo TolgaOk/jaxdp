@@ -1,5 +1,6 @@
 from dataclasses import is_dataclass
 
+import chex
 import jax
 import jax.numpy as jnp
 import pytest
@@ -110,12 +111,26 @@ def test_discounted_operators_reject_invalid_gamma(gamma: float) -> None:
     policy = jnp.full((2, 2), 0.5)
     value = jnp.zeros(2)
 
-    with pytest.raises(ValueError, match="gamma"):
+    with pytest.raises(AssertionError, match="gamma"):
         PolicyEvaluation().v(mdp, policy, gamma)
-    with pytest.raises(ValueError, match="gamma"):
+    with pytest.raises(AssertionError, match="gamma"):
         Bellman().v(mdp, policy, value, gamma)
-    with pytest.raises(ValueError, match="gamma"):
+    with pytest.raises(AssertionError, match="gamma"):
         BellmanOptimality().v(mdp, value, gamma)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        jnp.ones((1, 2)),
+        jnp.array([[1.1, 0.0], [-0.1, 1.0]]),
+        jnp.full((2, 2), 0.4),
+        jnp.array([[jnp.nan, 0.0], [0.0, 1.0]]),
+    ],
+)
+def test_policy_evaluation_rejects_invalid_policy(policy: jax.Array) -> None:
+    with pytest.raises(AssertionError, match="policy"):
+        PolicyEvaluation().v(_two_state_mdp(), policy, 0.5)
 
 
 def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
@@ -123,10 +138,39 @@ def test_operators_are_immutable_dataclasses_and_compose_with_jax() -> None:
     operator = BellmanOptimality()
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
     gammas = jnp.array([0.5, 0.25])
-    result = jax.jit(jax.vmap(lambda value, gamma: operator.v(mdp, value, gamma)))(
+    apply = chex.chexify(
+        jax.jit(jax.vmap(lambda value, gamma: operator.v(mdp, value, gamma))),
+        async_check=False,
+    )
+    result = apply(
         values,
         gammas,
     )
 
     assert is_dataclass(operator)
     assert result.shape == values.shape
+
+
+def test_operator_validation_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    value = jnp.zeros(2)
+    operator = BellmanOptimality()
+    apply_gamma = chex.chexify(
+        jax.jit(jax.vmap(lambda gamma: operator.v(mdp, value, gamma))),
+        async_check=False,
+    )
+
+    assert apply_gamma(jnp.array([0.25, 0.5])).shape == (2, mdp.state_size)
+    with pytest.raises(AssertionError, match="gamma"):
+        apply_gamma(jnp.array([0.5, 1.0]))
+
+    evaluate = PolicyEvaluation()
+    apply_policy = chex.chexify(
+        jax.jit(jax.vmap(lambda policy: evaluate.v(mdp, policy, 0.5))),
+        async_check=False,
+    )
+    policies = jnp.full((2, mdp.action_size, mdp.state_size), 0.5)
+
+    assert apply_policy(policies).shape == (2, mdp.state_size)
+    with pytest.raises(AssertionError, match="policy"):
+        apply_policy(policies.at[1, 0, 0].set(0.75))

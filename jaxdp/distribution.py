@@ -5,10 +5,7 @@ import jax
 import jax.numpy as jnp
 
 from jaxdp.mdp import MDP
-
-
-def _policy_transition(mdp: MDP, policy: jax.Array) -> jax.Array:
-    return jnp.einsum("as,axs->xs", policy, mdp.transition)
+from jaxdp.operator import _assert_policy
 
 
 @chex.dataclass(frozen=True)
@@ -18,8 +15,15 @@ class Occupancy:
     steps: int
 
     def __post_init__(self) -> None:
-        if self.steps < 0:
-            raise ValueError("steps must be nonnegative")
+        """Validate the step count."""
+        steps = jnp.asarray(self.steps)
+        chex.assert_shape(steps, (), custom_message="steps must be scalar")
+        chex.assert_type(steps, int, custom_message="steps must be an integer")
+        chex.assert_trees_all_equal(
+            steps >= 0,
+            jnp.asarray(True),
+            custom_message="steps must be nonnegative",
+        )
 
     def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the action-state distribution after the configured number of steps."""
@@ -69,6 +73,11 @@ class Stationary:
 def eigenvalues(mdp: MDP, policy: jax.Array) -> jax.Array:
     """Return eigenvalues of the policy-induced transition matrix."""
     return jnp.linalg.eigvals(_policy_transition(mdp, policy))
+
+
+def _policy_transition(mdp: MDP, policy: jax.Array) -> jax.Array:
+    _assert_policy(mdp, policy)
+    return jnp.einsum("as,axs->xs", policy, mdp.transition)
 
 
 __all__ = ["Occupancy", "Stationary", "eigenvalues"]

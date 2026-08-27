@@ -1,5 +1,6 @@
 from dataclasses import is_dataclass
 
+import chex
 import jax
 import jax.numpy as jnp
 import pytest
@@ -55,8 +56,14 @@ def test_distribution_components_compose_with_jit_and_vmap() -> None:
     occupancy = Occupancy(steps=3)
     stationary = Stationary()
 
-    finite = jax.jit(jax.vmap(lambda policy: occupancy.v(mdp, policy)))(policies)
-    invariant = jax.jit(jax.vmap(lambda policy: stationary.v(mdp, policy)))(policies)
+    finite = chex.chexify(
+        jax.jit(jax.vmap(lambda policy: occupancy.v(mdp, policy))),
+        async_check=False,
+    )(policies)
+    invariant = chex.chexify(
+        jax.jit(jax.vmap(lambda policy: stationary.v(mdp, policy))),
+        async_check=False,
+    )(policies)
 
     assert is_dataclass(occupancy)
     assert is_dataclass(stationary)
@@ -72,5 +79,5 @@ def test_eigenvalues_describe_the_policy_transition() -> None:
 
 
 def test_occupancy_rejects_negative_steps() -> None:
-    with pytest.raises(ValueError, match="steps"):
+    with pytest.raises(AssertionError, match="steps"):
         Occupancy(steps=-1)

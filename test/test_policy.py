@@ -64,13 +64,13 @@ def test_policy_components_match_their_definitions() -> None:
 
 @pytest.mark.parametrize("temperature", [0.0, -1.0, jnp.inf, jnp.nan])
 def test_soft_rejects_invalid_temperature(temperature: float) -> None:
-    with pytest.raises(ValueError, match="temperature"):
+    with pytest.raises(AssertionError, match="temperature"):
         Soft(temperature=temperature)
 
 
 @pytest.mark.parametrize("epsilon", [-0.1, 1.1, jnp.inf, jnp.nan])
 def test_epsilon_greedy_rejects_invalid_epsilon(epsilon: float) -> None:
-    with pytest.raises(ValueError, match="epsilon"):
+    with pytest.raises(AssertionError, match="epsilon"):
         EpsilonGreedy(epsilon=epsilon)
 
 

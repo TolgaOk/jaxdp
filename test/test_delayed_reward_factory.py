@@ -63,5 +63,5 @@ def test_delayed_reward_mdp_rejects_invalid_parameters(
     reward_std: float,
     message: str,
 ) -> None:
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(AssertionError, match=message):
         delayed_reward_mdp(delay, action_size, reward_std, jax.random.key(0))

@@ -1,5 +1,6 @@
 """Deterministic binary-tree MDP factory."""
 
+import chex
 import jax
 import jax.numpy as jnp
 
@@ -15,8 +16,8 @@ def tree_mdp(depth: int) -> MDP:
     Returns:
         Binary-tree MDP with terminal absorbing leaves.
     """
-    if depth < 1:
-        raise ValueError("depth must be positive")
+    chex.assert_type(depth, int, custom_message="depth must be an integer")
+    chex.assert_scalar_positive(depth, custom_message="depth must be positive")
 
     state_size = 2 ** (depth + 1) - 1
     non_leaf_size = 2**depth - 1

@@ -1,5 +1,6 @@
 from dataclasses import FrozenInstanceError, fields, is_dataclass
 
+import chex
 import jax
 import jax.numpy as jnp
 import pytest
@@ -48,6 +49,11 @@ def _validate(
 
 def _initial_mass(mdp: MDP) -> jax.Array:
     return jnp.sum(mdp.initial)
+
+
+def _validated_initial(mdp: MDP) -> jax.Array:
+    mdp.validate()
+    return mdp.initial
 
 
 def test_mdp_exposes_canonical_shapes_and_types() -> None:
@@ -101,11 +107,11 @@ def test_mdp_is_an_immutable_jax_pytree() -> None:
 def test_mdp_rejects_inconsistent_shapes() -> None:
     transition, reward, initial, terminal = _arrays()
 
-    with pytest.raises(ValueError, match="reward shape"):
+    with pytest.raises(AssertionError, match="reward shape"):
         _validate(transition, reward[:, :, :1], initial, terminal)
-    with pytest.raises(ValueError, match="initial shape"):
+    with pytest.raises(AssertionError, match="initial shape"):
         _validate(transition, reward, initial[:1], terminal)
-    with pytest.raises(ValueError, match="terminal shape"):
+    with pytest.raises(AssertionError, match="terminal shape"):
         _validate(transition, reward, initial, terminal[:1])
 
 
@@ -113,15 +119,15 @@ def test_mdp_rejects_invalid_probabilities_and_values() -> None:
     transition, reward, initial, terminal = _arrays()
     negative_transition = transition.at[0, 0, 0].set(1.1).at[0, 1, 0].set(-0.1)
 
-    with pytest.raises(ValueError, match="nonnegative"):
+    with pytest.raises(AssertionError, match="nonnegative"):
         _validate(negative_transition, reward, initial, terminal)
-    with pytest.raises(ValueError, match="column stochastic"):
+    with pytest.raises(AssertionError, match="column stochastic"):
         _validate(transition.at[0, 0, 0].set(0.9), reward, initial, terminal)
-    with pytest.raises(ValueError, match="initial distribution must be nonnegative"):
+    with pytest.raises(AssertionError, match="initial probabilities must be nonnegative"):
         _validate(transition, reward, jnp.array([1.1, -0.1]), terminal)
-    with pytest.raises(ValueError, match="finite"):
+    with pytest.raises(AssertionError, match="finite"):
         _validate(transition, reward.at[0, 0, 0].set(jnp.nan), initial, terminal)
-    with pytest.raises(ValueError, match="zero or one"):
+    with pytest.raises(AssertionError, match="zero or one"):
         _validate(transition, reward, initial, jnp.array([0.0, 0.5]))
 
 
@@ -130,7 +136,19 @@ def test_mdp_enforces_terminal_state_semantics() -> None:
     nonabsorbing = transition.at[0, :, 1].set(jnp.array([1.0, 0.0]))
     terminal_reward = reward.at[0, 1, 1].set(1.0)
 
-    with pytest.raises(ValueError, match="absorbing"):
+    with pytest.raises(AssertionError, match="absorbing"):
         _validate(nonabsorbing, reward, initial, terminal)
-    with pytest.raises(ValueError, match="originating from terminal"):
+    with pytest.raises(AssertionError, match="originating from terminal"):
         _validate(transition, terminal_reward, initial, terminal)
+
+
+def test_mdp_validation_composes_with_jit_and_vmap() -> None:
+    mdp = _mdp()
+    batch = jax.tree.map(lambda value: jnp.stack((value, value)), mdp)
+    validate = chex.chexify(jax.jit(jax.vmap(_validated_initial)), async_check=False)
+
+    assert jnp.array_equal(validate(batch), batch.initial)
+
+    invalid = batch.replace(initial=batch.initial.at[1].set(jnp.array([1.1, -0.1])))
+    with pytest.raises(AssertionError, match="initial probabilities must be nonnegative"):
+        validate(invalid)

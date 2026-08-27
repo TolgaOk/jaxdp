@@ -6,6 +6,27 @@
 
 **`jaxdp`** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
 
+Chex validates array shapes and numerical values. Shape assertions run during ordinary JAX
+tracing. Numerical validation failures raise `AssertionError`. Value assertions require
+`chex.chexify` outside the outermost transformed function.
+
+```python
+import chex
+import jax
+import jaxdp
+
+
+def evaluate_policy(policy):
+    return jaxdp.PolicyEvaluation().v(mdp, policy, 0.99)
+
+
+checked_evaluate = chex.chexify(
+    jax.jit(jax.vmap(evaluate_policy)),
+    async_check=False,
+)
+values = checked_evaluate(policies)
+```
+
 ### Algorithm Example
 
 The `examples` directory contains implementations and benchmarks of planning algorithms using **jaxdp**. Below is a code snippet for [Momentum accelerated Value Iteration](https://arxiv.org/pdf/1905.09963):

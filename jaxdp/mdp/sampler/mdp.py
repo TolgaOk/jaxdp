@@ -78,50 +78,6 @@ def rollout(
     )
 
 
-def _queue_push(queue: jax.Array, value: jax.Array, condition: jax.Array) -> jax.Array:
-    pushed = queue.at[1:].set(queue[:-1]).at[0].set(value)
-    return jax.lax.select(condition, pushed, queue)
-
-
-def _update_episode(
-    rewards: jax.Array,
-    lengths: jax.Array,
-    reward_queue: jax.Array,
-    length_queue: jax.Array,
-    reward: jax.Array,
-    terminal: jax.Array,
-    timeout: jax.Array,
-) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
-    done = jnp.logical_or(terminal, timeout)
-    total_reward = reward + rewards
-    total_length = 1 + lengths
-    return (
-        jnp.where(done, 0, total_reward),
-        jnp.where(done, 0, total_length),
-        _queue_push(reward_queue, total_reward, done),
-        _queue_push(length_queue, total_length, done),
-    )
-
-
-def _update_state(state: State, step_data: RolloutData) -> State:
-    rewards, lengths, reward_queue, length_queue = _update_episode(
-        state.rewards,
-        state.lengths,
-        state.episode_reward_queue,
-        state.episode_length_queue,
-        step_data.reward,
-        step_data.terminal,
-        step_data.timeout,
-    )
-    return replace(
-        state,
-        rewards=rewards,
-        lengths=lengths,
-        episode_reward_queue=reward_queue,
-        episode_length_queue=length_queue,
-    )
-
-
 def sample_step(
     key: chex.PRNGKey,
     state: jax.Array,
@@ -224,6 +180,50 @@ def refresh_queues(state: State) -> State:
         state,
         episode_reward_queue=jnp.full_like(state.episode_reward_queue, jnp.nan),
         episode_length_queue=jnp.full_like(state.episode_length_queue, jnp.nan),
+    )
+
+
+def _queue_push(queue: jax.Array, value: jax.Array, condition: jax.Array) -> jax.Array:
+    pushed = queue.at[1:].set(queue[:-1]).at[0].set(value)
+    return jax.lax.select(condition, pushed, queue)
+
+
+def _update_episode(
+    rewards: jax.Array,
+    lengths: jax.Array,
+    reward_queue: jax.Array,
+    length_queue: jax.Array,
+    reward: jax.Array,
+    terminal: jax.Array,
+    timeout: jax.Array,
+) -> tuple[jax.Array, jax.Array, jax.Array, jax.Array]:
+    done = jnp.logical_or(terminal, timeout)
+    total_reward = reward + rewards
+    total_length = 1 + lengths
+    return (
+        jnp.where(done, 0, total_reward),
+        jnp.where(done, 0, total_length),
+        _queue_push(reward_queue, total_reward, done),
+        _queue_push(length_queue, total_length, done),
+    )
+
+
+def _update_state(state: State, step_data: RolloutData) -> State:
+    rewards, lengths, reward_queue, length_queue = _update_episode(
+        state.rewards,
+        state.lengths,
+        state.episode_reward_queue,
+        state.episode_length_queue,
+        step_data.reward,
+        step_data.terminal,
+        step_data.timeout,
+    )
+    return replace(
+        state,
+        rewards=rewards,
+        lengths=lengths,
+        episode_reward_queue=reward_queue,
+        episode_length_queue=length_queue,
     )
 
 

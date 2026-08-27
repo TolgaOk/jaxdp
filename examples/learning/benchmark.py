@@ -368,8 +368,11 @@ class loop:
         keys = keys.reshape(args.n_steps, args.n_envs, -1)
         steps_and_keys = (jnp.arange(args.n_steps), keys)
 
-        final_state, all_metrics = jax.lax.scan(step_fn, state, steps_and_keys)
-        return final_state, all_metrics
+        run_scan = chex.chexify(
+            lambda loop_state, inputs: jax.lax.scan(step_fn, loop_state, inputs),
+            async_check=False,
+        )
+        return run_scan(state, steps_and_keys)
 
     @staticmethod
     def evaluate(state: "loop.State", args: "loop.Args") -> "loop.EvalResult":

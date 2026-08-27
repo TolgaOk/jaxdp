@@ -1,7 +1,9 @@
+import chex
 import jax
 import jax.numpy as jnp
 import pytest
 
+from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 
 
@@ -25,18 +27,20 @@ def test_garnet_has_the_requested_sparse_branching_and_reward_bounds() -> None:
 
 
 def test_garnet_is_reproducible_and_composes_with_jit_and_vmap() -> None:
-    create = jax.jit(
-        lambda key: garnet_mdp(
+    def create_one(key: chex.PRNGKey) -> MDP:
+        return garnet_mdp(
             key,
             state_size=5,
             action_size=2,
             branch_size=3,
         )
-    )
+
+    create = chex.chexify(jax.jit(create_one), async_check=False)
+    create_batch = chex.chexify(jax.jit(jax.vmap(create_one)), async_check=False)
     key = jax.random.key(1)
     first = create(key)
     second = create(key)
-    batch = jax.vmap(create)(jax.random.split(key, 4))
+    batch = create_batch(jax.random.split(key, 4))
 
     assert jax.tree.all(jax.tree.map(jnp.array_equal, first, second))
     assert batch.transition.shape == (4, 2, 5, 5)
@@ -70,7 +74,7 @@ def test_garnet_rejects_invalid_parameters(
     max_reward: float,
     message: str,
 ) -> None:
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(AssertionError, match=message):
         garnet_mdp(
             jax.random.key(0),
             state_size,

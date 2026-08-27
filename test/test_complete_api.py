@@ -1,3 +1,4 @@
+import chex
 import jax
 import jax.numpy as jnp
 
@@ -71,8 +72,14 @@ def test_completed_api_supports_jit_and_vmap() -> None:
     soft = Soft(temperature=2.0)
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
 
-    policies = jax.jit(jax.vmap(lambda value: soft.v(mdp, value, 0.5)))(values)
-    state_distribution = jax.jit(lambda policy: Occupancy(steps=3).v(mdp, policy))(
+    policies = chex.chexify(
+        jax.jit(jax.vmap(lambda value: soft.v(mdp, value, 0.5))),
+        async_check=False,
+    )(values)
+    state_distribution = chex.chexify(
+        jax.jit(lambda policy: Occupancy(steps=3).v(mdp, policy)),
+        async_check=False,
+    )(
         jnp.full((2, 2), 0.5)
     )
 

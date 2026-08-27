@@ -1,7 +1,5 @@
 """Delayed-reward tree MDP factory."""
 
-import math
-
 import chex
 import jax
 import jax.numpy as jnp
@@ -30,12 +28,22 @@ def delayed_reward_mdp(
     Returns:
         Delayed-reward MDP.
     """
-    if delay < 0:
-        raise ValueError("delay must be nonnegative")
-    if action_size < 1:
-        raise ValueError("action_size must be positive")
-    if not math.isfinite(reward_std) or reward_std < 0:
-        raise ValueError("reward_std must be finite and nonnegative")
+    chex.assert_type(
+        [delay, action_size],
+        int,
+        custom_message="delay and action_size must be integers",
+    )
+    chex.assert_scalar_non_negative(delay, custom_message="delay must be nonnegative")
+    chex.assert_scalar_positive(action_size, custom_message="action_size must be positive")
+
+    reward_scale = jnp.asarray(reward_std)
+    chex.assert_shape(reward_scale, (), custom_message="reward_std must be scalar")
+    chex.assert_tree_all_finite(reward_scale, custom_message="reward_std must be finite")
+    chex.assert_trees_all_equal(
+        reward_scale >= 0,
+        jnp.asarray(True),
+        custom_message="reward_std must be nonnegative",
+    )
 
     state_size = sum(action_size**level for level in range(delay + 1))
     leaf_size = action_size**delay
@@ -59,7 +67,7 @@ def delayed_reward_mdp(
         )
     )
     reward_value = (
-        reward_mean + reward_std * jrd.normal(key, (reward_size,))
+        reward_mean + reward_scale * jrd.normal(key, (reward_size,))
     ).reshape(pre_leaf_size, action_size).T
     pre_leaf = jnp.arange(
         state_size - leaf_size - pre_leaf_size,

@@ -23,5 +23,5 @@ def test_sequential_mdp_handles_one_state() -> None:
 
 
 def test_sequential_mdp_rejects_empty_state_space() -> None:
-    with pytest.raises(ValueError, match="state_size"):
+    with pytest.raises(AssertionError, match="state_size"):
         sequential_mdp(0)
