@@ -1500,6 +1500,136 @@ class QuasiPolicyIteration:
 
 
 @chex.dataclass(frozen=True)
+class DynamicBoltzmannValueIteration:
+    r"""Perform one Dynamic Boltzmann Value Iteration update at a time.
+
+    The planner uses the power schedule from Theorem 2 of Dynamic Boltzmann Softmax Updates. With
+    ``step`` equal to the number of completed updates, the next update applies
+
+    .. math::
+
+        q_{t+1}(s,a)
+        &= r(s,a)+\gamma\sum_{s'}P(s'\mid s,a)v_t(s'), \\
+        \beta_{t+1}
+        &= (t+1)^p, \\
+        \pi_{t+1}(a\mid s)
+        &= \frac{\exp(\beta_{t+1}q_{t+1}(s,a))}
+                 {\sum_b\exp(\beta_{t+1}q_{t+1}(s,b))}, \\
+        v_{t+1}(s)
+        &= \sum_a\pi_{t+1}(a\mid s)q_{t+1}(s,a).
+
+    The inverse temperature tends to infinity for every positive ``power``, as required by the
+    paper's convergence theorem. The default quadratic schedule is its primary empirical choice.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+        power: Positive exponent ``p`` of the inverse-temperature schedule.
+
+    Public dataclasses:
+        State: Current values and policy, completed-update count, and latest inverse temperature.
+
+    Public methods:
+        init: Initialize values before the first update.
+        update: Apply one dynamic Boltzmann update.
+    """
+
+    gamma: float
+    power: float = 2.0
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic Boltzmann Value Iteration state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            policy: Latest Boltzmann policy with shape ``(A, S)``.
+            step: Number of completed updates.
+            beta: Scalar inverse temperature used by the latest update.
+        """
+
+        v_val: jax.Array
+        policy: jax.Array
+        step: jax.Array
+        beta: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> DynamicBoltzmannValueIteration.State:
+        """Initialize values before the first dynamic Boltzmann update."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        gamma = jnp.asarray(self.gamma)
+        power = jnp.asarray(self.power)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(power, (), custom_message="power must be scalar")
+        chex.assert_tree_all_finite(
+            (v_val, gamma, power),
+            custom_message="planner inputs must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma >= 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            power > 0,
+            jnp.asarray(True),
+            custom_message="power must be positive",
+        )
+        return self.State(
+            v_val=v_val,
+            policy=jnp.full(
+                (mdp.action_size, mdp.state_size),
+                1 / mdp.action_size,
+                dtype=mdp.transition.dtype,
+            ),
+            step=jnp.zeros((), dtype=jnp.int32),
+            beta=jnp.zeros((), dtype=v_val.dtype),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: DynamicBoltzmannValueIteration.State,
+    ) -> DynamicBoltzmannValueIteration.State:
+        """Apply one dynamic Boltzmann value-iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        power = jnp.asarray(self.power)
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(state.step, ())
+        chex.assert_shape(state.beta, ())
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(power, (), custom_message="power must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, power),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma >= 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (power > 0) & (state.step >= 0) & (state.beta >= 0),
+            jnp.asarray(True),
+            custom_message="power must be positive and schedule state nonnegative",
+        )
+
+        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
+        step = state.step + 1
+        beta = step.astype(q_val.dtype) ** power
+        centered_q = q_val - jnp.max(q_val, axis=0, keepdims=True)
+        policy = jax.nn.softmax(beta * centered_q, axis=0)
+        v_val = jnp.sum(policy * q_val, axis=0)
+        return replace(state, v_val=v_val, policy=policy, step=step, beta=beta)
+
+
+@chex.dataclass(frozen=True)
 class AcceleratedPolicyIteration:
     r"""Perform one degree-``d`` Accelerated Policy Iteration micro-step.
 
@@ -1716,6 +1846,7 @@ __all__ = [
     "RankOneValueIteration",
     "DeflatedValueIteration",
     "QuasiPolicyIteration",
+    "DynamicBoltzmannValueIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",
 ]

@@ -51,5 +51,6 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(v_{k+1}=\mathcal{T}^{*}_{V}v_k+\alpha_k\mathbf{1}\) | `RankOneValueIteration.update` | One R1-VI update |
 | \(w_{k+1}=\mathcal{T}^{*}_{V}w_k-\gamma\langle\rho,w_k\rangle\mathbf{1}\) | `DeflatedValueIteration.update` | One rank-one control DDVI update |
 | \(v_{k+1}=v_k-\widetilde{G}_k(v_k-\mathcal{T}^{*}_{V}v_k)\) | `QuasiPolicyIteration.update` | One safeguarded QPI update |
+| \(v_{t+1}=\operatorname{boltz}_{(t+1)^p}(r+\gamma Pv_t)\) | `DynamicBoltzmannValueIteration.update` | One DBS value update |
 | \(d\mathrm{A\text{-}PI}\) | `AcceleratedPolicyIteration.update` | One evaluation or improvement micro-step |
 | \(\pi_{k+1}=\mathcal{G}\mathcal{B}_{\gamma}v^{\pi_k}\) | `PolicyIteration.update` | One exact policy iteration update |

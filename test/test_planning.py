@@ -14,6 +14,7 @@ from jaxdp.planning import (
     AnchoredValueIteration,
     AndersonValueIteration,
     DeflatedValueIteration,
+    DynamicBoltzmannValueIteration,
     MomentumValueIteration,
     PIDValueIteration,
     PolicyIteration,
@@ -54,6 +55,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
     assert jaxdp.DeflatedValueIteration is DeflatedValueIteration
     assert jaxdp.QuasiPolicyIteration is QuasiPolicyIteration
+    assert jaxdp.DynamicBoltzmannValueIteration is DynamicBoltzmannValueIteration
     assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
     assert jaxdp.MomentumValueIteration is MomentumValueIteration
     assert jaxdp.PIDValueIteration is PIDValueIteration
@@ -320,6 +322,64 @@ def test_quasi_policy_iteration_composes_with_jit_and_vmap() -> None:
     assert states.accepted.shape == (2,)
     assert jnp.all(jnp.isfinite(states.v_val))
     assert jnp.all(jnp.isfinite(states.gain))
+
+
+def test_dynamic_boltzmann_value_iteration_matches_power_schedule() -> None:
+    mdp = _two_state_mdp()
+    planner = DynamicBoltzmannValueIteration(gamma=0.5, power=2.0)
+    state = planner.init(mdp, jnp.array([1.0, -1.0]))
+
+    first = planner.update(mdp, state)
+    second = planner.update(mdp, first)
+
+    first_q = jaxdp.reward.sa(mdp) + planner.gamma * jaxdp.trans_op.sa(mdp, state.v_val)
+    first_policy = jax.nn.softmax(first_q - jnp.max(first_q, axis=0, keepdims=True), axis=0)
+    second_q = jaxdp.reward.sa(mdp) + planner.gamma * jaxdp.trans_op.sa(mdp, first.v_val)
+    second_centered_q = second_q - jnp.max(second_q, axis=0, keepdims=True)
+    second_policy = jax.nn.softmax(4 * second_centered_q, axis=0)
+    assert first.step == 1
+    assert first.beta == 1
+    assert jnp.allclose(first.policy, first_policy)
+    assert jnp.allclose(first.v_val, jnp.sum(first_policy * first_q, axis=0))
+    assert second.step == 2
+    assert second.beta == 4
+    assert jnp.allclose(second.policy, second_policy)
+    assert jnp.allclose(second.v_val, jnp.sum(second_policy * second_q, axis=0))
+
+
+def test_dynamic_boltzmann_value_iteration_approaches_hard_max() -> None:
+    mdp = _two_state_mdp()
+    planner = DynamicBoltzmannValueIteration(gamma=0.5, power=2.0)
+    state = planner.init(mdp, jnp.array([1.0, -1.0]))
+    state = replace(state, step=jnp.asarray(99, dtype=jnp.int32))
+
+    updated = planner.update(mdp, state)
+
+    q_val = jaxdp.reward.sa(mdp) + planner.gamma * jaxdp.trans_op.sa(mdp, state.v_val)
+    assert updated.beta == 10_000
+    assert jnp.allclose(updated.v_val, jnp.max(q_val, axis=0))
+
+
+def test_dynamic_boltzmann_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = DynamicBoltzmannValueIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.policy.shape == (2, mdp.action_size, mdp.state_size)
+    assert states.step.shape == (2,)
+    assert states.beta.shape == (2,)
+    assert jnp.all(jnp.isfinite(states.v_val))
 
 
 def test_safe_accelerated_value_iteration_matches_paper_recurrence() -> None:
