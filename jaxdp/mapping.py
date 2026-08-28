@@ -11,6 +11,48 @@ _ATOL = 1e-5
 
 
 @chex.dataclass(frozen=True)
+class Reward:
+    r"""Namespace for expected immediate reward mappings.
+
+    The ``sa`` and ``s`` methods apply
+
+    .. math::
+
+        r(s,a)=\sum_{s'\in\mathcal{S}}P(s'\mid s,a)R(s,a,s'),
+        \qquad
+        r^{\pi}(s)=\sum_{a\in\mathcal{A}}\pi(a\mid s)r(s,a).
+
+    Methods:
+        s: Return policy-expected state rewards.
+        sa: Return expected state-action rewards.
+    """
+
+    def s(self, mdp: MDP, policy: jax.Array) -> jax.Array:
+        """Return expected immediate rewards under a policy.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+
+        Returns:
+            Expected state rewards with shape ``(S,)``.
+        """
+        _assert_policy(mdp, policy)
+        return jnp.sum(policy * self.sa(mdp), axis=0)
+
+    def sa(self, mdp: MDP) -> jax.Array:
+        """Return expected immediate rewards for each state-action pair.
+
+        Args:
+            mdp: Finite Markov decision process.
+
+        Returns:
+            Expected state-action rewards with shape ``(A, S)``.
+        """
+        return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+
+
+@chex.dataclass(frozen=True)
 class GreedyMap:
     r"""Namespace for greedy policy mapping.
 
@@ -54,7 +96,7 @@ class GreedyMap:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
         q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
         return self.q(q_val)
 
@@ -112,7 +154,7 @@ class SoftGreedyMap:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
         q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
         return self.q(q_val)
 
@@ -170,7 +212,7 @@ class EpsilonGreedy:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
         q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
         return self.q(q_val)
 
@@ -473,6 +515,7 @@ __all__ = [
     "EpsilonGreedy",
     "ProjSimplex",
     "MellowMax",
+    "Reward",
     "Expectation",
     "Occupancy",
     "Stationary",

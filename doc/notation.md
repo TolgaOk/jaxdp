@@ -315,13 +315,20 @@ $$
 Their output may have mass below one because terminal successor mass is removed. The raw adjoint
 $\mathcal{P}^*$ instead preserves terminal mass and is used for full distribution propagation.
 
-The expected immediate state-action reward and one-step Bellman backup are
+The expected immediate state-action reward is
 
 $$
 r(s,a)=\sum_{s'\in\mathcal{S}}P(s'\mid s,a)R(s,a,s'),
 $$
 
-and
+and the policy-expected state reward is
+
+$$
+r^{\pi}(s)=\sum_{a\in\mathcal{A}}\pi(a\mid s)r(s,a).
+$$
+
+`Reward.sa(mdp)` returns $r$ with shape `(A, S)`, while `Reward.s(mdp, policy)` returns
+$r^{\pi}$ with shape `(S,)`. The one-step Bellman backup is
 
 $$
 \mathcal{B}_\gamma:V\longrightarrow Q,
@@ -650,6 +657,8 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{G}_{\epsilon}$ | $Q\to\Pi$ | `EpsilonGreedy.q` |
 | $\operatorname{proj}_{\Delta_A}$ | $Q\to\Pi$ | `ProjSimplex.q` |
 | $\operatorname{mm}_{\tau}$ | $Q\to V$ | `MellowMax.q` |
+| $r$ | $\mathrm{MDP}\to\mathbb{R}^{|\mathcal{A}|\times|\mathcal{S}|}$ | `Reward.sa` |
+| $r^{\pi}$ | $\mathrm{MDP}\times\Pi\to\mathbb{R}^{|\mathcal{S}|}$ | `Reward.s` |
 | $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `GreedyMap.v` |
 | $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `SoftGreedyMap.v` |
 | $\mathcal{G}_{\epsilon}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `EpsilonGreedy.v` |

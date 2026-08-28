@@ -13,6 +13,7 @@ from jaxdp.mapping import (
     MellowMax,
     Occupancy,
     ProjSimplex,
+    Reward,
     SoftGreedyMap,
     Stationary,
     eigenvalues,
@@ -62,6 +63,7 @@ def test_public_mapping_names() -> None:
     assert jaxdp.SoftGreedyMap is SoftGreedyMap
     assert jaxdp.ProjSimplex is ProjSimplex
     assert jaxdp.MellowMax is MellowMax
+    assert jaxdp.Reward is Reward
     assert jaxdp.Occupancy is Occupancy
     assert jaxdp.Stationary is Stationary
     assert jaxdp.eigenvalues is eigenvalues
@@ -210,6 +212,34 @@ def test_mellowmax_composes_with_jit_and_vmap() -> None:
 
     assert v_vals.shape == (2, 2)
     assert jnp.all(jnp.isfinite(v_vals))
+
+
+def test_reward_maps_match_transition_expectations() -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.array([[0.25, 0.75], [0.75, 0.25]])
+    reward = Reward()
+
+    assert is_dataclass(reward)
+    assert jnp.allclose(reward.sa(mdp), jnp.array([[0.0, 1.0], [2.0, 3.0]]))
+    assert jnp.allclose(reward.s(mdp, policy), jnp.array([1.5, 1.5]))
+
+
+def test_reward_maps_compose_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    policies = jnp.array(
+        [
+            [[0.25, 0.75], [0.75, 0.25]],
+            [[0.75, 0.25], [0.25, 0.75]],
+        ]
+    )
+    reward = Reward()
+    apply = chex.chexify(
+        jax.jit(jax.vmap(lambda policy: reward.s(mdp, policy))),
+        async_check=False,
+    )
+
+    assert jax.jit(reward.sa)(mdp).shape == (2, 2)
+    assert apply(policies).shape == (2, 2)
 
 
 def test_occupancy_propagates_from_the_initial_distribution() -> None:

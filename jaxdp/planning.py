@@ -4,7 +4,7 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mapping import GreedyMap
+from jaxdp.mapping import GreedyMap, Reward
 from jaxdp.mdp import MDP, make_mrp
 from jaxdp.operator import Resolvent, _assert_gamma, _assert_policy
 
@@ -40,7 +40,7 @@ class PolicyEvaluation:
         Returns:
             Policy action values with shape ``(A, S)``.
         """
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
         return Resolvent().sa(mdp, policy, reward, gamma)
 
     def v(self, mdp: MDP, policy: jax.Array, gamma: float | jax.Array) -> jax.Array:
@@ -102,7 +102,7 @@ class ValueIteration:
         chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
         gamma_array = _assert_gamma(gamma)
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
 
         def update(val: jax.Array, _: None) -> tuple[jax.Array, None]:
             next_val = reward + gamma_array * jnp.einsum(
@@ -136,7 +136,7 @@ class ValueIteration:
         chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
         gamma_array = _assert_gamma(gamma)
         chex.assert_shape(v_val, (mdp.state_size,))
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
 
         def update(val: jax.Array, _: None) -> tuple[jax.Array, None]:
             next_val = jnp.max(
@@ -237,7 +237,7 @@ class PolicyIteration:
         chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
         gamma_array = _assert_gamma(gamma)
         _assert_policy(mdp, policy)
-        reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+        reward = Reward().sa(mdp)
         not_terminal = 1 - mdp.terminal
         identity = jnp.eye(mdp.state_size, dtype=mdp.transition.dtype)
         greedy = GreedyMap()
