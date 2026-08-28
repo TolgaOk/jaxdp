@@ -29,6 +29,7 @@ from jaxdp.operator import (
 from jaxdp.planning import (
     AnchoredQValueIteration,
     AnchoredValueIteration,
+    MomentumValueIteration,
     PolicyIteration,
     QValueIteration,
     RankOneValueIteration,
@@ -65,6 +66,7 @@ __all__ = [
     "AnchoredQValueIteration",
     "RankOneValueIteration",
     "SafeAcceleratedValueIteration",
+    "MomentumValueIteration",
     "PolicyIteration",
     "expectation",
     "Occupancy",

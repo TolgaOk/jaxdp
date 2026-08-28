@@ -11,6 +11,7 @@ from jaxdp.operator import bellman_opt_op
 from jaxdp.planning import (
     AnchoredQValueIteration,
     AnchoredValueIteration,
+    MomentumValueIteration,
     PolicyIteration,
     QValueIteration,
     RankOneValueIteration,
@@ -43,6 +44,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
     assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
+    assert jaxdp.MomentumValueIteration is MomentumValueIteration
     assert jaxdp.PolicyIteration is PolicyIteration
     assert jaxdp.policy_eval is policy_eval
 
@@ -228,6 +230,42 @@ def test_safe_accelerated_value_iteration_composes_with_jit_and_vmap() -> None:
     assert states.prev_v_val.shape == v_vals.shape
     assert states.bound.shape == (2,)
     assert states.accepted.shape == (2,)
+
+
+def test_momentum_value_iteration_matches_paper_recurrence() -> None:
+    mdp = _two_state_mdp()
+    planner = MomentumValueIteration(
+        gamma=0.5,
+        step_size=0.5,
+        momentum=0.25,
+    )
+    state = planner.init(mdp, jnp.zeros(mdp.state_size))
+
+    updated = planner.update(mdp, state)
+
+    assert jnp.array_equal(state.prev_v_val, jnp.zeros(2))
+    assert jnp.allclose(state.v_val, jnp.array([2.0, 3.0]))
+    assert jnp.allclose(updated.prev_v_val, state.v_val)
+    assert jnp.allclose(updated.v_val, jnp.array([3.25, 4.25]))
+
+
+def test_momentum_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = MomentumValueIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.prev_v_val.shape == v_vals.shape
 
 
 def test_policy_iteration_keeps_policy_and_value_aligned() -> None:

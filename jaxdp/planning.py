@@ -449,6 +449,103 @@ class SafeAcceleratedValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class MomentumValueIteration:
+    r"""Perform one Momentum Value Iteration update at a time.
+
+    Each update applies the M-VI recurrence
+
+    .. math::
+
+        v_{s+1}
+        = v_s
+          - \alpha(v_s-\mathcal{T}^{*}_{V}v_s)
+          + \beta(v_s-v_{s-1}).
+
+    By default, ``step_size`` and ``momentum`` use the paper's constant heavy-ball tuning. The paper
+    establishes acceleration for reversible policy evaluation, but not general optimal control;
+    unsuitable coefficients or transition structure can make M-VI diverge.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+        step_size: Positive Bellman-residual step size.
+        momentum: Nonnegative value-difference coefficient.
+
+    Public dataclasses:
+        State: Current and preceding state-value iterates.
+
+    Public methods:
+        init: Initialize with one ordinary value-iteration step.
+        update: Apply one momentum value-iteration update.
+    """
+
+    gamma: float
+    step_size: float | None = None
+    momentum: float | None = None
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic M-VI state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            prev_v_val: Preceding state values with shape ``(S,)``.
+        """
+
+        v_val: jax.Array
+        prev_v_val: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> MomentumValueIteration.State:
+        """Initialize from state values and take one value-iteration step."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        next_v_val = bellman_opt_op.v(mdp, v_val, self.gamma)
+        return self.State(v_val=next_v_val, prev_v_val=v_val)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: MomentumValueIteration.State,
+    ) -> MomentumValueIteration.State:
+        """Apply one momentum value-iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        root = jnp.sqrt(1 - gamma**2)
+        step_size = 2 / (1 + root) if self.step_size is None else jnp.asarray(self.step_size)
+        momentum = (1 - root) / (1 + root) if self.momentum is None else jnp.asarray(self.momentum)
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.prev_v_val, (mdp.state_size,))
+        chex.assert_shape(step_size, (), custom_message="step_size must be scalar")
+        chex.assert_shape(momentum, (), custom_message="momentum must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (step_size, momentum),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            step_size > 0,
+            jnp.asarray(True),
+            custom_message="step_size must be positive",
+        )
+        chex.assert_trees_all_equal(
+            momentum >= 0,
+            jnp.asarray(True),
+            custom_message="momentum must be nonnegative",
+        )
+
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
+        v_val = (
+            state.v_val
+            - step_size * (state.v_val - bellman_v)
+            + momentum * (state.v_val - state.prev_v_val)
+        )
+        return replace(state, v_val=v_val, prev_v_val=state.v_val)
+
+
+@chex.dataclass(frozen=True)
 class RankOneValueIteration:
     r"""Perform one Rank-One Value Iteration update at a time.
 
@@ -618,6 +715,7 @@ __all__ = [
     "AnchoredValueIteration",
     "AnchoredQValueIteration",
     "SafeAcceleratedValueIteration",
+    "MomentumValueIteration",
     "RankOneValueIteration",
     "PolicyIteration",
 ]

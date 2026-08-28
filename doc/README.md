@@ -44,5 +44,6 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(v_k=\beta_kv_0+(1-\beta_k)\mathcal{T}^{*}_{V}v_{k-1}\) | `AnchoredValueIteration.update` | One anchored state-value update |
 | \(q_k=\beta_kq_0+(1-\beta_k)\mathcal{T}^{*}_{Q}q_{k-1}\) | `AnchoredQValueIteration.update` | One anchored action-value update |
 | \(v_{s+1}=\operatorname{S\text{-}AVI}(v_s,v_{s-1})\) | `SafeAcceleratedValueIteration.update` | One safeguarded A-VI update |
+| \(v_{s+1}=v_s-\alpha(v_s-\mathcal{T}^{*}_{V}v_s)+\beta(v_s-v_{s-1})\) | `MomentumValueIteration.update` | One M-VI update |
 | \(v_{k+1}=\mathcal{T}^{*}_{V}v_k+\alpha_k\mathbf{1}\) | `RankOneValueIteration.update` | One R1-VI update |
 | \(\pi_{k+1}=\mathcal{G}\mathcal{B}_{\gamma}v^{\pi_k}\) | `PolicyIteration.update` | One exact policy iteration update |
