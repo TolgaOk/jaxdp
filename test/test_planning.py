@@ -8,7 +8,14 @@ import jaxdp
 from jaxdp.mapping import greedy_map
 from jaxdp.mdp import MDP
 from jaxdp.operator import bellman_opt_op
-from jaxdp.planning import PolicyIteration, QValueIteration, ValueIteration, policy_eval
+from jaxdp.planning import (
+    AnchoredQValueIteration,
+    AnchoredValueIteration,
+    PolicyIteration,
+    QValueIteration,
+    ValueIteration,
+    policy_eval,
+)
 
 
 def _two_state_mdp() -> MDP:
@@ -38,6 +45,8 @@ def _two_state_mdp() -> MDP:
 def test_public_planning_names() -> None:
     assert jaxdp.ValueIteration is ValueIteration
     assert jaxdp.QValueIteration is QValueIteration
+    assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
+    assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
     assert jaxdp.PolicyIteration is PolicyIteration
     assert jaxdp.policy_eval is policy_eval
 
@@ -68,6 +77,70 @@ def test_q_value_iteration_updates_action_values_once() -> None:
     assert state.q_val.shape == (mdp.action_size, mdp.state_size)
     assert jnp.array_equal(state.q_val, jnp.zeros((mdp.action_size, mdp.state_size)))
     assert jnp.allclose(updated.q_val, expected)
+
+
+def test_anchored_value_iteration_matches_paper_recurrence() -> None:
+    mdp = _two_state_mdp()
+    gamma = 0.5
+    v_anchor = jnp.array([1.0, -1.0])
+    q_anchor = jnp.array([[1.0, -1.0], [2.0, -2.0]])
+    value_iteration = AnchoredValueIteration(gamma=gamma)
+    q_value_iteration = AnchoredQValueIteration(gamma=gamma)
+    v_state = value_iteration.init(mdp, v_anchor)
+    q_state = q_value_iteration.init(mdp, q_anchor)
+
+    for step in range(1, 4):
+        previous_v = v_state.v_val
+        previous_q = q_state.q_val
+        v_state = value_iteration.update(mdp, v_state)
+        q_state = q_value_iteration.update(mdp, q_state)
+        beta = 1 / jnp.sum(gamma ** (-2 * jnp.arange(step + 1)))
+        expected_v = beta * v_anchor + (1 - beta) * bellman_opt_op.v(
+            mdp,
+            previous_v,
+            gamma,
+        )
+        expected_q = beta * q_anchor + (1 - beta) * bellman_opt_op.q(
+            mdp,
+            previous_q,
+            gamma,
+        )
+
+        assert jnp.allclose(v_state.beta, beta)
+        assert jnp.allclose(q_state.beta, beta)
+        assert jnp.allclose(v_state.v_val, expected_v)
+        assert jnp.allclose(q_state.q_val, expected_q)
+
+
+def test_anchored_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    value_iteration = AnchoredValueIteration(gamma=0.5)
+    q_value_iteration = AnchoredQValueIteration(gamma=0.5)
+    v_anchors = jnp.array([[1.0, -1.0], [-1.0, 1.0]])
+    q_anchors = jnp.array(
+        [
+            [[1.0, -1.0], [2.0, -2.0]],
+            [[-1.0, 1.0], [-2.0, 2.0]],
+        ]
+    )
+    init_v = jax.jit(jax.vmap(value_iteration.init, in_axes=(None, 0)))
+    init_q = jax.jit(jax.vmap(q_value_iteration.init, in_axes=(None, 0)))
+    update_v = chex.chexify(
+        jax.jit(jax.vmap(value_iteration.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update_q = chex.chexify(
+        jax.jit(jax.vmap(q_value_iteration.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    v_states = update_v(mdp, init_v(mdp, v_anchors))
+    q_states = update_q(mdp, init_q(mdp, q_anchors))
+
+    assert v_states.v_val.shape == v_anchors.shape
+    assert q_states.q_val.shape == q_anchors.shape
+    assert jnp.array_equal(v_states.v_anchor, v_anchors)
+    assert jnp.array_equal(q_states.q_anchor, q_anchors)
 
 
 def test_policy_iteration_keeps_policy_and_value_aligned() -> None:

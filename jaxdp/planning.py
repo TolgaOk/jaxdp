@@ -158,6 +158,143 @@ class QValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class AnchoredValueIteration:
+    r"""Perform one anchored state-value iteration update at a time.
+
+    Each update applies the Anchored Value Iteration recurrence
+
+    .. math::
+
+        v_k=\beta_k v_0+(1-\beta_k)\mathcal{T}^{*}_{V}v_{k-1},
+        \qquad
+        \beta_k=\left(\sum_{i=0}^{k}\gamma^{-2i}\right)^{-1}.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+
+    Public dataclasses:
+        State: Current iterate, anchor, and anchor coefficient.
+
+    Public methods:
+        init: Initialize the state from an optional state-value anchor.
+        update: Apply one anchored Bellman optimality update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic anchored state-value iterate.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            v_anchor: Initial state values with shape ``(S,)``.
+            beta: Scalar coefficient corresponding to the current iterate.
+        """
+
+        v_val: jax.Array
+        v_anchor: jax.Array
+        beta: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> AnchoredValueIteration.State:
+        """Initialize the iterate and anchor from state values."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        return self.State(
+            v_val=v_val,
+            v_anchor=v_val,
+            beta=jnp.ones((), dtype=v_val.dtype),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: AnchoredValueIteration.State,
+    ) -> AnchoredValueIteration.State:
+        """Apply one anchored state-value Bellman optimality update."""
+        gamma_sq = jnp.asarray(self.gamma) ** 2
+        beta = gamma_sq * state.beta / (1 + gamma_sq * state.beta)
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, self.gamma)
+        v_val = beta * state.v_anchor + (1 - beta) * bellman_v
+        return replace(state, v_val=v_val, beta=beta)
+
+
+@chex.dataclass(frozen=True)
+class AnchoredQValueIteration:
+    r"""Perform one anchored action-value iteration update at a time.
+
+    Each update applies the Anchored Value Iteration recurrence
+
+    .. math::
+
+        q_k=\beta_k q_0+(1-\beta_k)\mathcal{T}^{*}_{Q}q_{k-1},
+        \qquad
+        \beta_k=\left(\sum_{i=0}^{k}\gamma^{-2i}\right)^{-1}.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+
+    Public dataclasses:
+        State: Current iterate, anchor, and anchor coefficient.
+
+    Public methods:
+        init: Initialize the state from an optional action-value anchor.
+        update: Apply one anchored Bellman optimality update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic anchored action-value iterate.
+
+        Attributes:
+            q_val: Current action values with shape ``(A, S)``.
+            q_anchor: Initial action values with shape ``(A, S)``.
+            beta: Scalar coefficient corresponding to the current iterate.
+        """
+
+        q_val: jax.Array
+        q_anchor: jax.Array
+        beta: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        q_val: jax.Array | None = None,
+    ) -> AnchoredQValueIteration.State:
+        """Initialize the iterate and anchor from action values."""
+        if q_val is None:
+            q_val = jnp.zeros(
+                (mdp.action_size, mdp.state_size),
+                dtype=mdp.reward.dtype,
+            )
+        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
+        return self.State(
+            q_val=q_val,
+            q_anchor=q_val,
+            beta=jnp.ones((), dtype=q_val.dtype),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: AnchoredQValueIteration.State,
+    ) -> AnchoredQValueIteration.State:
+        """Apply one anchored action-value Bellman optimality update."""
+        gamma_sq = jnp.asarray(self.gamma) ** 2
+        beta = gamma_sq * state.beta / (1 + gamma_sq * state.beta)
+        bellman_q = bellman_opt_op.q(mdp, state.q_val, self.gamma)
+        q_val = beta * state.q_anchor + (1 - beta) * bellman_q
+        return replace(state, q_val=q_val, beta=beta)
+
+
+@chex.dataclass(frozen=True)
 class PolicyIteration:
     r"""Perform one exact policy iteration update at a time.
 
@@ -211,4 +348,11 @@ class PolicyIteration:
 policy_eval = PolicyEvaluation
 
 
-__all__ = ["policy_eval", "ValueIteration", "QValueIteration", "PolicyIteration"]
+__all__ = [
+    "policy_eval",
+    "ValueIteration",
+    "QValueIteration",
+    "AnchoredValueIteration",
+    "AnchoredQValueIteration",
+    "PolicyIteration",
+]
