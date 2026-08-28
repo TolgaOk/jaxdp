@@ -10,7 +10,7 @@ import jax.numpy as jnp
 
 from jaxdp.mapping import greedy_map, reward
 from jaxdp.mdp import MDP, make_mrp
-from jaxdp.operator import bellman_opt_op, resolvent
+from jaxdp.operator import adj_trans_op, bellman_opt_op, resolvent, trans_op
 
 
 class PolicyEvaluation:
@@ -295,6 +295,115 @@ class AnchoredQValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class RankOneValueIteration:
+    r"""Perform one Rank-One Value Iteration update at a time.
+
+    Each update applies Algorithm 1 of Rank-One Value Iteration:
+
+    .. math::
+
+        d_k
+        = \frac{(P^{\pi_k})^*d_{k-1}}
+               {\lVert(P^{\pi_k})^*d_{k-1}\rVert_1},
+        \qquad
+        v_{k+1}
+        = \mathcal{T}^*_Vv_k
+          + \frac{\gamma}{1-\gamma}
+            \langle d_k,\mathcal{T}^*_Vv_k-v_k\rangle\mathbf{1},
+
+    where ``policy`` is greedy with respect to ``v_val``. The paper's shift argument requires an
+    unmasked stochastic transition, so every terminal indicator must be zero. Absorbing states can
+    instead be represented directly by their transitions and rewards.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``(0, 1)``.
+
+    Public dataclasses:
+        State: Current state values and warm-started stationary estimate.
+
+    Public methods:
+        init: Initialize values and the stationary estimate.
+        update: Apply one rank-one value iteration update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic Rank-One Value Iteration state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            dist: Stationary-distribution estimate with shape ``(S,)``.
+        """
+
+        v_val: jax.Array
+        dist: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+        dist: jax.Array | None = None,
+    ) -> RankOneValueIteration.State:
+        """Initialize values and the stationary estimate."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        if dist is None:
+            dist = jnp.full(
+                (mdp.state_size,),
+                1 / mdp.state_size,
+                dtype=mdp.transition.dtype,
+            )
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(dist, (mdp.state_size,))
+        return self.State(v_val=v_val, dist=dist)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: RankOneValueIteration.State,
+    ) -> RankOneValueIteration.State:
+        """Apply one warm-started rank-one value iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.dist, (mdp.state_size,))
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(gamma, custom_message="gamma must be finite")
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Rank-One Value Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(state.dist >= 0),
+            jnp.asarray(True),
+            custom_message="dist must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(state.dist),
+            jnp.asarray(1, dtype=state.dist.dtype),
+            custom_message="dist must sum to one",
+        )
+
+        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
+        policy = greedy_map.q(q_val)
+        mrp = make_mrp(mdp, policy)
+        dist = adj_trans_op.s(mrp, state.dist)
+        dist = dist / jnp.linalg.norm(dist, ord=1)
+        bellman_v = jnp.max(q_val, axis=0)
+        correction = gamma / (1 - gamma) * jnp.sum(dist * (bellman_v - state.v_val))
+        v_val = bellman_v + correction
+        return replace(state, v_val=v_val, dist=dist)
+
+
+@chex.dataclass(frozen=True)
 class PolicyIteration:
     r"""Perform one exact policy iteration update at a time.
 
@@ -354,5 +463,6 @@ __all__ = [
     "QValueIteration",
     "AnchoredValueIteration",
     "AnchoredQValueIteration",
+    "RankOneValueIteration",
     "PolicyIteration",
 ]

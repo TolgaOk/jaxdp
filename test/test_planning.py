@@ -13,6 +13,7 @@ from jaxdp.planning import (
     AnchoredValueIteration,
     PolicyIteration,
     QValueIteration,
+    RankOneValueIteration,
     ValueIteration,
     policy_eval,
 )
@@ -25,15 +26,7 @@ def _two_state_mdp() -> MDP:
             [[0.0, 1.0], [1.0, 0.0]],
         ]
     )
-    reward = (
-        jnp.zeros((2, 2, 2))
-        .at[0, 1, 1]
-        .set(1.0)
-        .at[1, 0, 1]
-        .set(2.0)
-        .at[1, 1, 0]
-        .set(3.0)
-    )
+    reward = jnp.zeros((2, 2, 2)).at[0, 1, 1].set(1.0).at[1, 0, 1].set(2.0).at[1, 1, 0].set(3.0)
     return MDP(
         transition=transition,
         reward=reward,
@@ -47,6 +40,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.QValueIteration is QValueIteration
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
     assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
+    assert jaxdp.RankOneValueIteration is RankOneValueIteration
     assert jaxdp.PolicyIteration is PolicyIteration
     assert jaxdp.policy_eval is policy_eval
 
@@ -141,6 +135,39 @@ def test_anchored_value_iteration_composes_with_jit_and_vmap() -> None:
     assert q_states.q_val.shape == q_anchors.shape
     assert jnp.array_equal(v_states.v_anchor, v_anchors)
     assert jnp.array_equal(q_states.q_anchor, q_anchors)
+
+
+def test_rank_one_value_iteration_matches_algorithm_one() -> None:
+    mdp = _two_state_mdp()
+    planner = RankOneValueIteration(gamma=0.5)
+    state = planner.init(
+        mdp,
+        v_val=jnp.zeros(mdp.state_size),
+        dist=jnp.array([0.75, 0.25]),
+    )
+
+    updated = planner.update(mdp, state)
+
+    assert jnp.allclose(updated.dist, jnp.array([0.25, 0.75]))
+    assert jnp.allclose(updated.v_val, jnp.array([4.75, 5.75]))
+
+
+def test_rank_one_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = RankOneValueIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    dists = jnp.array([[0.75, 0.25], [0.25, 0.75]])
+    init = jax.jit(jax.vmap(planner.init, in_axes=(None, 0, 0)))
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals, dists))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.dist.shape == dists.shape
+    assert jnp.allclose(jnp.sum(states.dist, axis=-1), jnp.ones(2))
 
 
 def test_policy_iteration_keeps_policy_and_value_aligned() -> None:
