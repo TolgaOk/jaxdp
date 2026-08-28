@@ -15,11 +15,11 @@ from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.simple_graph import graph_mdp
-from jaxdp.operator import BellmanOptOp
+from jaxdp.operator import bellman_opt_op
 
 jax.config.update("jax_enable_x64", True)
 
-bellman_optimality = BellmanOptOp()
+bellman_optimality = bellman_opt_op
 
 
 class Metrics(struct.PyTreeNode):

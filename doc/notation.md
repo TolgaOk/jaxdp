@@ -164,7 +164,7 @@ a^*(s)=\min\!\mathop{\arg\max}_{a\in\mathcal{A}}q(s,a),
 \mathcal{G}(q)(a\mid s)=\mathbf{1}\{a=a^*(s)\}.
 $$
 
-The minimum supplies the deterministic lowest-index tie rule used by `GreedyMap.q`. Softmax and
+The minimum supplies the deterministic lowest-index tie rule used by `greedy_map.q`. Softmax and
 epsilon-greedy mappings are
 
 $$
@@ -183,7 +183,7 @@ $$
 \qquad 0\leq\epsilon\leq 1.
 $$
 
-`GreedyMap.q`, `SoftGreedyMap.q`, and `EpsilonGreedy.q` implement these mappings. Their `v`
+`greedy_map.q`, `SoftGreedyMap.q`, and `EpsilonGreedy.q` implement these mappings. Their `v`
 methods first apply the one-step backup $\mathcal{B}_{\gamma}:V\to Q$ defined below and then apply
 the corresponding mapping. A softmax mapping alone leaves the Bellman objective unchanged. A
 regularized Bellman operator additionally changes the action reduction and its fixed point.
@@ -198,7 +198,7 @@ $$
 \Delta_A=\left\{p\in\mathbb{R}^{|\mathcal{A}|}_{+}:\sum_a p(a)=1\right\}.
 $$
 
-`ProjSimplex.q` applies this projection independently to every state column.
+`proj_simplex.q` applies this projection independently to every state column.
 
 ## Transition operators
 
@@ -289,7 +289,7 @@ $$
 \sum_{s\in\mathcal{S}}\rho_{\infty}(s)=1.
 $$
 
-`Stationary.v` solves this equation and `Stationary.q` combines its solution with $\pi$.
+`stationary.v` solves this equation and `stationary.q` combines its solution with $\pi$.
 
 ## Transition and Bellman building blocks
 
@@ -309,8 +309,8 @@ $$
   P(s'\mid s,a)(1-\tau(s'))x(s').
 $$
 
-`TransOp.s(mrp, vec)` applies $\bar{\mathcal{P}}_S$ and returns shape `(S,)`.
-`TransOp.sa(mdp, vec)` applies $\bar{\mathcal{P}}_{SA}$ and returns shape `(A, S)`.
+`trans_op.s(mrp, vec)` applies $\bar{\mathcal{P}}_S$ and returns shape `(S,)`.
+`trans_op.sa(mdp, vec)` applies $\bar{\mathcal{P}}_{SA}$ and returns shape `(A, S)`.
 Both accept an arbitrary state vector; terminal successors do not contribute.
 
 Their adjoints push state and state-action measures to continuing successor states:
@@ -327,7 +327,7 @@ $$
 =(1-\tau(s'))\sum_{s,a}P(s'\mid s,a)\xi(s,a).
 $$
 
-`AdjTransOp.s(mrp, dist)` and `AdjTransOp.sa(mdp, dist)` implement these maps. They satisfy
+`adj_trans_op.s(mrp, dist)` and `adj_trans_op.sa(mdp, dist)` implement these maps. They satisfy
 
 $$
 \langle \bar{\mathcal{P}}_S x,\rho\rangle
@@ -352,7 +352,7 @@ $$
 r^{\pi}(s)=\sum_{a\in\mathcal{A}}\pi(a\mid s)r(s,a).
 $$
 
-`Reward.sa(mdp)` returns $r$ with shape `(A, S)`, while `Reward.s(mdp, policy)` returns
+`reward.sa(mdp)` returns $r$ with shape `(A, S)`, while `reward.s(mdp, policy)` returns
 $r^{\pi}$ with shape `(S,)`. The one-step Bellman backup is
 
 $$
@@ -371,7 +371,7 @@ $$
 
 Its domain is $\mathbb{R}^{|\mathcal{S}|}$ and its codomain is
 $\mathbb{R}^{|\mathcal{S}| \times |\mathcal{A}|}$. Bellman operators and value-to-policy mappings
-compose the expected reward, discount, and `TransOp.sa` directly.
+compose the expected reward, discount, and `trans_op.sa` directly.
 
 Two reductions map action values back to state values. Policy reduction is
 
@@ -415,8 +415,8 @@ $$
   \sum_{a' \in \mathcal{A}} \pi(a' \mid s')q(s',a').
 $$
 
-`BellmanOp.v(mdp, policy, v_val, gamma)` applies $\mathcal{T}^{\pi}_{V}$, while
-`BellmanOp.q(mdp, policy, q_val, gamma)` applies $\mathcal{T}^{\pi}_{Q}$. Each method maps its
+`bellman_op.v(mdp, policy, v_val, gamma)` applies $\mathcal{T}^{\pi}_{V}$, while
+`bellman_op.q(mdp, policy, q_val, gamma)` applies $\mathcal{T}^{\pi}_{Q}$. Each method maps its
 named value space back to the same space.
 
 ## Bellman optimality operators
@@ -446,8 +446,8 @@ $$
   \bar P(s' \mid s,a)\max_{a' \in \mathcal{A}} q(s',a').
 $$
 
-`BellmanOptOp.v(mdp, v_val, gamma)` applies $\mathcal{T}^{*}_{V}$, while
-`BellmanOptOp.q(mdp, q_val, gamma)` applies $\mathcal{T}^{*}_{Q}$.
+`bellman_opt_op.v(mdp, v_val, gamma)` applies $\mathcal{T}^{*}_{V}$, while
+`bellman_opt_op.q(mdp, q_val, gamma)` applies $\mathcal{T}^{*}_{Q}$.
 
 ## Smooth Bellman operators
 
@@ -573,7 +573,7 @@ $$
 = (I-\gamma\mathcal{P}_S)^{-1}x_S.
 $$
 
-`Resolvent.s(p_s, vec, gamma)` applies this map. The stored matrix uses
+`resolvent.s(p_s, vec, gamma)` applies this map. The stored matrix uses
 `p_s[s_next, s]`, while the operator in the equation denotes its backward action on state vectors.
 
 For an arbitrary state-action-space vector, the policy-induced resolvent is
@@ -583,7 +583,7 @@ $$
 = (I-\gamma\bar{\mathcal{P}}\Pi_\pi)^{-1}x_{SA}.
 $$
 
-`Resolvent.sa(mdp, policy, vec, gamma)` uses the equivalent identity
+`resolvent.sa(mdp, policy, vec, gamma)` uses the equivalent identity
 
 $$
 \mathcal{R}^{\pi}_{SA,\gamma}x_{SA}
@@ -620,7 +620,7 @@ q^\pi
 = \mathcal{R}^{\pi}_{SA,\gamma}r.
 $$
 
-`PolicyEvaluation.v(mdp, policy, gamma)` and `.q` apply these resolvents to the corresponding
+`policy_eval.v(mdp, policy, gamma)` and `.q` apply these resolvents to the corresponding
 expected rewards.
 
 ## Value iteration
@@ -663,8 +663,8 @@ $$
 = \sum_{s \in \mathcal{S}} \sum_{a \in \mathcal{A}} \xi(s,a)q(s,a).
 $$
 
-`Expectation.s(v_val, dist)` implements the first expression and
-`Expectation.sa(q_val, dist)` implements the second. The initial distribution is used only when
+`expectation.s(v_val, dist)` implements the first expression and
+`expectation.sa(q_val, dist)` implements the second. The initial distribution is used only when
 the caller explicitly supplies `mdp.initial` as `dist`.
 
 ## Target API map
@@ -677,48 +677,48 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{I}_{P}$ | $\mathcal{K}_{SA\to S}\times\Pi\to\mathcal{K}_{S\to S}$ | Part of `make_mrp` |
 | $\mathcal{I}_{r}$ | $Q\times\Pi\to V$ | `make_mrp(...).reward` |
 | $\mathcal{I}_{\mathrm{MRP}}$ | $\mathrm{MDP}\times\Pi\to\mathrm{MRP}$ | `make_mrp` |
-| $\mathcal{G}$ | $Q\to\Pi$ | `GreedyMap.q` |
+| $\mathcal{G}$ | $Q\to\Pi$ | `greedy_map.q` |
 | $\mathcal{S}_{\eta}$ | $Q\to\Pi$ | `SoftGreedyMap.q` |
 | $\mathcal{G}_{\epsilon}$ | $Q\to\Pi$ | `EpsilonGreedy.q` |
-| $\operatorname{proj}_{\Delta_A}$ | $Q\to\Pi$ | `ProjSimplex.q` |
+| $\operatorname{proj}_{\Delta_A}$ | $Q\to\Pi$ | `proj_simplex.q` |
 | $\operatorname{mm}_{\tau}$ | $Q\to V$ | `MellowMax.q` |
-| $r$ | $\mathrm{MDP}\to\mathbb{R}^{|\mathcal{A}|\times|\mathcal{S}|}$ | `Reward.sa` |
-| $r^{\pi}$ | $\mathrm{MDP}\times\Pi\to\mathbb{R}^{|\mathcal{S}|}$ | `Reward.s` |
-| $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `GreedyMap.v` |
+| $r$ | $\mathrm{MDP}\to\mathbb{R}^{|\mathcal{A}|\times|\mathcal{S}|}$ | `reward.sa` |
+| $r^{\pi}$ | $\mathrm{MDP}\times\Pi\to\mathbb{R}^{|\mathcal{S}|}$ | `reward.s` |
+| $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `greedy_map.v` |
 | $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `SoftGreedyMap.v` |
 | $\mathcal{G}_{\epsilon}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `EpsilonGreedy.v` |
-| $\bar{\mathcal{P}}_{SA}$ | $V\to Q$ | `TransOp.sa` |
-| $\bar{\mathcal{P}}_S$ | $V\to V$ | `TransOp.s` |
-| $\bar{\mathcal{P}}_{SA}^*$ | $\mathcal{D}_{SA}\to\mathcal{D}_S$ | `AdjTransOp.sa` |
-| $\bar{\mathcal{P}}_S^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | `AdjTransOp.s` |
+| $\bar{\mathcal{P}}_{SA}$ | $V\to Q$ | `trans_op.sa` |
+| $\bar{\mathcal{P}}_S$ | $V\to V$ | `trans_op.s` |
+| $\bar{\mathcal{P}}_{SA}^*$ | $\mathcal{D}_{SA}\to\mathcal{D}_S$ | `adj_trans_op.sa` |
+| $\bar{\mathcal{P}}_S^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | `adj_trans_op.s` |
 | $(\mathcal{P}^{\pi})^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | Used by `Occupancy` |
 | $d_k^{\gamma}$ | $\mathrm{MDP}\times\Pi\times[0,1]\times\mathbb{N}\to\Delta_S$ | `Occupancy.v` |
 | $\xi_k^{\gamma}$ | $\mathrm{MDP}\times\Pi\times[0,1]\times\mathbb{N}\to\Delta_{SA}$ | `Occupancy.q` |
-| $\rho_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_S$ | `Stationary.v` |
-| $\xi_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_{SA}$ | `Stationary.q` |
-| $\mathcal{B}_\gamma$ | $V \rightarrow Q$ | Expected reward plus `TransOp.sa` |
-| $\mathcal{M}$ | $Q \rightarrow V$ | Used by `BellmanOptOp` |
-| $\mathcal{R}_{S,\gamma}$ | $V \rightarrow V$ | `Resolvent.s` |
-| $\mathcal{R}^{\pi}_{SA,\gamma}$ | $Q \rightarrow Q$ | `Resolvent.sa` |
-| $\mathcal{T}^{\pi}_{V}$ | $V \rightarrow V$ | `BellmanOp.v` |
-| $\mathcal{T}^{\pi}_{Q}$ | $Q \rightarrow Q$ | `BellmanOp.q` |
-| $\mathcal{T}^{*}_{V}$ | $V \rightarrow V$ | `BellmanOptOp.v` |
-| $\mathcal{T}^{*}_{Q}$ | $Q \rightarrow Q$ | `BellmanOptOp.q` |
+| $\rho_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_S$ | `stationary.v` |
+| $\xi_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_{SA}$ | `stationary.q` |
+| $\mathcal{B}_\gamma$ | $V \rightarrow Q$ | Expected reward plus `trans_op.sa` |
+| $\mathcal{M}$ | $Q \rightarrow V$ | Used by `bellman_opt_op` |
+| $\mathcal{R}_{S,\gamma}$ | $V \rightarrow V$ | `resolvent.s` |
+| $\mathcal{R}^{\pi}_{SA,\gamma}$ | $Q \rightarrow Q$ | `resolvent.sa` |
+| $\mathcal{T}^{\pi}_{V}$ | $V \rightarrow V$ | `bellman_op.v` |
+| $\mathcal{T}^{\pi}_{Q}$ | $Q \rightarrow Q$ | `bellman_op.q` |
+| $\mathcal{T}^{*}_{V}$ | $V \rightarrow V$ | `bellman_opt_op.v` |
+| $\mathcal{T}^{*}_{Q}$ | $Q \rightarrow Q$ | `bellman_opt_op.q` |
 | $\mathcal{T}^{\mathrm{soft}}_{V,\tau}$ | $V \rightarrow V$ | `SoftBellmanOptOp.v` |
 | $\mathcal{T}^{\mathrm{soft}}_{Q,\tau}$ | $Q \rightarrow Q$ | `SoftBellmanOptOp.q` |
 | $\mathcal{T}^{\mathrm{mm}}_{V,\tau}$ | $V \rightarrow V$ | `MellowMaxBellmanOptOp.v` |
 | $\mathcal{T}^{\mathrm{mm}}_{Q,\tau}$ | $Q \rightarrow Q$ | `MellowMaxBellmanOptOp.q` |
 | $\mathcal{T}^{\mathrm{boltz}}_{V,\tau}$ | $V \rightarrow V$ | `BoltzmannBellmanOp.v` |
 | $\mathcal{T}^{\mathrm{boltz}}_{Q,\tau}$ | $Q \rightarrow Q$ | `BoltzmannBellmanOp.q` |
-| $v^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow V$ | `PolicyEvaluation.v` |
-| $q^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow Q$ | `PolicyEvaluation.q` |
+| $v^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow V$ | `policy_eval.v` |
+| $q^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow Q$ | `policy_eval.q` |
 | $(\mathcal{T}^{*}_{V})^n$ | $V \rightarrow V$ | `ValueIteration.v` |
 | $(\mathcal{T}^{*}_{Q})^n$ | $Q \rightarrow Q$ | `ValueIteration.q` |
 | $\pi_n$ | $\Pi \rightarrow \Pi$ | `PolicyIteration.policy` |
 | $r^\pi$ | $\mathrm{MDP} \times \Pi \rightarrow V$ | `make_mrp(...).reward` |
 | $r$ | $\mathrm{MDP} \rightarrow Q$ | Internal expected reward |
-| $\mathbb{E}_{\rho}[v]$ | $V\times\Delta_S\to\mathbb{R}$ | `Expectation.s` |
-| $\mathbb{E}_{\xi}[q]$ | $Q\times\Delta_{SA}\to\mathbb{R}$ | `Expectation.sa` |
+| $\mathbb{E}_{\rho}[v]$ | $V\times\Delta_S\to\mathbb{R}$ | `expectation.s` |
+| $\mathbb{E}_{\xi}[q]$ | $Q\times\Delta_{SA}\to\mathbb{R}$ | `expectation.sa` |
 
 ## Literature map
 

@@ -20,24 +20,24 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(\xi(s,a)\) | `dist[a, s]` | State-action distribution, `(A, S)` |
 | \(x_S,x_{SA}\) | `vec` | Generic operator input in `(S,)` or `(A, S)` |
 | \((\mathrm{MDP},\pi)\mapsto\mathrm{MRP}\) | `make_mrp` | Policy-induced reward process |
-| \(\bar{\mathcal{P}}_Sx_S\) | `TransOp.s` | Terminal-aware MRP transition, `(S,)` |
-| \(\bar{\mathcal{P}}_{SA}x_S\) | `TransOp.sa` | Terminal-aware MDP transition, `(A, S)` |
-| \(\bar{\mathcal{P}}_S^*x_S\) | `AdjTransOp.s` | Continuing MRP successor mass, `(S,)` |
-| \(\bar{\mathcal{P}}_{SA}^*x_{SA}\) | `AdjTransOp.sa` | Continuing MDP successor mass, `(S,)` |
-| \((I-\gamma\mathcal{P}_S)^{-1}\) | `Resolvent.s` | State-space resolvent |
-| \((I-\gamma\mathcal{P}^{\pi}_{SA})^{-1}\) | `Resolvent.sa` | State-action resolvent via an `S`-sized solve |
-| \(\mathcal{T}^{\pi}_{V},\mathcal{T}^{\pi}_{Q}\) | `BellmanOp.v`, `BellmanOp.q` | Bellman policy operators |
-| \(\mathcal{T}^{*}_{V},\mathcal{T}^{*}_{Q}\) | `BellmanOptOp.v`, `BellmanOptOp.q` | Bellman optimality operators |
+| \(\bar{\mathcal{P}}_Sx_S\) | `trans_op.s` | Terminal-aware MRP transition, `(S,)` |
+| \(\bar{\mathcal{P}}_{SA}x_S\) | `trans_op.sa` | Terminal-aware MDP transition, `(A, S)` |
+| \(\bar{\mathcal{P}}_S^*x_S\) | `adj_trans_op.s` | Continuing MRP successor mass, `(S,)` |
+| \(\bar{\mathcal{P}}_{SA}^*x_{SA}\) | `adj_trans_op.sa` | Continuing MDP successor mass, `(S,)` |
+| \((I-\gamma\mathcal{P}_S)^{-1}\) | `resolvent.s` | State-space resolvent |
+| \((I-\gamma\mathcal{P}^{\pi}_{SA})^{-1}\) | `resolvent.sa` | State-action resolvent via an `S`-sized solve |
+| \(\mathcal{T}^{\pi}_{V},\mathcal{T}^{\pi}_{Q}\) | `bellman_op.v`, `bellman_op.q` | Bellman policy operators |
+| \(\mathcal{T}^{*}_{V},\mathcal{T}^{*}_{Q}\) | `bellman_opt_op.v`, `bellman_opt_op.q` | Bellman optimality operators |
 | \(\mathcal{T}^{\mathrm{soft}}_{V,\tau},\mathcal{T}^{\mathrm{soft}}_{Q,\tau}\) | `SoftBellmanOptOp.v`, `.q` | Entropy-regularized Bellman operators |
 | \(\mathcal{T}^{\mathrm{mm}}_{V,\tau},\mathcal{T}^{\mathrm{mm}}_{Q,\tau}\) | `MellowMaxBellmanOptOp.v`, `.q` | KL-regularized Bellman operators |
 | \(\mathcal{T}^{\mathrm{boltz}}_{V,\tau},\mathcal{T}^{\mathrm{boltz}}_{Q,\tau}\) | `BoltzmannBellmanOp.v`, `.q` | Boltzmann-expectation Bellman operators |
-| \(\mathcal{G},\mathcal{S}_{\eta},\mathcal{G}_{\epsilon}\) | `GreedyMap`, `SoftGreedyMap`, `EpsilonGreedy` | Value-to-policy mappings |
-| \(\operatorname{proj}_{\Delta_A}:Q\to\Pi\) | `ProjSimplex.q` | Euclidean action-simplex projection |
+| \(\mathcal{G},\mathcal{S}_{\eta},\mathcal{G}_{\epsilon}\) | `greedy_map`, `SoftGreedyMap`, `EpsilonGreedy` | Value-to-policy mappings |
+| \(\operatorname{proj}_{\Delta_A}:Q\to\Pi\) | `proj_simplex.q` | Euclidean action-simplex projection |
 | \(\operatorname{mm}_{\tau}:Q\to V\) | `MellowMax.q` | Normalized log-mean-exp reduction |
-| \(r(s,a),r^{\pi}(s)\) | `Reward.sa`, `Reward.s` | Expected immediate rewards |
-| \(\mathbb{E}_{\rho}[v],\mathbb{E}_{\xi}[q]\) | `Expectation.s`, `Expectation.sa` | Scalar expectations |
+| \(r(s,a),r^{\pi}(s)\) | `reward.sa`, `reward.s` | Expected immediate rewards |
+| \(\mathbb{E}_{\rho}[v],\mathbb{E}_{\xi}[q]\) | `expectation.s`, `expectation.sa` | Scalar expectations |
 | \(d_k^{\gamma},\xi_k^{\gamma}\) | `Occupancy.v`, `Occupancy.q` | Normalized discounted occupancies |
-| \(\rho_\infty,\xi_\infty\) | `Stationary.v`, `Stationary.q` | Invariant distributions |
-| \(v^{\pi},q^{\pi}\) | `PolicyEvaluation.v`, `PolicyEvaluation.q` | Exact policy values |
+| \(\rho_\infty,\xi_\infty\) | `stationary.v`, `stationary.q` | Invariant distributions |
+| \(v^{\pi},q^{\pi}\) | `policy_eval.v`, `policy_eval.q` | Exact policy values |
 | \((\mathcal{T}^{*}_{V})^n,(\mathcal{T}^{*}_{Q})^n\) | `ValueIteration.v`, `ValueIteration.q` | Fixed-step value iteration |
 | \(\pi_{k+1}=\mathcal{G}(q^{\pi_k})\) | `PolicyIteration.policy` | Fixed-step policy iteration |

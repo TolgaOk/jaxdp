@@ -3,10 +3,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
-from jaxdp.mapping import GreedyMap
+from jaxdp.mapping import greedy_map
 from jaxdp.mdp import MDP
-from jaxdp.operator import BellmanOptOp
-from jaxdp.planning import PolicyEvaluation, PolicyIteration, ValueIteration
+from jaxdp.operator import bellman_opt_op
+from jaxdp.planning import PolicyIteration, ValueIteration, policy_eval
 
 
 def _two_state_mdp() -> MDP:
@@ -36,7 +36,7 @@ def _two_state_mdp() -> MDP:
 def test_value_iteration_applies_fixed_updates() -> None:
     mdp = _two_state_mdp()
     v_val = jnp.array([4.0, 8.0])
-    bellman = BellmanOptOp()
+    bellman = bellman_opt_op
 
     once = bellman.v(mdp, v_val, 0.5)
     twice = bellman.v(mdp, once, 0.5)
@@ -48,9 +48,9 @@ def test_value_iteration_applies_fixed_updates() -> None:
 def test_policy_iteration_evaluates_then_improves() -> None:
     mdp = _two_state_mdp()
     policy = jnp.full((2, 2), 0.5)
-    evaluation = PolicyEvaluation()
+    evaluation = policy_eval
 
-    expected = GreedyMap().q(evaluation.q(mdp, policy, 0.5))
+    expected = greedy_map.q(evaluation.q(mdp, policy, 0.5))
     actual = PolicyIteration().policy(mdp, policy, 0.5)
 
     assert jnp.array_equal(actual, expected)

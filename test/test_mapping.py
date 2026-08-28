@@ -9,17 +9,17 @@ import jaxdp
 from jaxdp import mapping
 from jaxdp.mapping import (
     EpsilonGreedy,
-    GreedyMap,
     MellowMax,
     Occupancy,
-    ProjSimplex,
-    Reward,
     SoftGreedyMap,
-    Stationary,
     eigenvalues,
+    greedy_map,
+    proj_simplex,
+    reward,
+    stationary,
 )
 from jaxdp.mdp import MDP
-from jaxdp.operator import TransOp
+from jaxdp.operator import trans_op
 
 
 def _two_state_mdp() -> MDP:
@@ -59,27 +59,33 @@ def _periodic_mdp() -> MDP:
 
 def test_public_mapping_names() -> None:
     assert jaxdp.mapping is mapping
-    assert jaxdp.GreedyMap is GreedyMap
+    assert jaxdp.greedy_map is greedy_map
     assert jaxdp.SoftGreedyMap is SoftGreedyMap
-    assert jaxdp.ProjSimplex is ProjSimplex
+    assert jaxdp.proj_simplex is proj_simplex
     assert jaxdp.MellowMax is MellowMax
-    assert jaxdp.Reward is Reward
+    assert jaxdp.reward is reward
     assert jaxdp.Occupancy is Occupancy
-    assert jaxdp.Stationary is Stationary
+    assert jaxdp.stationary is stationary
     assert jaxdp.eigenvalues is eigenvalues
     assert not hasattr(jaxdp, "distribution")
     assert not hasattr(jaxdp, "policy")
     assert not hasattr(jaxdp, "Greedy")
     assert not hasattr(jaxdp, "Soft")
+    assert not hasattr(jaxdp, "GreedyMap")
+    assert not hasattr(jaxdp, "ProjSimplex")
+    assert not hasattr(jaxdp, "Reward")
+    assert not hasattr(jaxdp, "Stationary")
+    assert isinstance(greedy_map, type)
+    assert isinstance(reward, type)
 
 
 def test_mapping_components_share_q_v_api() -> None:
     mdp = _two_state_mdp()
     v_val = jnp.array([4.0, 8.0])
-    reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-    q_val = reward + 0.5 * TransOp().sa(mdp, v_val)
+    reward_sa = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
+    q_val = reward_sa + 0.5 * trans_op.sa(mdp, v_val)
     mappings = (
-        GreedyMap(),
+        greedy_map,
         SoftGreedyMap(temperature=2.0),
         EpsilonGreedy(epsilon=0.2),
     )
@@ -92,7 +98,7 @@ def test_mapping_components_match_their_definitions() -> None:
     q_val = jnp.array([[3.0, 1.0], [1.0, 2.0]])
     greedy = jnp.array([[1.0, 0.0], [0.0, 1.0]])
 
-    assert jnp.allclose(GreedyMap().q(q_val), greedy)
+    assert jnp.allclose(greedy_map.q(q_val), greedy)
     assert jnp.allclose(
         SoftGreedyMap(temperature=2.0).q(q_val),
         jax.nn.softmax(q_val / 2.0, axis=0),
@@ -154,10 +160,10 @@ def test_simplex_projection_matches_euclidean_projection() -> None:
             [1 / 3, 0.0, 0.0],
         ]
     )
-    projection = ProjSimplex()
+    projection = proj_simplex
     policy = projection.q(q_val)
 
-    assert is_dataclass(projection)
+    assert not is_dataclass(projection)
     assert jnp.allclose(policy, expected)
     assert jnp.allclose(jnp.sum(policy, axis=0), 1)
     assert jnp.all(policy >= 0)
@@ -171,7 +177,7 @@ def test_simplex_projection_composes_with_jit_and_vmap() -> None:
             [[2.0, 0.2], [0.0, 0.2], [0.0, 0.2]],
         ]
     )
-    policies = jax.jit(jax.vmap(ProjSimplex().q))(q_vals)
+    policies = jax.jit(jax.vmap(proj_simplex.q))(q_vals)
 
     assert policies.shape == q_vals.shape
     assert jnp.allclose(jnp.sum(policies, axis=1), 1)
@@ -217,9 +223,8 @@ def test_mellowmax_composes_with_jit_and_vmap() -> None:
 def test_reward_maps_match_transition_expectations() -> None:
     mdp = _two_state_mdp()
     policy = jnp.array([[0.25, 0.75], [0.75, 0.25]])
-    reward = Reward()
 
-    assert is_dataclass(reward)
+    assert not is_dataclass(reward)
     assert jnp.allclose(reward.sa(mdp), jnp.array([[0.0, 1.0], [2.0, 3.0]]))
     assert jnp.allclose(reward.s(mdp, policy), jnp.array([1.5, 1.5]))
 
@@ -232,7 +237,6 @@ def test_reward_maps_compose_with_jit_and_vmap() -> None:
             [[0.75, 0.25], [0.25, 0.75]],
         ]
     )
-    reward = Reward()
     apply = chex.chexify(
         jax.jit(jax.vmap(lambda policy: reward.s(mdp, policy))),
         async_check=False,
@@ -286,11 +290,11 @@ def test_discounted_occupancy_composes_with_jit_and_vmap() -> None:
 def test_stationary_returns_an_invariant_distribution_for_a_periodic_chain() -> None:
     mdp = _periodic_mdp()
     policy = jnp.ones((1, 2))
-    dist = Stationary().v(mdp, policy)
+    dist = stationary.v(mdp, policy)
 
     assert jnp.allclose(dist, jnp.array([0.5, 0.5]))
     assert jnp.allclose(mdp.transition[0] @ dist, dist)
-    assert jnp.allclose(Stationary().q(mdp, policy), policy * dist)
+    assert jnp.allclose(stationary.q(mdp, policy), policy * dist)
 
 
 def test_stationary_selects_the_minimum_norm_distribution_when_nonunique() -> None:
@@ -302,14 +306,13 @@ def test_stationary_selects_the_minimum_norm_distribution_when_nonunique() -> No
     )
     policy = jnp.ones((1, 2))
 
-    assert jnp.allclose(Stationary().v(mdp, policy), jnp.array([0.5, 0.5]))
+    assert jnp.allclose(stationary.v(mdp, policy), jnp.array([0.5, 0.5]))
 
 
 def test_distribution_mappings_compose_with_jit_and_vmap() -> None:
     mdp = _periodic_mdp()
     policies = jnp.ones((3, 1, 2))
     occupancy = Occupancy(step=3)
-    stationary = Stationary()
 
     finite = chex.chexify(
         jax.jit(jax.vmap(lambda policy: occupancy.v(mdp, policy))),
@@ -321,7 +324,7 @@ def test_distribution_mappings_compose_with_jit_and_vmap() -> None:
     )(policies)
 
     assert is_dataclass(occupancy)
-    assert is_dataclass(stationary)
+    assert not is_dataclass(stationary)
     assert finite.shape == (3, 2)
     assert invariant.shape == (3, 2)
 

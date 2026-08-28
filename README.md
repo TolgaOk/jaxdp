@@ -19,7 +19,7 @@ import jaxdp
 
 
 def evaluate_policy(policy):
-    return jaxdp.PolicyEvaluation().v(mdp, policy, 0.99)
+    return jaxdp.policy_eval.v(mdp, policy, 0.99)
 
 
 checked_evaluate = chex.chexify(
@@ -43,7 +43,7 @@ class State(struct.PyTreeNode):
     alpha: jax.Array
 
 
-bellman_opt_op = jaxdp.BellmanOptOp()
+bellman_opt_op = jaxdp.bellman_opt_op
 
 
 def update(s: State, mdp: MDP, step: int) -> State:

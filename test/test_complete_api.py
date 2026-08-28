@@ -4,7 +4,7 @@ import jax.numpy as jnp
 
 from jaxdp.mapping import EpsilonGreedy, Occupancy, SoftGreedyMap
 from jaxdp.mdp import MDP
-from jaxdp.operator import TransOp
+from jaxdp.operator import trans_op
 
 
 def _two_state_mdp() -> MDP:
@@ -38,7 +38,7 @@ def test_value_policies_apply_one_step_lookahead() -> None:
     value = jnp.array([4.0, 8.0])
     gamma = 0.5
     reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-    q_value = reward + gamma * TransOp().sa(mdp, value)
+    q_value = reward + gamma * trans_op.sa(mdp, value)
     soft = SoftGreedyMap(temperature=2.0)
     epsilon_greedy = EpsilonGreedy(epsilon=0.2)
 

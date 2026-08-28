@@ -5,12 +5,11 @@ import jax
 import jax.numpy as jnp
 
 from jaxdp.mdp.mdp import MDP
-from jaxdp.operator import TransOp, _assert_gamma, _assert_policy
+from jaxdp.operator import _assert_gamma, _assert_policy, trans_op
 
 _ATOL = 1e-5
 
 
-@chex.dataclass(frozen=True)
 class Reward:
     r"""Namespace for expected immediate reward mappings.
 
@@ -27,7 +26,8 @@ class Reward:
         sa: Return expected state-action rewards.
     """
 
-    def s(self, mdp: MDP, policy: jax.Array) -> jax.Array:
+    @staticmethod
+    def s(mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return expected immediate rewards under a policy.
 
         Args:
@@ -38,9 +38,10 @@ class Reward:
             Expected state rewards with shape ``(S,)``.
         """
         _assert_policy(mdp, policy)
-        return jnp.sum(policy * self.sa(mdp), axis=0)
+        return jnp.sum(policy * reward.sa(mdp), axis=0)
 
-    def sa(self, mdp: MDP) -> jax.Array:
+    @staticmethod
+    def sa(mdp: MDP) -> jax.Array:
         """Return expected immediate rewards for each state-action pair.
 
         Args:
@@ -52,7 +53,6 @@ class Reward:
         return jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
 
 
-@chex.dataclass(frozen=True)
 class GreedyMap:
     r"""Namespace for greedy policy mapping.
 
@@ -69,7 +69,8 @@ class GreedyMap:
         v: Select a greedy policy from state values.
     """
 
-    def q(self, q_val: jax.Array) -> jax.Array:
+    @staticmethod
+    def q(q_val: jax.Array) -> jax.Array:
         """Select a greedy policy from action values.
 
         Args:
@@ -85,7 +86,8 @@ class GreedyMap:
             axis=0,
         )
 
-    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    @staticmethod
+    def v(mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Select a greedy policy from state values.
 
         Args:
@@ -96,9 +98,9 @@ class GreedyMap:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = Reward().sa(mdp)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
-        return self.q(q_val)
+        reward_sa = reward.sa(mdp)
+        q_val = reward_sa + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
+        return greedy_map.q(q_val)
 
 
 @chex.dataclass(frozen=True)
@@ -154,8 +156,8 @@ class SoftGreedyMap:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = Reward().sa(mdp)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        reward_sa = reward.sa(mdp)
+        q_val = reward_sa + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return self.q(q_val)
 
 
@@ -198,7 +200,7 @@ class EpsilonGreedy:
             jnp.asarray(True),
             custom_message="epsilon must be in [0, 1]",
         )
-        greedy = GreedyMap().q(q_val)
+        greedy = greedy_map.q(q_val)
         return (1 - epsilon) * greedy + epsilon / q_val.shape[0]
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
@@ -212,12 +214,11 @@ class EpsilonGreedy:
         Returns:
             Action probabilities with shape ``(A, S)``.
         """
-        reward = Reward().sa(mdp)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        reward_sa = reward.sa(mdp)
+        q_val = reward_sa + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return self.q(q_val)
 
 
-@chex.dataclass(frozen=True)
 class ProjSimplex:
     r"""Namespace for Euclidean projection onto the action simplex.
 
@@ -233,7 +234,8 @@ class ProjSimplex:
         q: Project each state column onto the action simplex.
     """
 
-    def q(self, q_val: jax.Array) -> jax.Array:
+    @staticmethod
+    def q(q_val: jax.Array) -> jax.Array:
         """Project action values onto the action simplex for every state.
 
         Args:
@@ -303,7 +305,6 @@ class MellowMax:
         )
 
 
-@chex.dataclass(frozen=True)
 class Expectation:
     r"""Namespace for expectations over finite distributions.
 
@@ -322,7 +323,8 @@ class Expectation:
         sa: Evaluate a state-action-value expectation.
     """
 
-    def s(self, v_val: jax.Array, dist: jax.Array) -> jax.Array:
+    @staticmethod
+    def s(v_val: jax.Array, dist: jax.Array) -> jax.Array:
         """Return the expectation of state values under a state distribution.
 
         Args:
@@ -334,10 +336,11 @@ class Expectation:
         """
         chex.assert_rank(v_val, 1)
         chex.assert_equal_shape((v_val, dist))
-        self._assert_dist(dist)
+        Expectation._assert_dist(dist)
         return jnp.sum(dist * v_val)
 
-    def sa(self, q_val: jax.Array, dist: jax.Array) -> jax.Array:
+    @staticmethod
+    def sa(q_val: jax.Array, dist: jax.Array) -> jax.Array:
         """Return the expectation of action values under a state-action distribution.
 
         Args:
@@ -349,7 +352,7 @@ class Expectation:
         """
         chex.assert_rank(q_val, 2)
         chex.assert_equal_shape((q_val, dist))
-        self._assert_dist(dist)
+        Expectation._assert_dist(dist)
         return jnp.sum(dist * q_val)
 
     @staticmethod
@@ -457,7 +460,6 @@ class Occupancy:
         )
 
 
-@chex.dataclass(frozen=True)
 class Stationary:
     r"""Namespace for invariant distribution mappings.
 
@@ -481,7 +483,8 @@ class Stationary:
         v: Return the invariant state distribution.
     """
 
-    def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
+    @staticmethod
+    def q(mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the invariant state-action distribution for the induced chain.
 
         Args:
@@ -491,9 +494,10 @@ class Stationary:
         Returns:
             Invariant state-action distribution with shape ``(A, S)``.
         """
-        return policy * self.v(mdp, policy)
+        return policy * stationary.v(mdp, policy)
 
-    def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
+    @staticmethod
+    def v(mdp: MDP, policy: jax.Array) -> jax.Array:
         """Return the invariant state distribution for the induced chain.
 
         Args:
@@ -541,15 +545,22 @@ def _policy_transition(mdp: MDP, policy: jax.Array) -> jax.Array:
     return jnp.einsum("as,axs->xs", policy, mdp.transition)
 
 
+reward = Reward
+greedy_map = GreedyMap
+proj_simplex = ProjSimplex
+expectation = Expectation
+stationary = Stationary
+
+
 __all__ = [
-    "GreedyMap",
+    "greedy_map",
     "SoftGreedyMap",
     "EpsilonGreedy",
-    "ProjSimplex",
+    "proj_simplex",
     "MellowMax",
-    "Reward",
-    "Expectation",
+    "reward",
+    "expectation",
     "Occupancy",
-    "Stationary",
+    "stationary",
     "eigenvalues",
 ]

@@ -9,7 +9,6 @@ from jaxdp.mdp import MDP, MRP
 _ATOL = 1e-5
 
 
-@chex.dataclass(frozen=True)
 class TransOp:
     r"""Namespace for terminal-aware transition operators.
 
@@ -32,7 +31,8 @@ class TransOp:
         sa: Apply an MDP transition operator to a state vector.
     """
 
-    def s(self, mrp: MRP, vec: jax.Array) -> jax.Array:
+    @staticmethod
+    def s(mrp: MRP, vec: jax.Array) -> jax.Array:
         """Apply an MRP transition operator to a state vector.
 
         Args:
@@ -50,7 +50,8 @@ class TransOp:
             1 - mrp.terminal,
         )
 
-    def sa(self, mdp: MDP, vec: jax.Array) -> jax.Array:
+    @staticmethod
+    def sa(mdp: MDP, vec: jax.Array) -> jax.Array:
         """Apply an MDP transition operator to a state vector.
 
         Args:
@@ -69,7 +70,6 @@ class TransOp:
         )
 
 
-@chex.dataclass(frozen=True)
 class AdjTransOp:
     r"""Namespace for adjoints of terminal-aware transition operators.
 
@@ -91,7 +91,8 @@ class AdjTransOp:
         sa: Apply an MDP transition adjoint to a state-action measure.
     """
 
-    def s(self, mrp: MRP, dist: jax.Array) -> jax.Array:
+    @staticmethod
+    def s(mrp: MRP, dist: jax.Array) -> jax.Array:
         """Apply an MRP transition adjoint to a state measure.
 
         Args:
@@ -109,7 +110,8 @@ class AdjTransOp:
             1 - mrp.terminal,
         )
 
-    def sa(self, mdp: MDP, dist: jax.Array) -> jax.Array:
+    @staticmethod
+    def sa(mdp: MDP, dist: jax.Array) -> jax.Array:
         """Apply an MDP transition adjoint to a state-action measure.
 
         Args:
@@ -128,7 +130,6 @@ class AdjTransOp:
         )
 
 
-@chex.dataclass(frozen=True)
 class Resolvent:
     r"""Namespace for discounted transition resolvents.
 
@@ -159,7 +160,8 @@ class Resolvent:
         sa: Apply a policy-induced state-action-space resolvent.
     """
 
-    def s(self, p_s: jax.Array, vec: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    @staticmethod
+    def s(p_s: jax.Array, vec: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the state-space resolvent to a vector.
 
         Args:
@@ -181,8 +183,8 @@ class Resolvent:
             vec,
         )
 
+    @staticmethod
     def sa(
-        self,
         mdp: MDP,
         policy: jax.Array,
         vec: jax.Array,
@@ -204,7 +206,7 @@ class Resolvent:
         chex.assert_shape(vec, (mdp.action_size, mdp.state_size))
         p_s = jnp.einsum("as,axs,x->xs", policy, mdp.transition, 1 - mdp.terminal)
         s_vec = jnp.einsum("as,as->s", policy, vec)
-        resolved_s_vec = self.s(p_s, s_vec, gamma_array)
+        resolved_s_vec = resolvent.s(p_s, s_vec, gamma_array)
         return vec + gamma_array * jnp.einsum(
             "axs,x,x->as",
             mdp.transition,
@@ -213,7 +215,6 @@ class Resolvent:
         )
 
 
-@chex.dataclass(frozen=True)
 class BellmanOp:
     r"""Namespace for discounted Bellman policy operators.
 
@@ -232,8 +233,8 @@ class BellmanOp:
         v: Apply the state-value Bellman policy operator.
     """
 
+    @staticmethod
     def q(
-        self,
         mdp: MDP,
         policy: jax.Array,
         q_val: jax.Array,
@@ -254,10 +255,10 @@ class BellmanOp:
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         next_v_val = jnp.einsum("as,as->s", policy, q_val)
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, next_v_val)
+        return reward + _assert_gamma(gamma) * trans_op.sa(mdp, next_v_val)
 
+    @staticmethod
     def v(
-        self,
         mdp: MDP,
         policy: jax.Array,
         v_val: jax.Array,
@@ -277,11 +278,10 @@ class BellmanOp:
         _assert_policy(mdp, policy)
         chex.assert_shape(v_val, (mdp.state_size,))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        q_val = reward + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return jnp.einsum("as,as->s", policy, q_val)
 
 
-@chex.dataclass(frozen=True)
 class BellmanOptOp:
     r"""Namespace for discounted Bellman optimality operators.
 
@@ -300,7 +300,8 @@ class BellmanOptOp:
         v: Apply the state-value Bellman optimality operator.
     """
 
-    def q(self, mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    @staticmethod
+    def q(mdp: MDP, q_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Bellman optimality operator to action values.
 
         Args:
@@ -313,9 +314,10 @@ class BellmanOptOp:
         """
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, jnp.max(q_val, axis=0))
+        return reward + _assert_gamma(gamma) * trans_op.sa(mdp, jnp.max(q_val, axis=0))
 
-    def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
+    @staticmethod
+    def v(mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Bellman optimality operator to state values.
 
         Args:
@@ -327,7 +329,7 @@ class BellmanOptOp:
             Updated state values with shape ``(S,)``.
         """
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        q_val = reward + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return jnp.max(q_val, axis=0)
 
 
@@ -371,7 +373,7 @@ class SoftBellmanOptOp:
         """
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
+        return reward + _assert_gamma(gamma) * trans_op.sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the soft Bellman optimality operator to state values.
@@ -385,7 +387,7 @@ class SoftBellmanOptOp:
             Updated state values with shape ``(S,)``.
         """
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        q_val = reward + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
@@ -436,7 +438,7 @@ class MellowMaxBellmanOptOp:
         """
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
+        return reward + _assert_gamma(gamma) * trans_op.sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Mellowmax Bellman optimality operator to state values.
@@ -450,7 +452,7 @@ class MellowMaxBellmanOptOp:
             Updated state values with shape ``(S,)``.
         """
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        q_val = reward + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
@@ -504,7 +506,7 @@ class BoltzmannBellmanOp:
         """
         chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        return reward + _assert_gamma(gamma) * TransOp().sa(mdp, self._reduce(q_val))
+        return reward + _assert_gamma(gamma) * trans_op.sa(mdp, self._reduce(q_val))
 
     def v(self, mdp: MDP, v_val: jax.Array, gamma: float | jax.Array) -> jax.Array:
         """Apply the Boltzmann Bellman operator to state values.
@@ -518,7 +520,7 @@ class BoltzmannBellmanOp:
             Updated state values with shape ``(S,)``.
         """
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
-        q_val = reward + _assert_gamma(gamma) * TransOp().sa(mdp, v_val)
+        q_val = reward + _assert_gamma(gamma) * trans_op.sa(mdp, v_val)
         return self._reduce(q_val)
 
     def _reduce(self, q_val: jax.Array) -> jax.Array:
@@ -577,12 +579,19 @@ def _assert_policy(mdp: MDP, policy: jax.Array) -> None:
     )
 
 
+trans_op = TransOp
+adj_trans_op = AdjTransOp
+resolvent = Resolvent
+bellman_op = BellmanOp
+bellman_opt_op = BellmanOptOp
+
+
 __all__ = [
-    "TransOp",
-    "AdjTransOp",
-    "Resolvent",
-    "BellmanOp",
-    "BellmanOptOp",
+    "trans_op",
+    "adj_trans_op",
+    "resolvent",
+    "bellman_op",
+    "bellman_opt_op",
     "SoftBellmanOptOp",
     "MellowMaxBellmanOptOp",
     "BoltzmannBellmanOp",
