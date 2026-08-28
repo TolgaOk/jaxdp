@@ -254,9 +254,34 @@ $$
 \xi_n(s,a)=\rho_n(s)\pi(a\mid s).
 $$
 
-`Occupancy(steps=n).v` and `.q` currently compute these finite-step marginals. A discounted
-occupancy measure is a cumulative weighted sum of marginals and is a separate planned object. A
-stationary distribution solves
+For $0\leq\gamma\leq 1$, define the normalized occupancy iteration
+
+$$
+d_0^{\gamma}=\mu,
+\qquad
+d_{k+1}^{\gamma}
+=(1-\gamma)\mu+\gamma(\mathcal{P}^{\pi})^*d_k^{\gamma}.
+$$
+
+Equivalently,
+
+$$
+d_k^{\gamma}
+=(1-\gamma)\sum_{t=0}^{k-1}\gamma^t\rho_t
++\gamma^k\rho_k.
+$$
+
+Thus every iterate has unit mass. At $\gamma=1$, $d_k^1=\rho_k$ recovers the ordinary
+finite-step marginal. For $\gamma<1$, the final term vanishes as $k\to\infty$ and
+
+$$
+d_{\gamma}^{\pi}
+=(1-\gamma)\sum_{t=0}^{\infty}\gamma^t\rho_t
+=(1-\gamma)\left(I-\gamma(\mathcal{P}^{\pi})^*\right)^{-1}\mu.
+$$
+
+`Occupancy(step=k).v(mdp, policy, gamma)` returns $d_k^{\gamma}$; `.q` multiplies it by
+$\pi(a\mid s)`. The default is `step=1` and `gamma=1`. A stationary distribution solves
 
 $$
 \rho_{\infty}=(\mathcal{P}^{\pi})^*\rho_{\infty},
@@ -667,8 +692,8 @@ marked for review has no public name until its role and composition are approved
 | $\bar{\mathcal{P}}_{SA}^*$ | $\mathcal{D}_{SA}\to\mathcal{D}_S$ | `AdjTransOp.sa` |
 | $\bar{\mathcal{P}}_S^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | `AdjTransOp.s` |
 | $(\mathcal{P}^{\pi})^*$ | $\mathcal{D}_S\to\mathcal{D}_S$ | Used by `Occupancy` |
-| $\rho_n$ | $\mathrm{MDP}\times\Pi\times\mathbb{N}\to\Delta_S$ | `Occupancy.v` |
-| $\xi_n$ | $\mathrm{MDP}\times\Pi\times\mathbb{N}\to\Delta_{SA}$ | `Occupancy.q` |
+| $d_k^{\gamma}$ | $\mathrm{MDP}\times\Pi\times[0,1]\times\mathbb{N}\to\Delta_S$ | `Occupancy.v` |
+| $\xi_k^{\gamma}$ | $\mathrm{MDP}\times\Pi\times[0,1]\times\mathbb{N}\to\Delta_{SA}$ | `Occupancy.q` |
 | $\rho_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_S$ | `Stationary.v` |
 | $\xi_{\infty}$ | $\mathrm{MDP}\times\Pi\to\Delta_{SA}$ | `Stationary.q` |
 | $\mathcal{B}_\gamma$ | $V \rightarrow Q$ | Expected reward plus `TransOp.sa` |

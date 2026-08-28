@@ -246,10 +246,41 @@ def test_occupancy_propagates_from_the_initial_distribution() -> None:
     mdp = _periodic_mdp()
     policy = jnp.ones((1, 2))
 
-    assert jnp.array_equal(Occupancy(steps=0).v(mdp, policy), jnp.array([1.0, 0.0]))
-    assert jnp.array_equal(Occupancy(steps=1).v(mdp, policy), jnp.array([0.0, 1.0]))
-    assert jnp.array_equal(Occupancy(steps=2).v(mdp, policy), jnp.array([1.0, 0.0]))
-    assert jnp.array_equal(Occupancy(steps=1).q(mdp, policy), jnp.array([[0.0, 1.0]]))
+    assert jnp.array_equal(Occupancy(step=0).v(mdp, policy), jnp.array([1.0, 0.0]))
+    assert jnp.array_equal(Occupancy().v(mdp, policy), jnp.array([0.0, 1.0]))
+    assert jnp.array_equal(Occupancy(step=2).v(mdp, policy), jnp.array([1.0, 0.0]))
+    assert jnp.array_equal(Occupancy().q(mdp, policy), jnp.array([[0.0, 1.0]]))
+
+
+def test_discounted_occupancy_is_normalized_and_converges() -> None:
+    mdp = _periodic_mdp()
+    policy = jnp.ones((1, 2))
+    gamma = 0.5
+    p_s = mdp.transition[0]
+    expected = (1 - gamma) * jnp.linalg.solve(
+        jnp.eye(mdp.state_size) - gamma * p_s,
+        mdp.initial,
+    )
+
+    assert jnp.allclose(
+        Occupancy(step=2).v(mdp, policy, gamma),
+        jnp.array([0.75, 0.25]),
+    )
+    assert jnp.allclose(Occupancy(step=40).v(mdp, policy, gamma), expected)
+    assert jnp.allclose(jnp.sum(Occupancy(step=40).q(mdp, policy, gamma)), 1)
+
+
+def test_discounted_occupancy_composes_with_jit_and_vmap() -> None:
+    mdp = _periodic_mdp()
+    policy = jnp.ones((1, 2))
+    apply = chex.chexify(
+        jax.jit(jax.vmap(lambda gamma: Occupancy(step=4).v(mdp, policy, gamma))),
+        async_check=False,
+    )
+    occupancies = apply(jnp.array([0.0, 0.5, 1.0]))
+
+    assert occupancies.shape == (3, 2)
+    assert jnp.allclose(jnp.sum(occupancies, axis=1), 1)
 
 
 def test_stationary_returns_an_invariant_distribution_for_a_periodic_chain() -> None:
@@ -277,7 +308,7 @@ def test_stationary_selects_the_minimum_norm_distribution_when_nonunique() -> No
 def test_distribution_mappings_compose_with_jit_and_vmap() -> None:
     mdp = _periodic_mdp()
     policies = jnp.ones((3, 1, 2))
-    occupancy = Occupancy(steps=3)
+    occupancy = Occupancy(step=3)
     stationary = Stationary()
 
     finite = chex.chexify(
@@ -302,8 +333,16 @@ def test_eigenvalues_describe_the_policy_transition() -> None:
     assert jnp.allclose(values.imag, 0)
 
 
-def test_occupancy_rejects_negative_steps() -> None:
+def test_occupancy_rejects_negative_step() -> None:
     mdp = _periodic_mdp()
 
-    with pytest.raises(AssertionError, match="steps"):
-        Occupancy(steps=-1).v(mdp, jnp.ones((1, 2)))
+    with pytest.raises(AssertionError, match="step"):
+        Occupancy(step=-1).v(mdp, jnp.ones((1, 2)))
+
+
+@pytest.mark.parametrize("gamma", [-0.1, 1.1, jnp.inf, jnp.nan])
+def test_occupancy_rejects_invalid_gamma(gamma: float) -> None:
+    mdp = _periodic_mdp()
+
+    with pytest.raises(AssertionError, match="gamma"):
+        Occupancy().v(mdp, jnp.ones((1, 2)), gamma=gamma)

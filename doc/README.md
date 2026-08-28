@@ -36,7 +36,7 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(\operatorname{mm}_{\tau}:Q\to V\) | `MellowMax.q` | Normalized log-mean-exp reduction |
 | \(r(s,a),r^{\pi}(s)\) | `Reward.sa`, `Reward.s` | Expected immediate rewards |
 | \(\mathbb{E}_{\rho}[v],\mathbb{E}_{\xi}[q]\) | `Expectation.s`, `Expectation.sa` | Scalar expectations |
-| \(\rho_n,\xi_n\) | `Occupancy.v`, `Occupancy.q` | Finite-step distributions |
+| \(d_k^{\gamma},\xi_k^{\gamma}\) | `Occupancy.v`, `Occupancy.q` | Normalized discounted occupancies |
 | \(\rho_\infty,\xi_\infty\) | `Stationary.v`, `Stationary.q` | Invariant distributions |
 | \(v^{\pi},q^{\pi}\) | `PolicyEvaluation.v`, `PolicyEvaluation.q` | Exact policy values |
 | \((\mathcal{T}^{*}_{V})^n,(\mathcal{T}^{*}_{Q})^n\) | `ValueIteration.v`, `ValueIteration.q` | Fixed-step value iteration |

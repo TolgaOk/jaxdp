@@ -56,10 +56,10 @@ def test_state_and_action_occupancies_are_consistent() -> None:
     mdp = _two_state_mdp()
     policy = jnp.full((2, 2), 0.5)
 
-    initial_v = Occupancy(steps=0).v(mdp, policy)
-    initial_q = Occupancy(steps=0).q(mdp, policy)
-    next_v = Occupancy(steps=1).v(mdp, policy)
-    next_q = Occupancy(steps=1).q(mdp, policy)
+    initial_v = Occupancy(step=0).v(mdp, policy)
+    initial_q = Occupancy(step=0).q(mdp, policy)
+    next_v = Occupancy().v(mdp, policy)
+    next_q = Occupancy().q(mdp, policy)
 
     assert jnp.allclose(initial_v, mdp.initial)
     assert jnp.allclose(initial_q, policy * mdp.initial)
@@ -77,7 +77,7 @@ def test_completed_api_supports_jit_and_vmap() -> None:
         async_check=False,
     )(values)
     state_distribution = chex.chexify(
-        jax.jit(lambda policy: Occupancy(steps=3).v(mdp, policy)),
+        jax.jit(lambda policy: Occupancy(step=3).v(mdp, policy)),
         async_check=False,
     )(
         jnp.full((2, 2), 0.5)

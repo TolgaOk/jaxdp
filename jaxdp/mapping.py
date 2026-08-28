@@ -371,56 +371,88 @@ class Expectation:
 
 @chex.dataclass(frozen=True)
 class Occupancy:
-    r"""Namespace for finite-step state and state-action distribution mappings.
+    r"""Namespace for normalized state and state-action occupancy mappings.
 
-    Starting from the MDP initial distribution, the configured number of steps applies
+    Starting from the MDP initial distribution, each configured iteration applies
 
     .. math::
 
-        \rho_{k+1}(s')
-        = \sum_{s\in\mathcal{S}}P^\pi(s'\mid s)\rho_k(s),
+        d_{k+1}^{\gamma}
+        = (1-\gamma)\mu
+          + \gamma(\mathcal{P}^{\pi})^*d_k^{\gamma},
         \qquad
-        \xi_k(s,a)=\rho_k(s)\pi(a\mid s).
+        d_0^{\gamma}=\mu,
+        \qquad
+        \xi_k^{\gamma}(s,a)=d_k^{\gamma}(s)\pi(a\mid s).
+
+    At ``gamma=1``, iteration ``k`` is the ordinary time-``k`` marginal. For ``gamma<1``, the
+    iteration converges to the normalized discounted occupancy
+
+    .. math::
+
+        d_{\gamma}^{\pi}
+        = (1-\gamma)\sum_{t=0}^{\infty}
+          \gamma^t\bigl((\mathcal{P}^{\pi})^*\bigr)^t\mu.
 
     Attributes:
-        steps: Nonnegative number of transitions from the initial distribution.
+        step: Nonnegative number of forward iterations.
 
     Methods:
-        q: Return the finite-step state-action distribution.
-        v: Return the finite-step state distribution.
+        q: Return the normalized state-action occupancy.
+        v: Return the normalized state occupancy.
     """
 
-    steps: int
+    step: int = 1
 
-    def q(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the state-action distribution after the configured number of steps.
-
-        Args:
-            mdp: Finite Markov decision process.
-            policy: Action probabilities with shape ``(A, S)``.
-
-        Returns:
-            State-action distribution with shape ``(A, S)``.
-        """
-        return policy * self.v(mdp, policy)
-
-    def v(self, mdp: MDP, policy: jax.Array) -> jax.Array:
-        """Return the state distribution after the configured number of steps.
+    def q(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        gamma: float | jax.Array = 1.0,
+    ) -> jax.Array:
+        """Return the state-action occupancy after the configured iterations.
 
         Args:
             mdp: Finite Markov decision process.
             policy: Action probabilities with shape ``(A, S)``.
+            gamma: Scalar discount in the closed interval ``[0, 1]``.
 
         Returns:
-            State distribution with shape ``(S,)``.
+            Normalized state-action occupancy with shape ``(A, S)``.
         """
-        chex.assert_type(self.steps, int, custom_message="steps must be an integer")
-        chex.assert_scalar_non_negative(self.steps, custom_message="steps must be nonnegative")
+        return policy * self.v(mdp, policy, gamma)
+
+    def v(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        gamma: float | jax.Array = 1.0,
+    ) -> jax.Array:
+        """Return the state occupancy after the configured iterations.
+
+        Args:
+            mdp: Finite Markov decision process.
+            policy: Action probabilities with shape ``(A, S)``.
+            gamma: Scalar discount in the closed interval ``[0, 1]``.
+
+        Returns:
+            Normalized state occupancy with shape ``(S,)``.
+        """
+        chex.assert_type(self.step, int, custom_message="step must be an integer")
+        chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
+        gamma_array = jnp.asarray(gamma)
+        chex.assert_shape(gamma_array, (), custom_message="gamma must be scalar")
+        chex.assert_tree_all_finite(gamma_array, custom_message="gamma must be finite")
+        chex.assert_trees_all_equal(
+            (gamma_array >= 0) & (gamma_array <= 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1]",
+        )
         p_s = _policy_transition(mdp, policy)
         return jax.lax.fori_loop(
             0,
-            self.steps,
-            lambda _, dist: p_s @ dist,
+            self.step,
+            lambda _, dist: (1 - gamma_array) * mdp.initial + gamma_array * (p_s @ dist),
             mdp.initial,
         )
 
