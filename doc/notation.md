@@ -188,6 +188,18 @@ methods first apply the one-step backup $\mathcal{B}_{\gamma}:V\to Q$ defined be
 the corresponding mapping. A softmax mapping alone leaves the Bellman objective unchanged. A
 regularized Bellman operator additionally changes the action reduction and its fixed point.
 
+Euclidean projection supplies the sparse value-to-policy mapping
+
+$$
+\operatorname{proj}_{\Delta_A}(q)(\cdot\mid s)
+= \mathop{\arg\min}_{p\in\Delta_A}
+  \frac{1}{2}\lVert p-q(\cdot,s)\rVert_2^2,
+\qquad
+\Delta_A=\left\{p\in\mathbb{R}^{|\mathcal{A}|}_{+}:\sum_a p(a)=1\right\}.
+$$
+
+`ProjSimplex.q` applies this projection independently to every state column.
+
 ## Transition operators
 
 The transition kernel induces a backward operator from state functions to state-action functions:
@@ -633,6 +645,7 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{G}$ | $Q\to\Pi$ | `GreedyMap.q` |
 | $\mathcal{S}_{\eta}$ | $Q\to\Pi$ | `SoftGreedyMap.q` |
 | $\mathcal{G}_{\epsilon}$ | $Q\to\Pi$ | `EpsilonGreedy.q` |
+| $\operatorname{proj}_{\Delta_A}$ | $Q\to\Pi$ | `ProjSimplex.q` |
 | $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `GreedyMap.v` |
 | $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `SoftGreedyMap.v` |
 | $\mathcal{G}_{\epsilon}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `EpsilonGreedy.v` |

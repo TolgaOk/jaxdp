@@ -176,6 +176,45 @@ class EpsilonGreedy:
 
 
 @chex.dataclass(frozen=True)
+class ProjSimplex:
+    r"""Namespace for Euclidean projection onto the action simplex.
+
+    The ``q`` method applies
+
+    .. math::
+
+        \operatorname{proj}_{\Delta_A}(q)(\cdot\mid s)
+        = \mathop{\arg\min}_{p\in\Delta_A}
+          \frac{1}{2}\lVert p-q(\cdot,s)\rVert_2^2.
+
+    Methods:
+        q: Project each state column onto the action simplex.
+    """
+
+    def q(self, q_val: jax.Array) -> jax.Array:
+        """Project action values onto the action simplex for every state.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            Action probabilities with shape ``(A, S)``.
+        """
+        chex.assert_rank(q_val, 2)
+        chex.assert_axis_dimension_gt(q_val, 0, 0)
+        sorted_val = jnp.flip(jnp.sort(q_val, axis=0), axis=0)
+        cumulative = jnp.cumsum(sorted_val, axis=0) - 1
+        rank = jnp.arange(1, q_val.shape[0] + 1, dtype=q_val.dtype)[:, None]
+        support_size = jnp.sum(sorted_val - cumulative / rank > 0, axis=0)
+        threshold = jnp.take_along_axis(
+            cumulative,
+            support_size[None, :] - 1,
+            axis=0,
+        )[0] / support_size
+        return jnp.maximum(q_val - threshold, 0)
+
+
+@chex.dataclass(frozen=True)
 class Expectation:
     r"""Namespace for expectations over finite distributions.
 
@@ -385,6 +424,7 @@ __all__ = [
     "GreedyMap",
     "SoftGreedyMap",
     "EpsilonGreedy",
+    "ProjSimplex",
     "Expectation",
     "Occupancy",
     "Stationary",

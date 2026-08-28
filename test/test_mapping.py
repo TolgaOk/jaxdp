@@ -11,6 +11,7 @@ from jaxdp.mapping import (
     EpsilonGreedy,
     GreedyMap,
     Occupancy,
+    ProjSimplex,
     SoftGreedyMap,
     Stationary,
     eigenvalues,
@@ -58,6 +59,7 @@ def test_public_mapping_names() -> None:
     assert jaxdp.mapping is mapping
     assert jaxdp.GreedyMap is GreedyMap
     assert jaxdp.SoftGreedyMap is SoftGreedyMap
+    assert jaxdp.ProjSimplex is ProjSimplex
     assert jaxdp.Occupancy is Occupancy
     assert jaxdp.Stationary is Stationary
     assert jaxdp.eigenvalues is eigenvalues
@@ -131,6 +133,45 @@ def test_mapping_components_support_jit_and_vmap() -> None:
 
     assert result.shape == values.shape
     assert jnp.allclose(result.sum(axis=1), 1.0)
+
+
+def test_simplex_projection_matches_euclidean_projection() -> None:
+    q_val = jnp.array(
+        [
+            [0.2, 2.0, 0.8],
+            [0.2, 0.0, 0.6],
+            [0.2, 0.0, -0.5],
+        ]
+    )
+    expected = jnp.array(
+        [
+            [1 / 3, 1.0, 0.6],
+            [1 / 3, 0.0, 0.4],
+            [1 / 3, 0.0, 0.0],
+        ]
+    )
+    projection = ProjSimplex()
+    policy = projection.q(q_val)
+
+    assert is_dataclass(projection)
+    assert jnp.allclose(policy, expected)
+    assert jnp.allclose(jnp.sum(policy, axis=0), 1)
+    assert jnp.all(policy >= 0)
+    assert jnp.allclose(projection.q(policy), policy)
+
+
+def test_simplex_projection_composes_with_jit_and_vmap() -> None:
+    q_vals = jnp.array(
+        [
+            [[0.2, 2.0], [0.2, 0.0], [0.2, 0.0]],
+            [[2.0, 0.2], [0.0, 0.2], [0.0, 0.2]],
+        ]
+    )
+    policies = jax.jit(jax.vmap(ProjSimplex().q))(q_vals)
+
+    assert policies.shape == q_vals.shape
+    assert jnp.allclose(jnp.sum(policies, axis=1), 1)
+    assert jnp.all(policies >= 0)
 
 
 def test_occupancy_propagates_from_the_initial_distribution() -> None:
