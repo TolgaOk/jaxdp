@@ -15,6 +15,7 @@ from jaxdp.planning import (
     AndersonValueIteration,
     DeflatedValueIteration,
     DynamicBoltzmannValueIteration,
+    IterativePolicyEvaluation,
     MomentumValueIteration,
     PIDValueIteration,
     PolicyIteration,
@@ -48,6 +49,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.AcceleratedPolicyIteration is AcceleratedPolicyIteration
     assert jaxdp.AndersonValueIteration is AndersonValueIteration
     assert jaxdp.SafeAndersonValueIteration is SafeAndersonValueIteration
+    assert jaxdp.IterativePolicyEvaluation is IterativePolicyEvaluation
     assert jaxdp.ValueIteration is ValueIteration
     assert jaxdp.QValueIteration is QValueIteration
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
@@ -75,6 +77,56 @@ def test_value_iteration_updates_state_values_once() -> None:
     assert state.v_val.shape == (mdp.state_size,)
     assert jnp.array_equal(state.v_val, jnp.zeros(mdp.state_size))
     assert jnp.allclose(updated.v_val, expected)
+
+
+def test_iterative_policy_evaluation_updates_once() -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.full((mdp.action_size, mdp.state_size), 1 / mdp.action_size)
+    planner = IterativePolicyEvaluation(gamma=0.5)
+    state = planner.init(mdp, policy, jnp.array([1.0, -1.0]))
+
+    updated = planner.update(mdp, state)
+
+    expected = jaxdp.bellman_op.v(mdp, policy, state.v_val, planner.gamma)
+    assert jnp.array_equal(updated.policy, policy)
+    assert jnp.allclose(updated.v_val, expected)
+
+
+def test_iterative_policy_evaluation_converges_to_exact_value() -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.full((mdp.action_size, mdp.state_size), 1 / mdp.action_size)
+    planner = IterativePolicyEvaluation(gamma=0.5)
+    state = planner.init(mdp, policy)
+
+    for _ in range(40):
+        state = planner.update(mdp, state)
+
+    assert jnp.allclose(state.v_val, policy_eval.v(mdp, policy, planner.gamma), atol=1e-5)
+
+
+def test_iterative_policy_evaluation_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = IterativePolicyEvaluation(gamma=0.5)
+    policies = jnp.stack(
+        (
+            jnp.full((mdp.action_size, mdp.state_size), 1 / mdp.action_size),
+            greedy_map.v(mdp, jnp.zeros(mdp.state_size), planner.gamma),
+        )
+    )
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, policies, v_vals))
+
+    assert states.policy.shape == policies.shape
+    assert states.v_val.shape == v_vals.shape
 
 
 def test_q_value_iteration_updates_action_values_once() -> None:

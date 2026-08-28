@@ -66,6 +66,93 @@ class PolicyEvaluation:
 
 
 @chex.dataclass(frozen=True)
+class IterativePolicyEvaluation:
+    r"""Perform one iterative state-value policy-evaluation update at a time.
+
+    For a fixed policy in ``State``, each update applies
+
+    .. math::
+
+        v_{k+1}
+        = \mathcal{T}^{\pi}_{V}v_k
+        = r^{\pi}+\gamma\bar{P}^{\pi}v_k.
+
+    Repeated updates converge to the exact discounted policy value. The caller owns iteration,
+    convergence tests, and logging.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+
+    Public dataclasses:
+        State: Fixed policy and current state-value iterate.
+
+    Public methods:
+        init: Initialize a policy and optional state values.
+        update: Apply one Bellman policy update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic iterative policy-evaluation state.
+
+        Attributes:
+            policy: Fixed action probabilities with shape ``(A, S)``.
+            v_val: Current state values with shape ``(S,)``.
+        """
+
+        policy: jax.Array
+        v_val: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        v_val: jax.Array | None = None,
+    ) -> IterativePolicyEvaluation.State:
+        """Initialize a fixed policy and its state-value iterate."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_tree_all_finite(
+            (policy, v_val, gamma),
+            custom_message="planner inputs must be finite",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(policy >= 0),
+            jnp.asarray(True),
+            custom_message="policy probabilities must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(policy, axis=0),
+            jnp.ones((mdp.state_size,), dtype=policy.dtype),
+            custom_message="policy probabilities must sum to one for each state",
+        )
+        chex.assert_trees_all_equal(
+            (gamma >= 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1)",
+        )
+        return self.State(policy=policy, v_val=v_val)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: IterativePolicyEvaluation.State,
+    ) -> IterativePolicyEvaluation.State:
+        """Apply one state-value Bellman policy update."""
+        chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        v_val = bellman_op.v(mdp, state.policy, state.v_val, self.gamma)
+        return replace(state, v_val=v_val)
+
+
+@chex.dataclass(frozen=True)
 class ValueIteration:
     r"""Perform one state-value iteration update at a time.
 
@@ -1834,6 +1921,7 @@ policy_eval = PolicyEvaluation
 
 __all__ = [
     "policy_eval",
+    "IterativePolicyEvaluation",
     "ValueIteration",
     "QValueIteration",
     "AnchoredValueIteration",

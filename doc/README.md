@@ -39,6 +39,7 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(d_k^{\gamma},\xi_k^{\gamma}\) | `Occupancy.v`, `Occupancy.q` | Normalized discounted occupancies |
 | \(\rho_\infty,\xi_\infty\) | `stationary.v`, `stationary.q` | Invariant distributions |
 | \(v^{\pi},q^{\pi}\) | `policy_eval.v`, `policy_eval.q` | Exact policy values |
+| \(v_{k+1}=\mathcal{T}^{\pi}_{V}v_k\) | `IterativePolicyEvaluation.update` | One iterative policy-evaluation update |
 | \(v_{k+1}=\mathcal{T}^{*}_{V}v_k\) | `ValueIteration.update` | One state-value iteration update |
 | \(q_{k+1}=\mathcal{T}^{*}_{Q}q_k\) | `QValueIteration.update` | One action-value iteration update |
 | \(v_k=\beta_kv_0+(1-\beta_k)\mathcal{T}^{*}_{V}v_{k-1}\) | `AnchoredValueIteration.update` | One anchored state-value update |
