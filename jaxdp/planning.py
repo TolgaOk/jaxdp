@@ -547,6 +547,156 @@ class MomentumValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class AndersonValueIteration:
+    r"""Perform one Anderson-accelerated value iteration update at a time.
+
+    Each update solves the regularized residual-mixing problem from Anderson Value Iteration:
+
+    .. math::
+
+        \delta_i = \mathcal{T}^{*}_{V}v_i-v_i,
+        \qquad
+        \alpha
+        = \frac{(\Delta_k^\top\Delta_k+\lambda I)^{-1}\mathbf{1}}
+               {\mathbf{1}^\top
+                (\Delta_k^\top\Delta_k+\lambda I)^{-1}\mathbf{1}},
+        \qquad
+        v_{k+1}=\sum_i\alpha_i\mathcal{T}^{*}_{V}v_i,
+
+    where ``Delta`` contains at most ``memory + 1`` recent residuals. The linear system is solved
+    directly; ``regularization`` keeps it nonsingular when residuals are dependent.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+        memory: Number of preceding iterates retained in addition to the current iterate.
+        regularization: Positive diagonal regularization for the residual Gram matrix.
+
+    Public dataclasses:
+        State: Recent iterates, Bellman images, and latest mixing coefficients.
+
+    Public methods:
+        init: Initialize with one ordinary value-iteration step.
+        update: Apply one Anderson-accelerated value-iteration update.
+    """
+
+    gamma: float
+    memory: int = 5
+    regularization: float = 1e-6
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic Anderson Value Iteration state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            v_hist: Recent state values with shape ``(memory + 1, S)``, newest first.
+            bellman_hist: Corresponding Bellman images with shape ``(memory + 1, S)``.
+            count: Number of active rows in each history.
+            coeff: Mixing coefficients used by the latest update, newest input first.
+        """
+
+        v_val: jax.Array
+        v_hist: jax.Array
+        bellman_hist: jax.Array
+        count: jax.Array
+        coeff: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> AndersonValueIteration.State:
+        """Initialize from state values and take the paper's initial VI step."""
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        regularization = jnp.asarray(self.regularization)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
+        chex.assert_tree_all_finite(
+            regularization,
+            custom_message="regularization must be finite",
+        )
+        chex.assert_trees_all_equal(
+            regularization > 0,
+            jnp.asarray(True),
+            custom_message="regularization must be positive",
+        )
+
+        next_v_val = bellman_opt_op.v(mdp, v_val, self.gamma)
+        v_val = v_val.astype(next_v_val.dtype)
+        next_bellman = bellman_opt_op.v(mdp, next_v_val, self.gamma)
+        size = self.memory + 1
+        v_hist = jnp.zeros((size, mdp.state_size), dtype=next_v_val.dtype)
+        v_hist = v_hist.at[0].set(next_v_val).at[1].set(v_val)
+        bellman_hist = jnp.zeros_like(v_hist)
+        bellman_hist = bellman_hist.at[0].set(next_bellman).at[1].set(next_v_val)
+        coeff = jnp.zeros((size,), dtype=next_v_val.dtype).at[0].set(1)
+        return self.State(
+            v_val=next_v_val,
+            v_hist=v_hist,
+            bellman_hist=bellman_hist,
+            count=jnp.asarray(2, dtype=jnp.int32),
+            coeff=coeff,
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: AndersonValueIteration.State,
+    ) -> AndersonValueIteration.State:
+        """Apply one regularized Anderson value-iteration update."""
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        regularization = jnp.asarray(self.regularization)
+        size = self.memory + 1
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.v_hist, (size, mdp.state_size))
+        chex.assert_shape(state.bellman_hist, (size, mdp.state_size))
+        chex.assert_shape(state.count, ())
+        chex.assert_shape(state.coeff, (size,))
+        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            regularization,
+            custom_message="regularization must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (state.count >= 1) & (state.count <= size),
+            jnp.asarray(True),
+            custom_message="count must index the history",
+        )
+        chex.assert_trees_all_equal(
+            regularization > 0,
+            jnp.asarray(True),
+            custom_message="regularization must be positive",
+        )
+
+        active = (jnp.arange(size) < state.count).astype(state.v_val.dtype)
+        residual = (state.bellman_hist - state.v_hist) * active[:, None]
+        gram = residual @ residual.T
+        gram += jnp.diag(regularization * active + 1 - active)
+        solved = jnp.linalg.solve(gram, active)
+        coeff = active * solved / jnp.sum(active * solved)
+        v_val = jnp.einsum("i,is->s", coeff, state.bellman_hist)
+        bellman_v = bellman_opt_op.v(mdp, v_val, self.gamma)
+        v_hist = jnp.concatenate((v_val[None], state.v_hist[:-1]), axis=0)
+        bellman_hist = jnp.concatenate(
+            (bellman_v[None], state.bellman_hist[:-1]),
+            axis=0,
+        )
+        return replace(
+            state,
+            v_val=v_val,
+            v_hist=v_hist,
+            bellman_hist=bellman_hist,
+            count=jnp.minimum(state.count + 1, size),
+            coeff=coeff,
+        )
+
+
+@chex.dataclass(frozen=True)
 class RankOneValueIteration:
     r"""Perform one Rank-One Value Iteration update at a time.
 
@@ -866,6 +1016,7 @@ __all__ = [
     "AnchoredQValueIteration",
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
+    "AndersonValueIteration",
     "RankOneValueIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",

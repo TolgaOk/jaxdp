@@ -12,6 +12,7 @@ from jaxdp.planning import (
     AcceleratedPolicyIteration,
     AnchoredQValueIteration,
     AnchoredValueIteration,
+    AndersonValueIteration,
     MomentumValueIteration,
     PolicyIteration,
     QValueIteration,
@@ -40,6 +41,7 @@ def _two_state_mdp() -> MDP:
 
 def test_public_planning_names() -> None:
     assert jaxdp.AcceleratedPolicyIteration is AcceleratedPolicyIteration
+    assert jaxdp.AndersonValueIteration is AndersonValueIteration
     assert jaxdp.ValueIteration is ValueIteration
     assert jaxdp.QValueIteration is QValueIteration
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
@@ -268,6 +270,61 @@ def test_momentum_value_iteration_composes_with_jit_and_vmap() -> None:
 
     assert states.v_val.shape == v_vals.shape
     assert states.prev_v_val.shape == v_vals.shape
+
+
+def test_anderson_value_iteration_matches_regularized_recurrence() -> None:
+    mdp = _two_state_mdp()
+    planner = AndersonValueIteration(gamma=0.5, memory=1, regularization=0.1)
+    state = planner.init(mdp, jnp.zeros(mdp.state_size))
+
+    updated = planner.update(mdp, state)
+
+    residual = jnp.array([[1.5, 1.0], [2.0, 3.0]])
+    gram = residual @ residual.T + 0.1 * jnp.eye(2)
+    solved = jnp.linalg.solve(gram, jnp.ones(2))
+    coeff = solved / jnp.sum(solved)
+    expected = coeff[0] * jnp.array([3.5, 4.0]) + coeff[1] * jnp.array([2.0, 3.0])
+    assert jnp.allclose(state.v_hist, jnp.array([[2.0, 3.0], [0.0, 0.0]]))
+    assert jnp.allclose(state.bellman_hist, jnp.array([[3.5, 4.0], [2.0, 3.0]]))
+    assert jnp.allclose(updated.coeff, coeff)
+    assert jnp.allclose(updated.v_val, expected)
+    assert jnp.allclose(updated.v_hist[0], expected)
+    assert jnp.allclose(updated.v_hist[1], state.v_val)
+
+
+def test_anderson_value_iteration_saturates_history() -> None:
+    mdp = _two_state_mdp()
+    planner = AndersonValueIteration(gamma=0.5, memory=2)
+    state = planner.init(mdp)
+
+    state = planner.update(mdp, state)
+    assert state.count == 3
+
+    state = planner.update(mdp, state)
+    assert state.count == 3
+    assert jnp.array_equal(state.v_hist[0], state.v_val)
+
+
+def test_anderson_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = AndersonValueIteration(gamma=0.5, memory=2)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.v_hist.shape == (2, planner.memory + 1, mdp.state_size)
+    assert states.bellman_hist.shape == states.v_hist.shape
+    assert states.count.shape == (2,)
+    assert states.coeff.shape == (2, planner.memory + 1)
 
 
 def test_accelerated_policy_iteration_matches_degree_two_recurrence() -> None:
