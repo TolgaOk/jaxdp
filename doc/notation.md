@@ -625,29 +625,33 @@ expected rewards.
 
 ## Value iteration
 
-For initial values $v_0$ and $q_0$, fixed-step value iteration computes
+State- and action-value iteration apply one Bellman optimality update at a time:
 
 $$
-v_n=(\mathcal{T}^{*}_{V})^n v_0,
+v_{k+1}=\mathcal{T}^{*}_{V}v_k,
 \qquad
-q_n=(\mathcal{T}^{*}_{Q})^n q_0.
+q_{k+1}=\mathcal{T}^{*}_{Q}q_k.
 $$
 
-`ValueIteration(step=n).v(mdp, v_val, gamma)` and `.q(mdp, q_val, gamma)` apply these
-iterations exactly $n$ times.
+`ValueIteration(gamma).State` stores $v_k$, while `QValueIteration(gamma).State` stores $q_k$.
+Their `update(mdp, state)` methods apply the corresponding equation once. The caller owns repeated
+iteration, evaluation, and stopping.
 
 ## Policy iteration
 
-Starting from $\pi_0$, exact policy iteration alternates evaluation and greedy improvement:
+Every `PolicyIteration.State` stores a policy together with its exact state value. One update
+applies greedy improvement followed by exact evaluation:
 
 $$
-q^{\pi_k}=\mathcal{R}^{\pi_k}_{SA,\gamma}r,
+\pi_{k+1}=\mathcal{G}\mathcal{B}_{\gamma}v^{\pi_k},
 \qquad
-\pi_{k+1}=\mathcal{G}(q^{\pi_k}).
+v^{\pi_{k+1}}
+=\mathcal{R}_{S,\gamma}
+  (\bar{\mathcal{P}}^{\pi_{k+1}}_{S})r^{\pi_{k+1}}.
 $$
 
-`PolicyIteration(step=n).policy(mdp, policy, gamma)` returns $\pi_n$. Its `.v` and `.q` methods
-return the exact values of $\pi_n$.
+`PolicyIteration(gamma).init(mdp, policy)` evaluates the initial policy. Its
+`update(mdp, state)` method applies these equations once; the caller owns the loop.
 
 ## Expectations
 
@@ -712,9 +716,9 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{T}^{\mathrm{boltz}}_{Q,\tau}$ | $Q \rightarrow Q$ | `BoltzmannBellmanOp.q` |
 | $v^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow V$ | `policy_eval.v` |
 | $q^\pi$ | $\mathrm{MDP} \times \Pi \times [0,1) \rightarrow Q$ | `policy_eval.q` |
-| $(\mathcal{T}^{*}_{V})^n$ | $V \rightarrow V$ | `ValueIteration.v` |
-| $(\mathcal{T}^{*}_{Q})^n$ | $Q \rightarrow Q$ | `ValueIteration.q` |
-| $\pi_n$ | $\Pi \rightarrow \Pi$ | `PolicyIteration.policy` |
+| $\mathcal{T}^{*}_{V}$ | $V \rightarrow V$ | `ValueIteration.update` |
+| $\mathcal{T}^{*}_{Q}$ | $Q \rightarrow Q$ | `QValueIteration.update` |
+| $(\pi_k,v^{\pi_k})\mapsto(\pi_{k+1},v^{\pi_{k+1}})$ | $\Pi\times V \rightarrow \Pi\times V$ | `PolicyIteration.update` |
 | $r^\pi$ | $\mathrm{MDP} \times \Pi \rightarrow V$ | `make_mrp(...).reward` |
 | $r$ | $\mathrm{MDP} \rightarrow Q$ | Internal expected reward |
 | $\mathbb{E}_{\rho}[v]$ | $V\times\Delta_S\to\mathbb{R}$ | `expectation.s` |

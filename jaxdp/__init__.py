@@ -26,7 +26,7 @@ from jaxdp.operator import (
     resolvent,
     trans_op,
 )
-from jaxdp.planning import PolicyIteration, ValueIteration, policy_eval
+from jaxdp.planning import PolicyIteration, QValueIteration, ValueIteration, policy_eval
 
 __all__ = [
     "mapping",
@@ -51,6 +51,7 @@ __all__ = [
     "reward",
     "policy_eval",
     "ValueIteration",
+    "QValueIteration",
     "PolicyIteration",
     "expectation",
     "Occupancy",

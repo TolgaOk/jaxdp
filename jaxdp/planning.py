@@ -1,12 +1,16 @@
 """Planning solvers for finite Markov decision processes."""
 
+from __future__ import annotations
+
+from dataclasses import replace
+
 import chex
 import jax
 import jax.numpy as jnp
 
 from jaxdp.mapping import greedy_map, reward
 from jaxdp.mdp import MDP, make_mrp
-from jaxdp.operator import _assert_gamma, _assert_policy, resolvent
+from jaxdp.operator import bellman_opt_op, resolvent
 
 
 class PolicyEvaluation:
@@ -62,208 +66,149 @@ class PolicyEvaluation:
 
 @chex.dataclass(frozen=True)
 class ValueIteration:
-    r"""Namespace for fixed-step value iteration.
+    r"""Perform one state-value iteration update at a time.
 
-    The ``q`` and ``v`` methods apply the corresponding Bellman optimality operator ``step``
-    times:
+    Each update applies
 
     .. math::
 
-        q_n=(\mathcal{T}^{*}_{Q})^nq_0,
-        \qquad
-        v_n=(\mathcal{T}^{*}_{V})^nv_0.
+        v_{k+1}=\mathcal{T}^{*}_{V}v_k.
 
     Attributes:
-        step: Number of Bellman optimality updates.
+        gamma: Scalar discount in the interval ``[0, 1)``.
 
-    Methods:
-        q: Iterate action values.
-        v: Iterate state values.
+    Public dataclasses:
+        State: Current state-value iterate.
+
+    Public methods:
+        init: Initialize zero state values.
+        update: Apply one Bellman optimality update.
     """
 
-    step: int = 1
+    gamma: float
 
-    def q(
-        self,
-        mdp: MDP,
-        q_val: jax.Array,
-        gamma: float | jax.Array,
-    ) -> jax.Array:
-        """Apply fixed-step Bellman optimality updates to action values.
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic state-value iterate.
 
-        Args:
-            mdp: Finite Markov decision process.
-            q_val: Initial action values with shape ``(A, S)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
-
-        Returns:
-            Action values after ``step`` updates with shape ``(A, S)``.
+        Attributes:
+            v_val: State values with shape ``(S,)``.
         """
-        chex.assert_type(self.step, int, custom_message="step must be an integer")
-        chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
-        gamma_array = _assert_gamma(gamma)
-        chex.assert_shape(q_val, (mdp.action_size, mdp.state_size))
-        reward_sa = reward.sa(mdp)
 
-        def update(val: jax.Array, _: None) -> tuple[jax.Array, None]:
-            next_val = reward_sa + gamma_array * jnp.einsum(
-                "axs,x,x->as",
-                mdp.transition,
-                jnp.max(val, axis=0),
-                1 - mdp.terminal,
-            )
-            return next_val, None
+        v_val: jax.Array
 
-        q_val, _ = jax.lax.scan(update, q_val, xs=None, length=self.step)
-        return q_val
+    def init(self, mdp: MDP) -> ValueIteration.State:
+        """Initialize zero state values for an MDP."""
+        return self.State(
+            v_val=jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype),
+        )
 
-    def v(
-        self,
-        mdp: MDP,
-        v_val: jax.Array,
-        gamma: float | jax.Array,
-    ) -> jax.Array:
-        """Apply fixed-step Bellman optimality updates to state values.
+    def update(self, mdp: MDP, state: ValueIteration.State) -> ValueIteration.State:
+        """Apply one state-value Bellman optimality update."""
+        v_val = bellman_opt_op.v(mdp, state.v_val, self.gamma)
+        return replace(state, v_val=v_val)
 
-        Args:
-            mdp: Finite Markov decision process.
-            v_val: Initial state values with shape ``(S,)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
 
-        Returns:
-            State values after ``step`` updates with shape ``(S,)``.
+@chex.dataclass(frozen=True)
+class QValueIteration:
+    r"""Perform one action-value iteration update at a time.
+
+    Each update applies
+
+    .. math::
+
+        q_{k+1}=\mathcal{T}^{*}_{Q}q_k.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+
+    Public dataclasses:
+        State: Current action-value iterate.
+
+    Public methods:
+        init: Initialize zero action values.
+        update: Apply one Bellman optimality update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic action-value iterate.
+
+        Attributes:
+            q_val: Action values with shape ``(A, S)``.
         """
-        chex.assert_type(self.step, int, custom_message="step must be an integer")
-        chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
-        gamma_array = _assert_gamma(gamma)
-        chex.assert_shape(v_val, (mdp.state_size,))
-        reward_sa = reward.sa(mdp)
 
-        def update(val: jax.Array, _: None) -> tuple[jax.Array, None]:
-            next_val = jnp.max(
-                reward_sa
-                + gamma_array
-                * jnp.einsum(
-                    "axs,x,x->as",
-                    mdp.transition,
-                    val,
-                    1 - mdp.terminal,
-                ),
-                axis=0,
-            )
-            return next_val, None
+        q_val: jax.Array
 
-        v_val, _ = jax.lax.scan(update, v_val, xs=None, length=self.step)
-        return v_val
+    def init(self, mdp: MDP) -> QValueIteration.State:
+        """Initialize zero action values for an MDP."""
+        return self.State(
+            q_val=jnp.zeros(
+                (mdp.action_size, mdp.state_size),
+                dtype=mdp.reward.dtype,
+            ),
+        )
+
+    def update(self, mdp: MDP, state: QValueIteration.State) -> QValueIteration.State:
+        """Apply one action-value Bellman optimality update."""
+        q_val = bellman_opt_op.q(mdp, state.q_val, self.gamma)
+        return replace(state, q_val=q_val)
 
 
 @chex.dataclass(frozen=True)
 class PolicyIteration:
-    r"""Namespace for fixed-step exact policy iteration.
+    r"""Perform one exact policy iteration update at a time.
 
-    Starting from an initial policy, each update applies
+    Every state satisfies ``v_val = v^policy``. Each update applies
 
     .. math::
 
-        q^{\pi_k} = \mathcal{R}^{\pi_k}_{SA,\gamma}r,
+        \pi_{k+1}=\mathcal{G}\mathcal{B}_{\gamma}v^{\pi_k},
         \qquad
-        \pi_{k+1}=\mathcal{G}(q^{\pi_k}).
+        v^{\pi_{k+1}}
+        =\mathcal{R}_{S,\gamma}
+          (\bar{\mathcal{P}}^{\pi_{k+1}}_{S})r^{\pi_{k+1}}.
 
     Attributes:
-        step: Number of policy-improvement updates.
+        gamma: Scalar discount in the interval ``[0, 1)``.
 
-    Methods:
-        q: Return action values for the final policy.
-        v: Return state values for the final policy.
-        policy: Return the final policy.
+    Public dataclasses:
+        State: Current policy and its exact state values.
+
+    Public methods:
+        init: Evaluate an initial policy exactly.
+        update: Improve and evaluate the policy once.
     """
 
-    step: int = 1
+    gamma: float
 
-    def q(
-        self,
-        mdp: MDP,
-        policy: jax.Array,
-        gamma: float | jax.Array,
-    ) -> jax.Array:
-        """Return action values after fixed-step policy improvement.
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic exact policy-iteration state.
 
-        Args:
-            mdp: Finite Markov decision process.
-            policy: Initial action probabilities with shape ``(A, S)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
-
-        Returns:
-            Final-policy action values with shape ``(A, S)``.
+        Attributes:
+            policy: Action probabilities with shape ``(A, S)``.
+            v_val: Exact policy state values with shape ``(S,)``.
         """
-        policy = self.policy(mdp, policy, gamma)
-        return policy_eval.q(mdp, policy, gamma)
 
-    def v(
-        self,
-        mdp: MDP,
-        policy: jax.Array,
-        gamma: float | jax.Array,
-    ) -> jax.Array:
-        """Return state values after fixed-step policy improvement.
+        policy: jax.Array
+        v_val: jax.Array
 
-        Args:
-            mdp: Finite Markov decision process.
-            policy: Initial action probabilities with shape ``(A, S)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
+    def init(self, mdp: MDP, policy: jax.Array) -> PolicyIteration.State:
+        """Initialize from an exactly evaluated policy."""
+        v_val = policy_eval.v(mdp, policy, self.gamma)
+        return self.State(policy=policy, v_val=v_val)
 
-        Returns:
-            Final-policy state values with shape ``(S,)``.
-        """
-        policy = self.policy(mdp, policy, gamma)
-        return policy_eval.v(mdp, policy, gamma)
-
-    def policy(
-        self,
-        mdp: MDP,
-        policy: jax.Array,
-        gamma: float | jax.Array,
-    ) -> jax.Array:
-        """Return the policy after fixed-step policy improvement.
-
-        Args:
-            mdp: Finite Markov decision process.
-            policy: Initial action probabilities with shape ``(A, S)``.
-            gamma: Scalar discount in the interval ``[0, 1)``.
-
-        Returns:
-            Improved action probabilities with shape ``(A, S)``.
-        """
-        chex.assert_type(self.step, int, custom_message="step must be an integer")
-        chex.assert_scalar_non_negative(self.step, custom_message="step must be nonnegative")
-        gamma_array = _assert_gamma(gamma)
-        _assert_policy(mdp, policy)
-        reward_sa = reward.sa(mdp)
-        not_terminal = 1 - mdp.terminal
-        identity = jnp.eye(mdp.state_size, dtype=mdp.transition.dtype)
-
-        def improve(pol: jax.Array, _: None) -> tuple[jax.Array, None]:
-            p_s = jnp.einsum(
-                "as,axs,x->xs",
-                pol,
-                mdp.transition,
-                not_terminal,
-            )
-            reward_s = jnp.einsum("as,as->s", pol, reward_sa)
-            v_val = jnp.linalg.solve(identity - gamma_array * p_s.T, reward_s)
-            q_val = reward_sa + gamma_array * jnp.einsum(
-                "axs,x,x->as",
-                mdp.transition,
-                v_val,
-                not_terminal,
-            )
-            return greedy_map.q(q_val), None
-
-        policy, _ = jax.lax.scan(improve, policy, xs=None, length=self.step)
-        return policy
+    def update(self, mdp: MDP, state: PolicyIteration.State) -> PolicyIteration.State:
+        """Apply one greedy improvement and exact policy evaluation."""
+        policy = greedy_map.v(mdp, state.v_val, self.gamma)
+        v_val = policy_eval.v(mdp, policy, self.gamma)
+        return replace(state, policy=policy, v_val=v_val)
 
 
 policy_eval = PolicyEvaluation
 
 
-__all__ = ["policy_eval", "ValueIteration", "PolicyIteration"]
+__all__ = ["policy_eval", "ValueIteration", "QValueIteration", "PolicyIteration"]

@@ -6,7 +6,8 @@ See the concise [naming and notation reference](doc/README.md) for the mathemati
 
 ## Vectorization
 
-**`jaxdp`** functions are fully compatible with JAX transformations. They are stateless with memory explicitly provided to functions.
+**`jaxdp`** components are compatible with JAX transformations. Iterative planners keep dynamic
+values in explicit `State` pytrees and expose one update at a time.
 
 Chex validates array shapes and numerical values. Shape assertions run during ordinary JAX
 tracing. Numerical validation failures raise `AssertionError`. Value assertions require
@@ -27,6 +28,10 @@ checked_evaluate = chex.chexify(
     async_check=False,
 )
 v_vals = checked_evaluate(policies)
+
+planner = jaxdp.ValueIteration(gamma=0.99)
+state = planner.init(mdp)
+state = jax.jit(planner.update)(mdp, state)
 ```
 
 ### Algorithm Example
