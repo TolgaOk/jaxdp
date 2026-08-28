@@ -31,7 +31,7 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(\mathcal{T}^{\mathrm{soft}}_{V,\tau},\mathcal{T}^{\mathrm{soft}}_{Q,\tau}\) | `SoftBellmanOptOp.v`, `.q` | Entropy-regularized Bellman operators |
 | \(\mathcal{T}^{\mathrm{mm}}_{V,\tau},\mathcal{T}^{\mathrm{mm}}_{Q,\tau}\) | `MellowmaxBellmanOptOp.v`, `.q` | KL-regularized Bellman operators |
 | \(\mathcal{T}^{\mathrm{boltz}}_{V,\tau},\mathcal{T}^{\mathrm{boltz}}_{Q,\tau}\) | `BoltzmannBellmanOp.v`, `.q` | Boltzmann-expectation Bellman operators |
-| \(\mathcal{G},\mathcal{S}_{\eta},\mathcal{G}_{\epsilon}\) | `Greedy`, `Soft`, `EpsilonGreedy` | Value-to-policy selectors |
+| \(\mathcal{G},\mathcal{S}_{\eta},\mathcal{G}_{\epsilon}\) | `GreedyMap`, `SoftGreedyMap`, `EpsilonGreedy` | Value-to-policy mappings |
 | \(\mathbb{E}_{\rho}[v],\mathbb{E}_{\xi}[q]\) | `Expectation.s`, `Expectation.sa` | Scalar expectations |
 | \(\rho_n,\xi_n\) | `Occupancy.v`, `Occupancy.q` | Finite-step distributions |
 | \(\rho_\infty,\xi_\infty\) | `Stationary.v`, `Stationary.q` | Invariant distributions |

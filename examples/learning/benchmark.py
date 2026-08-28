@@ -10,13 +10,13 @@ from flax import struct
 from policies import epsilon_greedy
 from utils import log_results
 
+from jaxdp.mapping import GreedyMap
 from jaxdp.mdp import MDP
 from jaxdp.mdp.garnet import garnet_mdp
 from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.sampler.mdp import sample_initial, sample_step
 from jaxdp.mdp.simple_graph import graph_mdp
 from jaxdp.operator import BellmanOptOp
-from jaxdp.policy import Greedy
 
 jax.config.update("jax_enable_x64", True)
 
@@ -385,7 +385,7 @@ class loop:
         Returns:
             loop.EvalResult dataclass with evaluation statistics
         """
-        policy = Greedy().q(state.alg_state.q_vals)
+        policy = GreedyMap().q(state.alg_state.q_vals)
 
         def run_episode(key):
             result = sampler.episode(args.mdp, policy, args.max_ep_len, key)

@@ -4,9 +4,9 @@ import chex
 import jax
 import jax.numpy as jnp
 
+from jaxdp.mapping import GreedyMap
 from jaxdp.mdp import MDP, make_mrp
 from jaxdp.operator import Resolvent, _assert_gamma, _assert_policy
-from jaxdp.policy import Greedy
 
 
 @chex.dataclass(frozen=True)
@@ -240,7 +240,7 @@ class PolicyIteration:
         reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
         not_terminal = 1 - mdp.terminal
         identity = jnp.eye(mdp.state_size, dtype=mdp.transition.dtype)
-        greedy = Greedy()
+        greedy = GreedyMap()
 
         def improve(pol: jax.Array, _: None) -> tuple[jax.Array, None]:
             p_s = jnp.einsum(

@@ -2,10 +2,9 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.distribution import Occupancy
+from jaxdp.mapping import EpsilonGreedy, Occupancy, SoftGreedyMap
 from jaxdp.mdp import MDP
 from jaxdp.operator import TransOp
-from jaxdp.policy import EpsilonGreedy, Soft
 
 
 def _two_state_mdp() -> MDP:
@@ -40,7 +39,7 @@ def test_value_policies_apply_one_step_lookahead() -> None:
     gamma = 0.5
     reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
     q_value = reward + gamma * TransOp().sa(mdp, value)
-    soft = Soft(temperature=2.0)
+    soft = SoftGreedyMap(temperature=2.0)
     epsilon_greedy = EpsilonGreedy(epsilon=0.2)
 
     assert jnp.allclose(
@@ -70,7 +69,7 @@ def test_state_and_action_occupancies_are_consistent() -> None:
 
 def test_completed_api_supports_jit_and_vmap() -> None:
     mdp = _two_state_mdp()
-    soft = Soft(temperature=2.0)
+    soft = SoftGreedyMap(temperature=2.0)
     values = jnp.array([[4.0, 8.0], [8.0, 4.0]])
 
     policies = chex.chexify(

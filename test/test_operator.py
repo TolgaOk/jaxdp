@@ -6,7 +6,7 @@ import jax.numpy as jnp
 import pytest
 
 import jaxdp
-from jaxdp.distribution import Expectation
+from jaxdp.mapping import Expectation, GreedyMap
 from jaxdp.mdp import MDP, make_mrp
 from jaxdp.operator import (
     AdjTransOp,
@@ -18,7 +18,6 @@ from jaxdp.operator import (
     TransOp,
 )
 from jaxdp.planning import PolicyEvaluation
-from jaxdp.policy import Greedy
 
 
 def _two_state_mdp() -> MDP:
@@ -71,7 +70,7 @@ def test_transition_operators_and_expectation() -> None:
     sa_dist = jnp.array([[0.1, 0.2], [0.3, 0.4]])
     reward = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
     q_val = reward + 0.5 * sa_vec
-    dist = Greedy().q(q_val) * mdp.initial
+    dist = GreedyMap().q(q_val) * mdp.initial
 
     assert jnp.array_equal(sa_vec, jnp.array([[4.0, 8.0], [8.0, 4.0]]))
     assert jnp.array_equal(s_vec, jnp.array([6.0, 6.0]))

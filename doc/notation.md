@@ -151,10 +151,10 @@ $$
 from its source `MDP`. Kernel induction reduces the conditioning domain from state-action pairs to
 states. Subsequent transition operators use the resulting state kernel.
 
-## Policy selectors
+## Value-to-policy mappings
 
-A policy selector maps a value function into a policy kernel. For action values, deterministic
-greedy selection is
+A value-to-policy mapping transforms a value function into a policy kernel. For action values, the
+deterministic greedy mapping is
 
 $$
 \mathcal{G}:Q\longrightarrow\Pi,
@@ -164,8 +164,8 @@ a^*(s)=\min\!\mathop{\arg\max}_{a\in\mathcal{A}}q(s,a),
 \mathcal{G}(q)(a\mid s)=\mathbf{1}\{a=a^*(s)\}.
 $$
 
-The minimum supplies the deterministic lowest-index tie rule used by `Greedy.q`. Softmax and
-epsilon-greedy selection are the maps
+The minimum supplies the deterministic lowest-index tie rule used by `GreedyMap.q`. Softmax and
+epsilon-greedy mappings are
 
 $$
 \mathcal{S}_{\eta}(q)(a\mid s)
@@ -183,9 +183,9 @@ $$
 \qquad 0\leq\epsilon\leq 1.
 $$
 
-`Greedy.q`, `Soft.q`, and `EpsilonGreedy.q` implement these selectors. Their `v` methods first
-apply the one-step backup $\mathcal{B}_{\gamma}:V\to Q$ defined below and then apply the
-corresponding selector. Softmax policy selection alone leaves the Bellman objective unchanged. A
+`GreedyMap.q`, `SoftGreedyMap.q`, and `EpsilonGreedy.q` implement these mappings. Their `v`
+methods first apply the one-step backup $\mathcal{B}_{\gamma}:V\to Q$ defined below and then apply
+the corresponding mapping. A softmax mapping alone leaves the Bellman objective unchanged. A
 regularized Bellman operator additionally changes the action reduction and its fixed point.
 
 ## Transition operators
@@ -326,8 +326,8 @@ $$
 $$
 
 Its domain is $\mathbb{R}^{|\mathcal{S}|}$ and its codomain is
-$\mathbb{R}^{|\mathcal{S}| \times |\mathcal{A}|}$. Bellman and policy namespaces compose the
-expected reward, discount, and `TransOp.sa` directly.
+$\mathbb{R}^{|\mathcal{S}| \times |\mathcal{A}|}$. Bellman operators and value-to-policy mappings
+compose the expected reward, discount, and `TransOp.sa` directly.
 
 Two reductions map action values back to state values. Policy reduction is
 
@@ -513,8 +513,8 @@ review.
   changing nonoptimal action values or action gaps.
 
 jaxdp 0.4 is scoped to exact discounted scalar operations on finite MDPs and MRPs. Its core consists
-of kernel induction, backward and forward transition operators, action reductions, policy
-selectors, Bellman policy and optimality operators, exact policy evaluation, and finite-state
+of kernel induction, backward and forward transition operators, action reductions, value-to-policy
+mappings, Bellman policy and optimality operators, exact policy evaluation, and finite-state
 measure propagation. Each additional family requires a separate mathematical and API review.
 
 ## Resolvents
@@ -630,11 +630,11 @@ marked for review has no public name until its role and composition are approved
 | $\mathcal{I}_{P}$ | $\mathcal{K}_{SA\to S}\times\Pi\to\mathcal{K}_{S\to S}$ | Part of `make_mrp` |
 | $\mathcal{I}_{r}$ | $Q\times\Pi\to V$ | `make_mrp(...).reward` |
 | $\mathcal{I}_{\mathrm{MRP}}$ | $\mathrm{MDP}\times\Pi\to\mathrm{MRP}$ | `make_mrp` |
-| $\mathcal{G}$ | $Q\to\Pi$ | `Greedy.q` |
-| $\mathcal{S}_{\eta}$ | $Q\to\Pi$ | `Soft.q` |
+| $\mathcal{G}$ | $Q\to\Pi$ | `GreedyMap.q` |
+| $\mathcal{S}_{\eta}$ | $Q\to\Pi$ | `SoftGreedyMap.q` |
 | $\mathcal{G}_{\epsilon}$ | $Q\to\Pi$ | `EpsilonGreedy.q` |
-| $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `Greedy.v` |
-| $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `Soft.v` |
+| $\mathcal{G}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `GreedyMap.v` |
+| $\mathcal{S}_{\eta}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `SoftGreedyMap.v` |
 | $\mathcal{G}_{\epsilon}\mathcal{B}_{\gamma}$ | $V\to\Pi$ | `EpsilonGreedy.v` |
 | $\bar{\mathcal{P}}_{SA}$ | $V\to Q$ | `TransOp.sa` |
 | $\bar{\mathcal{P}}_S$ | $V\to V$ | `TransOp.s` |

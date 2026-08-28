@@ -3,10 +3,10 @@ import jax
 import jax.numpy as jnp
 import pytest
 
+from jaxdp.mapping import GreedyMap
 from jaxdp.mdp import MDP
 from jaxdp.operator import BellmanOptOp
 from jaxdp.planning import PolicyEvaluation, PolicyIteration, ValueIteration
-from jaxdp.policy import Greedy
 
 
 def _two_state_mdp() -> MDP:
@@ -50,7 +50,7 @@ def test_policy_iteration_evaluates_then_improves() -> None:
     policy = jnp.full((2, 2), 0.5)
     evaluation = PolicyEvaluation()
 
-    expected = Greedy().q(evaluation.q(mdp, policy, 0.5))
+    expected = GreedyMap().q(evaluation.q(mdp, policy, 0.5))
     actual = PolicyIteration().policy(mdp, policy, 0.5)
 
     assert jnp.array_equal(actual, expected)
