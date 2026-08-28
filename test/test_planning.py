@@ -18,6 +18,7 @@ from jaxdp.planning import (
     QValueIteration,
     RankOneValueIteration,
     SafeAcceleratedValueIteration,
+    SafeAndersonValueIteration,
     ValueIteration,
     policy_eval,
 )
@@ -42,6 +43,7 @@ def _two_state_mdp() -> MDP:
 def test_public_planning_names() -> None:
     assert jaxdp.AcceleratedPolicyIteration is AcceleratedPolicyIteration
     assert jaxdp.AndersonValueIteration is AndersonValueIteration
+    assert jaxdp.SafeAndersonValueIteration is SafeAndersonValueIteration
     assert jaxdp.ValueIteration is ValueIteration
     assert jaxdp.QValueIteration is QValueIteration
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
@@ -325,6 +327,89 @@ def test_anderson_value_iteration_composes_with_jit_and_vmap() -> None:
     assert states.bellman_hist.shape == states.v_hist.shape
     assert states.count.shape == (2,)
     assert states.coeff.shape == (2, planner.memory + 1)
+
+
+def test_safe_anderson_value_iteration_matches_type_one_update() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAndersonValueIteration(gamma=0.5, memory=2, theta=0.9)
+    state = planner.init(mdp, jnp.zeros(mdp.state_size))
+
+    step_vec = jnp.array([2.0, 3.0])
+    residual_diff = jnp.array([0.5, 2.0])
+    eta = jnp.sum(step_vec * residual_diff) / jnp.sum(step_vec**2)
+    powell = (1 - planner.theta) / (1 - eta)
+    y_tilde = powell * residual_diff - (1 - powell) * jnp.array([-2.0, -3.0])
+    expected_left = step_vec - y_tilde
+    expected_right = step_vec / jnp.sum(step_vec * y_tilde)
+    assert jnp.allclose(state.v_val, jnp.array([2.0, 3.0]))
+    assert jnp.allclose(state.residual, jnp.array([-1.5, -1.0]))
+    assert jnp.allclose(state.s_hist[0], step_vec / jnp.linalg.norm(step_vec))
+    assert jnp.allclose(state.h_left[0], expected_left)
+    assert jnp.allclose(state.h_right[0], expected_right)
+    assert state.count == 1
+    assert state.accepted_count == 1
+    assert state.step == 1
+    assert state.accepted
+    assert not state.restarted
+
+    updated = planner.update(mdp, state)
+
+    h_residual = state.residual + state.h_left[0] * jnp.sum(state.h_right[0] * state.residual)
+    assert updated.accepted
+    assert jnp.allclose(updated.v_val, state.v_val - h_residual)
+    assert updated.count == 2
+    assert updated.accepted_count == 2
+    assert updated.step == 2
+
+
+def test_safe_anderson_value_iteration_falls_back_to_vi() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAndersonValueIteration(gamma=0.5, memory=2, safeguard=0.01)
+    state = planner.init(mdp)
+
+    updated = planner.update(mdp, state)
+
+    assert not updated.accepted
+    assert updated.accepted_count == state.accepted_count
+    assert jnp.allclose(updated.v_val, state.v_val - state.residual)
+
+
+def test_safe_anderson_value_iteration_restarts_at_memory_limit() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAndersonValueIteration(gamma=0.5, memory=1)
+    state = planner.init(mdp)
+
+    updated = planner.update(mdp, state)
+
+    assert updated.restarted
+    assert updated.count == 1
+
+
+def test_safe_anderson_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAndersonValueIteration(gamma=0.5, memory=2)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.residual.shape == v_vals.shape
+    assert states.s_hist.shape == (2, planner.memory, mdp.state_size)
+    assert states.h_left.shape == states.s_hist.shape
+    assert states.h_right.shape == states.s_hist.shape
+    assert states.count.shape == (2,)
+    assert states.accepted_count.shape == (2,)
+    assert states.step.shape == (2,)
+    assert states.accepted.shape == (2,)
+    assert states.restarted.shape == (2,)
 
 
 def test_accelerated_policy_iteration_matches_degree_two_recurrence() -> None:

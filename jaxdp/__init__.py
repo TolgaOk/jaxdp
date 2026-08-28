@@ -36,6 +36,7 @@ from jaxdp.planning import (
     QValueIteration,
     RankOneValueIteration,
     SafeAcceleratedValueIteration,
+    SafeAndersonValueIteration,
     ValueIteration,
     policy_eval,
 )
@@ -70,6 +71,7 @@ __all__ = [
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
     "AndersonValueIteration",
+    "SafeAndersonValueIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",
     "expectation",

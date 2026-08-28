@@ -46,6 +46,7 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(v_{s+1}=\operatorname{S\text{-}AVI}(v_s,v_{s-1})\) | `SafeAcceleratedValueIteration.update` | One safeguarded A-VI update |
 | \(v_{s+1}=v_s-\alpha(v_s-\mathcal{T}^{*}_{V}v_s)+\beta(v_s-v_{s-1})\) | `MomentumValueIteration.update` | One M-VI update |
 | \(v_{k+1}=\sum_i\alpha_i\mathcal{T}^{*}_{V}v_i\) | `AndersonValueIteration.update` | One regularized Anderson VI update |
+| \(v_{k+1}=\operatorname{AA\text{-}I\text{-}S}(v_k,H_k)\) | `SafeAndersonValueIteration.update` | One safeguarded Type-I Anderson update |
 | \(v_{k+1}=\mathcal{T}^{*}_{V}v_k+\alpha_k\mathbf{1}\) | `RankOneValueIteration.update` | One R1-VI update |
 | \(d\mathrm{A\text{-}PI}\) | `AcceleratedPolicyIteration.update` | One evaluation or improvement micro-step |
 | \(\pi_{k+1}=\mathcal{G}\mathcal{B}_{\gamma}v^{\pi_k}\) | `PolicyIteration.update` | One exact policy iteration update |

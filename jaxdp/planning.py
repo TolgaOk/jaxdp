@@ -697,6 +697,281 @@ class AndersonValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class SafeAndersonValueIteration:
+    r"""Perform one safeguarded Type-I Anderson value-iteration update at a time.
+
+    For the Bellman residual
+
+    .. math::
+
+        g(v)=v-\mathcal{T}^{*}_{V}v,
+
+    each update applies Algorithm 3 of Globally Convergent Type-I Anderson Acceleration:
+
+    .. math::
+
+        \tilde{v}_{k+1}=v_k-H_kg_k,
+        \qquad
+        H_k=H_{k-1}
+        +\frac{(s_{k-1}-H_{k-1}\tilde{y}_{k-1})
+        \hat{s}_{k-1}^{\top}H_{k-1}}
+        {\hat{s}_{k-1}^{\top}H_{k-1}\tilde{y}_{k-1}},
+
+    where Powell regularization constructs ``tilde_y`` and restart checking keeps the recent
+    directions strongly independent. The trial is accepted only when
+
+    .. math::
+
+        \lVert g_k\rVert_2
+        \leq D\lVert g_0\rVert_2(n_{AA}+1)^{-(1+\epsilon)};
+
+    otherwise, the update takes an ordinary Bellman step. The inverse-Jacobian approximation is
+    stored as fixed-shape rank-one factors rather than a dense matrix. For discounted value
+    iteration, the paper's global convergence result uses an unrelaxed Bellman fallback.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``(0, 1)``.
+        memory: Maximum number of inverse-Jacobian rank-one factors.
+        theta: Powell regularization threshold in ``(0, 1)``.
+        tau: Restart threshold in ``(0, 1)``.
+        safeguard: Positive safeguard scale ``D``.
+        decay: Positive safeguard exponent offset ``epsilon``.
+
+    Public dataclasses:
+        State: Current values, residual, matrix-free factors, and safeguard counters.
+
+    Public methods:
+        init: Initialize with the first safeguarded Bellman step.
+        update: Apply one stabilized Type-I Anderson update.
+    """
+
+    gamma: float
+    memory: int = 5
+    theta: float = 0.01
+    tau: float = 0.001
+    safeguard: float = 1e6
+    decay: float = 1e-6
+
+    @chex.dataclass(frozen=True)
+    class State:
+        r"""Dynamic safeguarded Type-I Anderson state.
+
+        The factors represent
+
+        .. math::
+
+            Hx=x+\sum_i h_i^{\mathrm{left}}
+            \langle h_i^{\mathrm{right}},x\rangle.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            residual: Current Bellman residual with shape ``(S,)``.
+            s_hist: Normalized restart directions with shape ``(memory, S)``.
+            h_left: Left inverse-Jacobian factors with shape ``(memory, S)``.
+            h_right: Right inverse-Jacobian factors with shape ``(memory, S)``.
+            count: Number of active history rows.
+            initial_residual: Initial residual norm.
+            accepted_count: Number of accepted Anderson trials.
+            step: Number of completed updates.
+            accepted: Whether the latest trial was accepted.
+            restarted: Whether the latest inverse-Jacobian update restarted.
+        """
+
+        v_val: jax.Array
+        residual: jax.Array
+        s_hist: jax.Array
+        h_left: jax.Array
+        h_right: jax.Array
+        count: jax.Array
+        initial_residual: jax.Array
+        accepted_count: jax.Array
+        step: jax.Array
+        accepted: jax.Array
+        restarted: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> SafeAndersonValueIteration.State:
+        """Initialize from state values and take the first Bellman step."""
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        bellman_v = bellman_opt_op.v(mdp, v_val, self.gamma)
+        v_val = v_val.astype(bellman_v.dtype)
+        residual = v_val - bellman_v
+        state = self.State(
+            v_val=v_val,
+            residual=residual,
+            s_hist=jnp.zeros((self.memory, mdp.state_size), dtype=bellman_v.dtype),
+            h_left=jnp.zeros((self.memory, mdp.state_size), dtype=bellman_v.dtype),
+            h_right=jnp.zeros((self.memory, mdp.state_size), dtype=bellman_v.dtype),
+            count=jnp.asarray(0, dtype=jnp.int32),
+            initial_residual=jnp.linalg.norm(residual),
+            accepted_count=jnp.asarray(0, dtype=jnp.int32),
+            step=jnp.asarray(0, dtype=jnp.int32),
+            accepted=jnp.asarray(False),
+            restarted=jnp.asarray(False),
+        )
+        return self.update(mdp, state)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: SafeAndersonValueIteration.State,
+    ) -> SafeAndersonValueIteration.State:
+        """Apply one Powell-regularized, restarted, and safeguarded Type-I update."""
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        gamma = jnp.asarray(self.gamma)
+        theta = jnp.asarray(self.theta)
+        tau = jnp.asarray(self.tau)
+        safeguard = jnp.asarray(self.safeguard)
+        decay = jnp.asarray(self.decay)
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.residual, (mdp.state_size,))
+        chex.assert_shape(state.s_hist, (self.memory, mdp.state_size))
+        chex.assert_shape(state.h_left, (self.memory, mdp.state_size))
+        chex.assert_shape(state.h_right, (self.memory, mdp.state_size))
+        chex.assert_shape(state.count, ())
+        chex.assert_shape(state.initial_residual, ())
+        chex.assert_shape(state.accepted_count, ())
+        chex.assert_shape(state.step, ())
+        chex.assert_shape(state.accepted, ())
+        chex.assert_shape(state.restarted, ())
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(theta, (), custom_message="theta must be scalar")
+        chex.assert_shape(tau, (), custom_message="tau must be scalar")
+        chex.assert_shape(safeguard, (), custom_message="safeguard must be scalar")
+        chex.assert_shape(decay, (), custom_message="decay must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, theta, tau, safeguard, decay),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (theta > 0) & (theta < 1),
+            jnp.asarray(True),
+            custom_message="theta must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (tau > 0) & (tau < 1),
+            jnp.asarray(True),
+            custom_message="tau must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (safeguard > 0) & (decay > 0),
+            jnp.asarray(True),
+            custom_message="safeguard and decay must be positive",
+        )
+        chex.assert_trees_all_equal(
+            (state.count >= 0) & (state.count <= self.memory),
+            jnp.asarray(True),
+            custom_message="count must index the history",
+        )
+        chex.assert_trees_all_equal(
+            (state.initial_residual >= 0)
+            & (state.accepted_count >= 0)
+            & (state.step >= state.accepted_count),
+            jnp.asarray(True),
+            custom_message="safeguard counters must be nonnegative and ordered",
+        )
+
+        active = (jnp.arange(self.memory) < state.count).astype(state.v_val.dtype)
+        h_residual = state.residual + jnp.einsum(
+            "is,i->s",
+            state.h_left,
+            jnp.einsum("is,s->i", state.h_right, state.residual) * active,
+        )
+        trial = state.v_val - h_residual
+        trial_bellman = bellman_opt_op.v(mdp, trial, gamma)
+        trial_residual = trial - trial_bellman
+        step_vec = trial - state.v_val
+        residual_diff = trial_residual - state.residual
+        orthogonal = step_vec - jnp.einsum(
+            "is,i->s",
+            state.s_hist,
+            jnp.einsum("is,s->i", state.s_hist, step_vec) * active,
+        )
+        step_norm = jnp.linalg.norm(step_vec)
+        orthogonal_norm = jnp.linalg.norm(orthogonal)
+        restarted = (
+            (state.count >= self.memory) | (orthogonal_norm < tau * step_norm) | (step_norm == 0)
+        )
+        base_active = active * (~restarted).astype(state.v_val.dtype)
+        base_count = jnp.where(restarted, 0, state.count)
+        s_hist = jnp.where(restarted, jnp.zeros_like(state.s_hist), state.s_hist)
+        h_left = jnp.where(restarted, jnp.zeros_like(state.h_left), state.h_left)
+        h_right = jnp.where(restarted, jnp.zeros_like(state.h_right), state.h_right)
+        s_hat = jnp.where(restarted, step_vec, orthogonal)
+
+        h_residual_diff = residual_diff + jnp.einsum(
+            "is,i->s",
+            h_left,
+            jnp.einsum("is,s->i", h_right, residual_diff) * base_active,
+        )
+        s_hat_sq = jnp.sum(s_hat**2)
+        safe_s_hat_sq = jnp.where(s_hat_sq > 0, s_hat_sq, 1)
+        eta = jnp.sum(s_hat * h_residual_diff) / safe_s_hat_sq
+        sign = jnp.where(eta >= 0, 1, -1)
+        powell = jnp.where(
+            jnp.abs(eta) >= theta,
+            1,
+            (1 - sign * theta) / (1 - eta),
+        )
+        y_tilde = powell * residual_diff - (1 - powell) * state.residual
+        h_y_tilde = y_tilde + jnp.einsum(
+            "is,i->s",
+            h_left,
+            jnp.einsum("is,s->i", h_right, y_tilde) * base_active,
+        )
+        h_transpose_s = s_hat + jnp.einsum(
+            "is,i->s",
+            h_right,
+            jnp.einsum("is,s->i", h_left, s_hat) * base_active,
+        )
+        denominator = jnp.sum(s_hat * h_y_tilde)
+        safe_denominator = jnp.where(denominator != 0, denominator, 1)
+        new_h_left = step_vec - h_y_tilde
+        new_h_right = h_transpose_s / safe_denominator
+        s_hat_norm = jnp.linalg.norm(s_hat)
+        safe_s_hat_norm = jnp.where(s_hat_norm > 0, s_hat_norm, 1)
+        s_hist = s_hist.at[base_count].set(s_hat / safe_s_hat_norm)
+        h_left = h_left.at[base_count].set(new_h_left)
+        h_right = h_right.at[base_count].set(new_h_right)
+
+        accepted_scale = (state.accepted_count + 1).astype(state.v_val.dtype)
+        threshold = safeguard * state.initial_residual * accepted_scale ** (-1 - decay)
+        accepted = (state.step == 0) | (jnp.linalg.norm(state.residual) <= threshold)
+        fallback = state.v_val - state.residual
+        fallback_bellman = bellman_opt_op.v(mdp, fallback, gamma)
+        fallback_residual = fallback - fallback_bellman
+        v_val = jnp.where(accepted, trial, fallback)
+        residual = jnp.where(accepted, trial_residual, fallback_residual)
+        return replace(
+            state,
+            v_val=v_val,
+            residual=residual,
+            s_hist=s_hist,
+            h_left=h_left,
+            h_right=h_right,
+            count=base_count + 1,
+            accepted_count=state.accepted_count + accepted.astype(jnp.int32),
+            step=state.step + 1,
+            accepted=accepted,
+            restarted=restarted,
+        )
+
+
+@chex.dataclass(frozen=True)
 class RankOneValueIteration:
     r"""Perform one Rank-One Value Iteration update at a time.
 
@@ -1017,6 +1292,7 @@ __all__ = [
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
     "AndersonValueIteration",
+    "SafeAndersonValueIteration",
     "RankOneValueIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",
