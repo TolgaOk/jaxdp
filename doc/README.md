@@ -45,6 +45,7 @@ one model; leading batch axes are introduced with `jax.vmap`.
 | \(q_k=\beta_kq_0+(1-\beta_k)\mathcal{T}^{*}_{Q}q_{k-1}\) | `AnchoredQValueIteration.update` | One anchored action-value update |
 | \(v_{s+1}=\operatorname{S\text{-}AVI}(v_s,v_{s-1})\) | `SafeAcceleratedValueIteration.update` | One safeguarded A-VI update |
 | \(v_{s+1}=v_s-\alpha(v_s-\mathcal{T}^{*}_{V}v_s)+\beta(v_s-v_{s-1})\) | `MomentumValueIteration.update` | One M-VI update |
+| \((v_{k+1},z_{k+1})=\operatorname{PID}(v_k,v_{k-1},z_k)\) | `PIDValueIteration.update` | One fixed-gain PID VI update |
 | \(v_{k+1}=\sum_i\alpha_i\mathcal{T}^{*}_{V}v_i\) | `AndersonValueIteration.update` | One regularized Anderson VI update |
 | \(v_{k+1}=\operatorname{AA\text{-}I\text{-}S}(v_k,H_k)\) | `SafeAndersonValueIteration.update` | One safeguarded Type-I Anderson update |
 | \(v_{k+1}=\mathcal{T}^{*}_{V}v_k+\alpha_k\mathbf{1}\) | `RankOneValueIteration.update` | One R1-VI update |

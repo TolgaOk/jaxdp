@@ -14,6 +14,7 @@ from jaxdp.planning import (
     AnchoredValueIteration,
     AndersonValueIteration,
     MomentumValueIteration,
+    PIDValueIteration,
     PolicyIteration,
     QValueIteration,
     RankOneValueIteration,
@@ -51,6 +52,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
     assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
     assert jaxdp.MomentumValueIteration is MomentumValueIteration
+    assert jaxdp.PIDValueIteration is PIDValueIteration
     assert jaxdp.PolicyIteration is PolicyIteration
     assert jaxdp.policy_eval is policy_eval
 
@@ -272,6 +274,67 @@ def test_momentum_value_iteration_composes_with_jit_and_vmap() -> None:
 
     assert states.v_val.shape == v_vals.shape
     assert states.prev_v_val.shape == v_vals.shape
+
+
+def test_pid_value_iteration_matches_paper_recurrence() -> None:
+    mdp = _two_state_mdp()
+    planner = PIDValueIteration(
+        gamma=0.5,
+        kp=0.8,
+        ki=0.3,
+        kd=0.2,
+        alpha=0.25,
+        beta=0.75,
+    )
+    state = planner.init(mdp, jnp.array([1.0, -1.0]))
+
+    for _ in range(2):
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, planner.gamma)
+        residual = bellman_v - state.v_val
+        expected_z = planner.beta * state.z_val + planner.alpha * residual
+        expected_v = (
+            state.v_val
+            + planner.kp * residual
+            + planner.ki * expected_z
+            + planner.kd * (state.v_val - state.prev_v_val)
+        )
+        updated = planner.update(mdp, state)
+
+        assert jnp.array_equal(updated.prev_v_val, state.v_val)
+        assert jnp.allclose(updated.z_val, expected_z)
+        assert jnp.allclose(updated.v_val, expected_v)
+        state = updated
+
+
+def test_pid_value_iteration_defaults_to_value_iteration() -> None:
+    mdp = _two_state_mdp()
+    pid = PIDValueIteration(gamma=0.5)
+    value_iteration = ValueIteration(gamma=0.5)
+    pid_state = pid.init(mdp)
+    value_state = value_iteration.init(mdp)
+
+    for _ in range(3):
+        pid_state = pid.update(mdp, pid_state)
+        value_state = value_iteration.update(mdp, value_state)
+
+    assert jnp.allclose(pid_state.v_val, value_state.v_val)
+
+
+def test_pid_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = PIDValueIteration(gamma=0.5, ki=0.3, kd=0.2)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = jax.jit(jax.vmap(planner.init, in_axes=(None, 0)))
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.prev_v_val.shape == v_vals.shape
+    assert states.z_val.shape == v_vals.shape
 
 
 def test_anderson_value_iteration_matches_regularized_recurrence() -> None:

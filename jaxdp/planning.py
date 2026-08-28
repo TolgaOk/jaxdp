@@ -547,6 +547,122 @@ class MomentumValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class PIDValueIteration:
+    r"""Perform one fixed-gain PID Value Iteration update at a time.
+
+    Each update applies the PID VI recurrence
+
+    .. math::
+
+        z_{k+1}
+        = \beta z_k+\alpha(\mathcal{T}^{*}_{V}v_k-v_k),
+        \qquad
+        v_{k+1}
+        = v_k
+          +\kappa_p(\mathcal{T}^{*}_{V}v_k-v_k)
+          +\kappa_I z_{k+1}
+          +\kappa_d(v_k-v_{k-1}).
+
+    The default gains ``(kp, ki, kd) = (1, 0, 0)`` recover ordinary Value Iteration. Other gains
+    may accelerate or destabilize the recurrence depending on the MDP.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+        kp: Proportional gain ``kappa_p``.
+        ki: Integral gain ``kappa_I``.
+        kd: Derivative gain ``kappa_d``.
+        alpha: Bellman-residual input coefficient for the integrator.
+        beta: Previous-integrator coefficient.
+
+    Public dataclasses:
+        State: Current and previous values and the integrator state.
+
+    Public methods:
+        init: Initialize values and a zero integrator state.
+        update: Apply one fixed-gain PID VI update.
+    """
+
+    gamma: float
+    kp: float = 1.0
+    ki: float = 0.0
+    kd: float = 0.0
+    alpha: float = 0.05
+    beta: float = 0.95
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic PID Value Iteration state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            prev_v_val: Previous state values with shape ``(S,)``.
+            z_val: Integral state with shape ``(S,)``.
+        """
+
+        v_val: jax.Array
+        prev_v_val: jax.Array
+        z_val: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> PIDValueIteration.State:
+        """Initialize current and previous values with a zero integrator state."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        return self.State(
+            v_val=v_val,
+            prev_v_val=v_val,
+            z_val=jnp.zeros_like(v_val),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: PIDValueIteration.State,
+    ) -> PIDValueIteration.State:
+        """Apply one proportional-integral-derivative Bellman update."""
+        gamma = jnp.asarray(self.gamma)
+        kp = jnp.asarray(self.kp)
+        ki = jnp.asarray(self.ki)
+        kd = jnp.asarray(self.kd)
+        alpha = jnp.asarray(self.alpha)
+        beta = jnp.asarray(self.beta)
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.prev_v_val, (mdp.state_size,))
+        chex.assert_shape(state.z_val, (mdp.state_size,))
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(kp, (), custom_message="kp must be scalar")
+        chex.assert_shape(ki, (), custom_message="ki must be scalar")
+        chex.assert_shape(kd, (), custom_message="kd must be scalar")
+        chex.assert_shape(alpha, (), custom_message="alpha must be scalar")
+        chex.assert_shape(beta, (), custom_message="beta must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, kp, ki, kd, alpha, beta),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma >= 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1)",
+        )
+
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
+        residual = bellman_v - state.v_val
+        z_val = beta * state.z_val + alpha * residual
+        v_val = state.v_val + kp * residual + ki * z_val + kd * (state.v_val - state.prev_v_val)
+        return replace(
+            state,
+            v_val=v_val,
+            prev_v_val=state.v_val,
+            z_val=z_val,
+        )
+
+
+@chex.dataclass(frozen=True)
 class AndersonValueIteration:
     r"""Perform one Anderson-accelerated value iteration update at a time.
 
@@ -1291,6 +1407,7 @@ __all__ = [
     "AnchoredQValueIteration",
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
+    "PIDValueIteration",
     "AndersonValueIteration",
     "SafeAndersonValueIteration",
     "RankOneValueIteration",
