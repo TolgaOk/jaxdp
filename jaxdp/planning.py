@@ -115,6 +115,26 @@ class IterativePolicyEvaluation:
         if v_val is None:
             v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
         gamma = jnp.asarray(self.gamma)
+        self._assert_init(mdp, policy, v_val, gamma)
+        return self.State(policy=policy, v_val=v_val)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: IterativePolicyEvaluation.State,
+    ) -> IterativePolicyEvaluation.State:
+        """Apply one state-value Bellman policy update."""
+        self._assert_update(mdp, state)
+        v_val = bellman_op.v(mdp, state.policy, state.v_val, self.gamma)
+        return replace(state, v_val=v_val)
+
+    def _assert_init(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        v_val: jax.Array,
+        gamma: jax.Array,
+    ) -> None:
         chex.assert_shape(policy, (mdp.action_size, mdp.state_size))
         chex.assert_shape(v_val, (mdp.state_size,))
         chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
@@ -137,19 +157,15 @@ class IterativePolicyEvaluation:
             jnp.asarray(True),
             custom_message="gamma must be in [0, 1)",
         )
-        return self.State(policy=policy, v_val=v_val)
 
-    def update(
+    def _assert_update(
         self,
         mdp: MDP,
         state: IterativePolicyEvaluation.State,
-    ) -> IterativePolicyEvaluation.State:
-        """Apply one state-value Bellman policy update."""
+    ) -> None:
         chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
-        v_val = bellman_op.v(mdp, state.policy, state.v_val, self.gamma)
-        return replace(state, v_val=v_val)
 
 
 @chex.dataclass(frozen=True)
@@ -451,16 +467,9 @@ class SafeAcceleratedValueIteration:
         """Initialize from state values and take the paper's initial VI step."""
         if v_val is None:
             v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
-        chex.assert_shape(v_val, (mdp.state_size,))
         gamma = jnp.asarray(self.gamma)
         rate = (1 + gamma) / 2 if self.rate is None else jnp.asarray(self.rate)
-        chex.assert_shape(rate, (), custom_message="rate must be scalar")
-        chex.assert_tree_all_finite(rate, custom_message="rate must be finite")
-        chex.assert_trees_all_equal(
-            (rate >= gamma) & (rate < 1),
-            jnp.asarray(True),
-            custom_message="rate must be in [gamma, 1)",
-        )
+        self._assert_init(mdp, v_val, gamma, rate)
 
         next_v_val = bellman_opt_op.v(mdp, v_val, gamma)
         residual = jnp.max(jnp.abs(v_val - next_v_val))
@@ -485,6 +494,50 @@ class SafeAcceleratedValueIteration:
             if self.momentum is None
             else jnp.asarray(self.momentum)
         )
+        self._assert_update(mdp, state, gamma, rate, step_size, momentum)
+
+        extrapolated = state.v_val + momentum * (state.v_val - state.prev_v_val)
+        bellman_extrapolated = bellman_opt_op.v(mdp, extrapolated, gamma)
+        proposal = extrapolated - step_size * (extrapolated - bellman_extrapolated)
+        proposal_bellman = bellman_opt_op.v(mdp, proposal, gamma)
+        proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
+        bound = rate * state.bound
+        accepted = proposal_residual <= bound
+        fallback = bellman_opt_op.v(mdp, state.v_val, gamma)
+        v_val = jnp.where(accepted, proposal, fallback)
+        return replace(
+            state,
+            v_val=v_val,
+            prev_v_val=state.v_val,
+            bound=bound,
+            accepted=accepted,
+        )
+
+    def _assert_init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array,
+        gamma: jax.Array,
+        rate: jax.Array,
+    ) -> None:
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(rate, (), custom_message="rate must be scalar")
+        chex.assert_tree_all_finite(rate, custom_message="rate must be finite")
+        chex.assert_trees_all_equal(
+            (rate >= gamma) & (rate < 1),
+            jnp.asarray(True),
+            custom_message="rate must be in [gamma, 1)",
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: SafeAcceleratedValueIteration.State,
+        gamma: jax.Array,
+        rate: jax.Array,
+        step_size: jax.Array,
+        momentum: jax.Array,
+    ) -> None:
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_shape(state.prev_v_val, (mdp.state_size,))
         chex.assert_shape(state.bound, ())
@@ -516,23 +569,6 @@ class SafeAcceleratedValueIteration:
             state.bound >= 0,
             jnp.asarray(True),
             custom_message="bound must be nonnegative",
-        )
-
-        extrapolated = state.v_val + momentum * (state.v_val - state.prev_v_val)
-        bellman_extrapolated = bellman_opt_op.v(mdp, extrapolated, gamma)
-        proposal = extrapolated - step_size * (extrapolated - bellman_extrapolated)
-        proposal_bellman = bellman_opt_op.v(mdp, proposal, gamma)
-        proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
-        bound = rate * state.bound
-        accepted = proposal_residual <= bound
-        fallback = bellman_opt_op.v(mdp, state.v_val, gamma)
-        v_val = jnp.where(accepted, proposal, fallback)
-        return replace(
-            state,
-            v_val=v_val,
-            prev_v_val=state.v_val,
-            bound=bound,
-            accepted=accepted,
         )
 
 
@@ -604,6 +640,23 @@ class MomentumValueIteration:
         root = jnp.sqrt(1 - gamma**2)
         step_size = 2 / (1 + root) if self.step_size is None else jnp.asarray(self.step_size)
         momentum = (1 - root) / (1 + root) if self.momentum is None else jnp.asarray(self.momentum)
+        self._assert_update(mdp, state, step_size, momentum)
+
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
+        v_val = (
+            state.v_val
+            - step_size * (state.v_val - bellman_v)
+            + momentum * (state.v_val - state.prev_v_val)
+        )
+        return replace(state, v_val=v_val, prev_v_val=state.v_val)
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: MomentumValueIteration.State,
+        step_size: jax.Array,
+        momentum: jax.Array,
+    ) -> None:
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_shape(state.prev_v_val, (mdp.state_size,))
         chex.assert_shape(step_size, (), custom_message="step_size must be scalar")
@@ -623,14 +676,6 @@ class MomentumValueIteration:
             jnp.asarray(True),
             custom_message="momentum must be nonnegative",
         )
-
-        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
-        v_val = (
-            state.v_val
-            - step_size * (state.v_val - bellman_v)
-            + momentum * (state.v_val - state.prev_v_val)
-        )
-        return replace(state, v_val=v_val, prev_v_val=state.v_val)
 
 
 @chex.dataclass(frozen=True)
@@ -717,6 +762,30 @@ class PIDValueIteration:
         kd = jnp.asarray(self.kd)
         alpha = jnp.asarray(self.alpha)
         beta = jnp.asarray(self.beta)
+        self._assert_update(mdp, state, gamma, kp, ki, kd, alpha, beta)
+
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
+        residual = bellman_v - state.v_val
+        z_val = beta * state.z_val + alpha * residual
+        v_val = state.v_val + kp * residual + ki * z_val + kd * (state.v_val - state.prev_v_val)
+        return replace(
+            state,
+            v_val=v_val,
+            prev_v_val=state.v_val,
+            z_val=z_val,
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: PIDValueIteration.State,
+        gamma: jax.Array,
+        kp: jax.Array,
+        ki: jax.Array,
+        kd: jax.Array,
+        alpha: jax.Array,
+        beta: jax.Array,
+    ) -> None:
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_shape(state.prev_v_val, (mdp.state_size,))
         chex.assert_shape(state.z_val, (mdp.state_size,))
@@ -735,17 +804,6 @@ class PIDValueIteration:
             (gamma >= 0) & (gamma < 1),
             jnp.asarray(True),
             custom_message="gamma must be in [0, 1)",
-        )
-
-        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
-        residual = bellman_v - state.v_val
-        z_val = beta * state.z_val + alpha * residual
-        v_val = state.v_val + kp * residual + ki * z_val + kd * (state.v_val - state.prev_v_val)
-        return replace(
-            state,
-            v_val=v_val,
-            prev_v_val=state.v_val,
-            z_val=z_val,
         )
 
 
@@ -810,22 +868,10 @@ class AndersonValueIteration:
         v_val: jax.Array | None = None,
     ) -> AndersonValueIteration.State:
         """Initialize from state values and take the paper's initial VI step."""
-        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
-            raise ValueError("memory must be a positive integer")
         if v_val is None:
             v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
         regularization = jnp.asarray(self.regularization)
-        chex.assert_shape(v_val, (mdp.state_size,))
-        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
-        chex.assert_tree_all_finite(
-            regularization,
-            custom_message="regularization must be finite",
-        )
-        chex.assert_trees_all_equal(
-            regularization > 0,
-            jnp.asarray(True),
-            custom_message="regularization must be positive",
-        )
+        self._assert_init(mdp, v_val, regularization)
 
         next_v_val = bellman_opt_op.v(mdp, v_val, self.gamma)
         v_val = v_val.astype(next_v_val.dtype)
@@ -850,31 +896,9 @@ class AndersonValueIteration:
         state: AndersonValueIteration.State,
     ) -> AndersonValueIteration.State:
         """Apply one regularized Anderson value-iteration update."""
-        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
-            raise ValueError("memory must be a positive integer")
         regularization = jnp.asarray(self.regularization)
         size = self.memory + 1
-        chex.assert_shape(state.v_val, (mdp.state_size,))
-        chex.assert_shape(state.v_hist, (size, mdp.state_size))
-        chex.assert_shape(state.bellman_hist, (size, mdp.state_size))
-        chex.assert_shape(state.count, ())
-        chex.assert_shape(state.coeff, (size,))
-        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
-        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
-        chex.assert_tree_all_finite(
-            regularization,
-            custom_message="regularization must be finite",
-        )
-        chex.assert_trees_all_equal(
-            (state.count >= 1) & (state.count <= size),
-            jnp.asarray(True),
-            custom_message="count must index the history",
-        )
-        chex.assert_trees_all_equal(
-            regularization > 0,
-            jnp.asarray(True),
-            custom_message="regularization must be positive",
-        )
+        self._assert_update(mdp, state, regularization, size)
 
         active = (jnp.arange(size) < state.count).astype(state.v_val.dtype)
         residual = (state.bellman_hist - state.v_hist) * active[:, None]
@@ -896,6 +920,57 @@ class AndersonValueIteration:
             bellman_hist=bellman_hist,
             count=jnp.minimum(state.count + 1, size),
             coeff=coeff,
+        )
+
+    def _assert_init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array,
+        regularization: jax.Array,
+    ) -> None:
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
+        chex.assert_tree_all_finite(
+            regularization,
+            custom_message="regularization must be finite",
+        )
+        chex.assert_trees_all_equal(
+            regularization > 0,
+            jnp.asarray(True),
+            custom_message="regularization must be positive",
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: AndersonValueIteration.State,
+        regularization: jax.Array,
+        size: int,
+    ) -> None:
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.v_hist, (size, mdp.state_size))
+        chex.assert_shape(state.bellman_hist, (size, mdp.state_size))
+        chex.assert_shape(state.count, ())
+        chex.assert_shape(state.coeff, (size,))
+        chex.assert_shape(regularization, (), custom_message="regularization must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            regularization,
+            custom_message="regularization must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (state.count >= 1) & (state.count <= size),
+            jnp.asarray(True),
+            custom_message="count must index the history",
+        )
+        chex.assert_trees_all_equal(
+            regularization > 0,
+            jnp.asarray(True),
+            custom_message="regularization must be positive",
         )
 
 
@@ -1027,66 +1102,12 @@ class SafeAndersonValueIteration:
         state: SafeAndersonValueIteration.State,
     ) -> SafeAndersonValueIteration.State:
         """Apply one Powell-regularized, restarted, and safeguarded Type-I update."""
-        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
-            raise ValueError("memory must be a positive integer")
         gamma = jnp.asarray(self.gamma)
         theta = jnp.asarray(self.theta)
         tau = jnp.asarray(self.tau)
         safeguard = jnp.asarray(self.safeguard)
         decay = jnp.asarray(self.decay)
-        chex.assert_shape(state.v_val, (mdp.state_size,))
-        chex.assert_shape(state.residual, (mdp.state_size,))
-        chex.assert_shape(state.s_hist, (self.memory, mdp.state_size))
-        chex.assert_shape(state.h_left, (self.memory, mdp.state_size))
-        chex.assert_shape(state.h_right, (self.memory, mdp.state_size))
-        chex.assert_shape(state.count, ())
-        chex.assert_shape(state.initial_residual, ())
-        chex.assert_shape(state.accepted_count, ())
-        chex.assert_shape(state.step, ())
-        chex.assert_shape(state.accepted, ())
-        chex.assert_shape(state.restarted, ())
-        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
-        chex.assert_shape(theta, (), custom_message="theta must be scalar")
-        chex.assert_shape(tau, (), custom_message="tau must be scalar")
-        chex.assert_shape(safeguard, (), custom_message="safeguard must be scalar")
-        chex.assert_shape(decay, (), custom_message="decay must be scalar")
-        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
-        chex.assert_tree_all_finite(
-            (gamma, theta, tau, safeguard, decay),
-            custom_message="planner parameters must be finite",
-        )
-        chex.assert_trees_all_equal(
-            (gamma > 0) & (gamma < 1),
-            jnp.asarray(True),
-            custom_message="gamma must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            (theta > 0) & (theta < 1),
-            jnp.asarray(True),
-            custom_message="theta must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            (tau > 0) & (tau < 1),
-            jnp.asarray(True),
-            custom_message="tau must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            (safeguard > 0) & (decay > 0),
-            jnp.asarray(True),
-            custom_message="safeguard and decay must be positive",
-        )
-        chex.assert_trees_all_equal(
-            (state.count >= 0) & (state.count <= self.memory),
-            jnp.asarray(True),
-            custom_message="count must index the history",
-        )
-        chex.assert_trees_all_equal(
-            (state.initial_residual >= 0)
-            & (state.accepted_count >= 0)
-            & (state.step >= state.accepted_count),
-            jnp.asarray(True),
-            custom_message="safeguard counters must be nonnegative and ordered",
-        )
+        self._assert_update(mdp, state, gamma, theta, tau, safeguard, decay)
 
         active = (jnp.arange(self.memory) < state.count).astype(state.v_val.dtype)
         h_residual = state.residual + jnp.einsum(
@@ -1173,6 +1194,72 @@ class SafeAndersonValueIteration:
             restarted=restarted,
         )
 
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: SafeAndersonValueIteration.State,
+        gamma: jax.Array,
+        theta: jax.Array,
+        tau: jax.Array,
+        safeguard: jax.Array,
+        decay: jax.Array,
+    ) -> None:
+        if isinstance(self.memory, bool) or not isinstance(self.memory, int) or self.memory < 1:
+            raise ValueError("memory must be a positive integer")
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.residual, (mdp.state_size,))
+        chex.assert_shape(state.s_hist, (self.memory, mdp.state_size))
+        chex.assert_shape(state.h_left, (self.memory, mdp.state_size))
+        chex.assert_shape(state.h_right, (self.memory, mdp.state_size))
+        chex.assert_shape(state.count, ())
+        chex.assert_shape(state.initial_residual, ())
+        chex.assert_shape(state.accepted_count, ())
+        chex.assert_shape(state.step, ())
+        chex.assert_shape(state.accepted, ())
+        chex.assert_shape(state.restarted, ())
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(theta, (), custom_message="theta must be scalar")
+        chex.assert_shape(tau, (), custom_message="tau must be scalar")
+        chex.assert_shape(safeguard, (), custom_message="safeguard must be scalar")
+        chex.assert_shape(decay, (), custom_message="decay must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, theta, tau, safeguard, decay),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (theta > 0) & (theta < 1),
+            jnp.asarray(True),
+            custom_message="theta must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (tau > 0) & (tau < 1),
+            jnp.asarray(True),
+            custom_message="tau must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            (safeguard > 0) & (decay > 0),
+            jnp.asarray(True),
+            custom_message="safeguard and decay must be positive",
+        )
+        chex.assert_trees_all_equal(
+            (state.count >= 0) & (state.count <= self.memory),
+            jnp.asarray(True),
+            custom_message="count must index the history",
+        )
+        chex.assert_trees_all_equal(
+            (state.initial_residual >= 0)
+            & (state.accepted_count >= 0)
+            & (state.step >= state.accepted_count),
+            jnp.asarray(True),
+            custom_message="safeguard counters must be nonnegative and ordered",
+        )
+
 
 @chex.dataclass(frozen=True)
 class RankOneValueIteration:
@@ -1246,6 +1333,24 @@ class RankOneValueIteration:
     ) -> RankOneValueIteration.State:
         """Apply one warm-started rank-one value iteration update."""
         gamma = jnp.asarray(self.gamma)
+        self._assert_update(mdp, state, gamma)
+
+        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
+        policy = greedy_map.q(q_val)
+        mrp = make_mrp(mdp, policy)
+        dist = adj_trans_op.s(mrp, state.dist)
+        dist = dist / jnp.linalg.norm(dist, ord=1)
+        bellman_v = jnp.max(q_val, axis=0)
+        correction = gamma / (1 - gamma) * jnp.sum(dist * (bellman_v - state.v_val))
+        v_val = bellman_v + correction
+        return replace(state, v_val=v_val, dist=dist)
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: RankOneValueIteration.State,
+        gamma: jax.Array,
+    ) -> None:
         chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_shape(state.dist, (mdp.state_size,))
@@ -1271,16 +1376,6 @@ class RankOneValueIteration:
             jnp.asarray(1, dtype=state.dist.dtype),
             custom_message="dist must sum to one",
         )
-
-        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
-        policy = greedy_map.q(q_val)
-        mrp = make_mrp(mdp, policy)
-        dist = adj_trans_op.s(mrp, state.dist)
-        dist = dist / jnp.linalg.norm(dist, ord=1)
-        bellman_v = jnp.max(q_val, axis=0)
-        correction = gamma / (1 - gamma) * jnp.sum(dist * (bellman_v - state.v_val))
-        v_val = bellman_v + correction
-        return replace(state, v_val=v_val, dist=dist)
 
 
 @chex.dataclass(frozen=True)
@@ -1360,6 +1455,19 @@ class DeflatedValueIteration:
     ) -> DeflatedValueIteration.State:
         """Apply one rank-one Deflated Dynamics Value Iteration update."""
         gamma = jnp.asarray(self.gamma)
+        self._assert_update(mdp, state, gamma)
+
+        bellman_w = bellman_opt_op.v(mdp, state.w, gamma)
+        w = bellman_w - gamma * jnp.sum(state.dist * state.w)
+        v_val = w + gamma / (1 - gamma) * jnp.sum(state.dist * w)
+        return replace(state, w=w, v_val=v_val)
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: DeflatedValueIteration.State,
+        gamma: jax.Array,
+    ) -> None:
         chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
         chex.assert_shape(state.w, (mdp.state_size,))
         chex.assert_shape(state.v_val, (mdp.state_size,))
@@ -1386,11 +1494,6 @@ class DeflatedValueIteration:
             jnp.asarray(1, dtype=state.dist.dtype),
             custom_message="dist must sum to one",
         )
-
-        bellman_w = bellman_opt_op.v(mdp, state.w, gamma)
-        w = bellman_w - gamma * jnp.sum(state.dist * state.w)
-        v_val = w + gamma / (1 - gamma) * jnp.sum(state.dist * w)
-        return replace(state, w=w, v_val=v_val)
 
 
 @chex.dataclass(frozen=True)
@@ -1473,33 +1576,7 @@ class QuasiPolicyIteration:
                 dtype=mdp.transition.dtype,
             )
         gamma = jnp.asarray(self.gamma)
-        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
-        chex.assert_shape(v_val, (mdp.state_size,))
-        chex.assert_shape(prior, (mdp.state_size, mdp.state_size))
-        chex.assert_tree_all_finite(
-            (gamma, v_val, prior),
-            custom_message="planner inputs must be finite",
-        )
-        chex.assert_trees_all_equal(
-            (gamma > 0) & (gamma < 1),
-            jnp.asarray(True),
-            custom_message="gamma must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            jnp.all(mdp.terminal == 0),
-            jnp.asarray(True),
-            custom_message="Quasi-Policy Iteration requires unmasked transitions",
-        )
-        chex.assert_trees_all_equal(
-            jnp.all(prior >= 0),
-            jnp.asarray(True),
-            custom_message="prior must be nonnegative",
-        )
-        chex.assert_trees_all_close(
-            jnp.sum(prior, axis=0),
-            jnp.ones((mdp.state_size,), dtype=prior.dtype),
-            custom_message="prior columns must sum to one",
-        )
+        self._assert_init(mdp, v_val, prior, gamma)
 
         identity = jnp.eye(mdp.state_size, dtype=prior.dtype)
         prior_resolvent = jnp.linalg.solve(identity - gamma * prior.T, identity)
@@ -1521,30 +1598,7 @@ class QuasiPolicyIteration:
     ) -> QuasiPolicyIteration.State:
         """Propose and safeguard one Quasi-Policy Iteration update."""
         gamma = jnp.asarray(self.gamma)
-        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
-        chex.assert_shape(state.v_val, (mdp.state_size,))
-        chex.assert_shape(state.prior, (mdp.state_size, mdp.state_size))
-        chex.assert_shape(state.prior_resolvent, (mdp.state_size, mdp.state_size))
-        chex.assert_shape(state.bound, ())
-        chex.assert_shape(state.gain, ())
-        chex.assert_shape(state.accepted, ())
-        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
-        chex.assert_tree_all_finite(gamma, custom_message="gamma must be finite")
-        chex.assert_trees_all_equal(
-            (gamma > 0) & (gamma < 1),
-            jnp.asarray(True),
-            custom_message="gamma must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            jnp.all(mdp.terminal == 0),
-            jnp.asarray(True),
-            custom_message="Quasi-Policy Iteration requires unmasked transitions",
-        )
-        chex.assert_trees_all_equal(
-            state.bound >= 0,
-            jnp.asarray(True),
-            custom_message="bound must be nonnegative",
-        )
+        self._assert_update(mdp, state, gamma)
 
         bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
         policy = greedy_map.v(mdp, state.v_val, gamma)
@@ -1583,6 +1637,72 @@ class QuasiPolicyIteration:
             bound=bound,
             gain=gain,
             accepted=accepted,
+        )
+
+    def _assert_init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array,
+        prior: jax.Array,
+        gamma: jax.Array,
+    ) -> None:
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(prior, (mdp.state_size, mdp.state_size))
+        chex.assert_tree_all_finite(
+            (gamma, v_val, prior),
+            custom_message="planner inputs must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Quasi-Policy Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(prior >= 0),
+            jnp.asarray(True),
+            custom_message="prior must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(prior, axis=0),
+            jnp.ones((mdp.state_size,), dtype=prior.dtype),
+            custom_message="prior columns must sum to one",
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: QuasiPolicyIteration.State,
+        gamma: jax.Array,
+    ) -> None:
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.prior, (mdp.state_size, mdp.state_size))
+        chex.assert_shape(state.prior_resolvent, (mdp.state_size, mdp.state_size))
+        chex.assert_shape(state.bound, ())
+        chex.assert_shape(state.gain, ())
+        chex.assert_shape(state.accepted, ())
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(gamma, custom_message="gamma must be finite")
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Quasi-Policy Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            state.bound >= 0,
+            jnp.asarray(True),
+            custom_message="bound must be nonnegative",
         )
 
 
@@ -1649,23 +1769,7 @@ class DynamicBoltzmannValueIteration:
             v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
         gamma = jnp.asarray(self.gamma)
         power = jnp.asarray(self.power)
-        chex.assert_shape(v_val, (mdp.state_size,))
-        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
-        chex.assert_shape(power, (), custom_message="power must be scalar")
-        chex.assert_tree_all_finite(
-            (v_val, gamma, power),
-            custom_message="planner inputs must be finite",
-        )
-        chex.assert_trees_all_equal(
-            (gamma >= 0) & (gamma < 1),
-            jnp.asarray(True),
-            custom_message="gamma must be in [0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            power > 0,
-            jnp.asarray(True),
-            custom_message="power must be positive",
-        )
+        self._assert_init(mdp, v_val, gamma, power)
         return self.State(
             v_val=v_val,
             policy=jnp.full(
@@ -1685,6 +1789,48 @@ class DynamicBoltzmannValueIteration:
         """Apply one dynamic Boltzmann value-iteration update."""
         gamma = jnp.asarray(self.gamma)
         power = jnp.asarray(self.power)
+        self._assert_update(mdp, state, gamma, power)
+
+        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
+        step = state.step + 1
+        beta = step.astype(q_val.dtype) ** power
+        centered_q = q_val - jnp.max(q_val, axis=0, keepdims=True)
+        policy = jax.nn.softmax(beta * centered_q, axis=0)
+        v_val = jnp.sum(policy * q_val, axis=0)
+        return replace(state, v_val=v_val, policy=policy, step=step, beta=beta)
+
+    def _assert_init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array,
+        gamma: jax.Array,
+        power: jax.Array,
+    ) -> None:
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(power, (), custom_message="power must be scalar")
+        chex.assert_tree_all_finite(
+            (v_val, gamma, power),
+            custom_message="planner inputs must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma >= 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in [0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            power > 0,
+            jnp.asarray(True),
+            custom_message="power must be positive",
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: DynamicBoltzmannValueIteration.State,
+        gamma: jax.Array,
+        power: jax.Array,
+    ) -> None:
         chex.assert_shape(state.v_val, (mdp.state_size,))
         chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
         chex.assert_shape(state.step, ())
@@ -1706,14 +1852,6 @@ class DynamicBoltzmannValueIteration:
             jnp.asarray(True),
             custom_message="power must be positive and schedule state nonnegative",
         )
-
-        q_val = reward.sa(mdp) + gamma * trans_op.sa(mdp, state.v_val)
-        step = state.step + 1
-        beta = step.astype(q_val.dtype) ** power
-        centered_q = q_val - jnp.max(q_val, axis=0, keepdims=True)
-        policy = jax.nn.softmax(beta * centered_q, axis=0)
-        v_val = jnp.sum(policy * q_val, axis=0)
-        return replace(state, v_val=v_val, policy=policy, step=step, beta=beta)
 
 
 @chex.dataclass(frozen=True)
@@ -1804,32 +1942,9 @@ class AcceleratedPolicyIteration:
         state: AcceleratedPolicyIteration.State,
     ) -> AcceleratedPolicyIteration.State:
         """Apply one accelerated evaluation or exact improvement micro-step."""
-        if isinstance(self.degree, bool) or not isinstance(self.degree, int) or self.degree < 2:
-            raise ValueError("degree must be an integer of at least two")
         gamma = jnp.asarray(self.gamma)
         tolerance = jnp.asarray(self.tolerance)
-        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
-        chex.assert_shape(tolerance, (), custom_message="tolerance must be scalar")
-        chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
-        chex.assert_shape(state.v_val, (mdp.state_size,))
-        chex.assert_shape(state.history, (self.degree - 1, mdp.state_size))
-        chex.assert_shape(state.improved, ())
-        chex.assert_shape(state.stable, ())
-        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
-        chex.assert_tree_all_finite(
-            (gamma, tolerance),
-            custom_message="planner parameters must be finite",
-        )
-        chex.assert_trees_all_equal(
-            (gamma > 0) & (gamma < 1),
-            jnp.asarray(True),
-            custom_message="gamma must be in (0, 1)",
-        )
-        chex.assert_trees_all_equal(
-            tolerance >= 0,
-            jnp.asarray(True),
-            custom_message="tolerance must be nonnegative",
-        )
+        self._assert_update(mdp, state, gamma, tolerance)
 
         policy_bellman = bellman_op.v(mdp, state.policy, state.v_val, gamma)
         residual = jnp.max(jnp.abs(state.v_val - policy_bellman))
@@ -1862,6 +1977,38 @@ class AcceleratedPolicyIteration:
             history=history,
             improved=improved,
             stable=stable,
+        )
+
+    def _assert_update(
+        self,
+        mdp: MDP,
+        state: AcceleratedPolicyIteration.State,
+        gamma: jax.Array,
+        tolerance: jax.Array,
+    ) -> None:
+        if isinstance(self.degree, bool) or not isinstance(self.degree, int) or self.degree < 2:
+            raise ValueError("degree must be an integer of at least two")
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(tolerance, (), custom_message="tolerance must be scalar")
+        chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.history, (self.degree - 1, mdp.state_size))
+        chex.assert_shape(state.improved, ())
+        chex.assert_shape(state.stable, ())
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, tolerance),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            tolerance >= 0,
+            jnp.asarray(True),
+            custom_message="tolerance must be nonnegative",
         )
 
 
