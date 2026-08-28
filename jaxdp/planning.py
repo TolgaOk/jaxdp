@@ -1307,6 +1307,199 @@ class DeflatedValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class QuasiPolicyIteration:
+    r"""Perform one safeguarded Quasi-Policy Iteration update at a time.
+
+    For a fixed stochastic prior transition ``prior``, each update applies the rank-one
+    quasi-Newton construction from Theorem 3.1 of Quasi-Policy Iteration:
+
+    .. math::
+
+        G^{\mathrm{pr}}
+        &= (I-\gamma P^{\mathrm{pr}})^{-1}, \\
+        w_k
+        &= \mathcal{T}^{*}_{V}v_k-r^{\pi_k}-\gamma P^{\mathrm{pr}}v_k,
+        &\check{w}_k&=G^{\mathrm{pr}}w_k, \\
+        u_k
+        &=v_k-\frac{\mathbf{1}^{\top}v_k}{S}\mathbf{1},
+        &\check{u}_k&=(G^{\mathrm{pr}})^{\top}u_k, \\
+        \eta_k
+        &=\begin{cases}
+          0, & u_k^{\top}v_k=0, \\
+          \left[u_k^{\top}(v_k-\check{w}_k)\right]^{-1}, & \text{otherwise},
+        \end{cases} \\
+        \widetilde{G}_k
+        &=G^{\mathrm{pr}}+\eta_k\check{w}_k\check{u}_k^{\top},
+        &\widetilde{v}_{k+1}
+        &=v_k-\widetilde{G}_k(v_k-\mathcal{T}^{*}_{V}v_k).
+
+    The proposal is accepted when its Bellman residual is at most ``gamma * bound``; otherwise,
+    the update returns one ordinary value-iteration step. The default prior is the uniform state
+    transition. Terminal behavior must be represented with absorbing transitions and rewards.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``(0, 1)``.
+
+    Public dataclasses:
+        State: Values, fixed-prior data, safeguard bound, and latest update diagnostics.
+
+    Public methods:
+        init: Initialize values, the prior resolvent, and the residual bound.
+        update: Propose and safeguard one QPI update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic Quasi-Policy Iteration state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            prior: Fixed prior transition with storage shape ``(S_next, S)``.
+            prior_resolvent: Fixed prior resolvent with shape ``(S, S)``.
+            bound: Scalar Bellman-residual bound for the current iterate.
+            gain: Scalar rank-one gain used by the latest proposal.
+            accepted: Whether the latest QPI proposal was accepted.
+        """
+
+        v_val: jax.Array
+        prior: jax.Array
+        prior_resolvent: jax.Array
+        bound: jax.Array
+        gain: jax.Array
+        accepted: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+        prior: jax.Array | None = None,
+    ) -> QuasiPolicyIteration.State:
+        """Initialize QPI from state values and an optional prior transition."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        if prior is None:
+            prior = jnp.full(
+                (mdp.state_size, mdp.state_size),
+                1 / mdp.state_size,
+                dtype=mdp.transition.dtype,
+            )
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(prior, (mdp.state_size, mdp.state_size))
+        chex.assert_tree_all_finite(
+            (gamma, v_val, prior),
+            custom_message="planner inputs must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Quasi-Policy Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(prior >= 0),
+            jnp.asarray(True),
+            custom_message="prior must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(prior, axis=0),
+            jnp.ones((mdp.state_size,), dtype=prior.dtype),
+            custom_message="prior columns must sum to one",
+        )
+
+        identity = jnp.eye(mdp.state_size, dtype=prior.dtype)
+        prior_resolvent = jnp.linalg.solve(identity - gamma * prior.T, identity)
+        bellman_v = bellman_opt_op.v(mdp, v_val, gamma)
+        bound = jnp.max(jnp.abs(v_val - bellman_v))
+        return self.State(
+            v_val=v_val,
+            prior=prior,
+            prior_resolvent=prior_resolvent,
+            bound=bound,
+            gain=jnp.zeros((), dtype=v_val.dtype),
+            accepted=jnp.asarray(False),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: QuasiPolicyIteration.State,
+    ) -> QuasiPolicyIteration.State:
+        """Propose and safeguard one Quasi-Policy Iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.prior, (mdp.state_size, mdp.state_size))
+        chex.assert_shape(state.prior_resolvent, (mdp.state_size, mdp.state_size))
+        chex.assert_shape(state.bound, ())
+        chex.assert_shape(state.gain, ())
+        chex.assert_shape(state.accepted, ())
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(gamma, custom_message="gamma must be finite")
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Quasi-Policy Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            state.bound >= 0,
+            jnp.asarray(True),
+            custom_message="bound must be nonnegative",
+        )
+
+        bellman_v = bellman_opt_op.v(mdp, state.v_val, gamma)
+        policy = greedy_map.v(mdp, state.v_val, gamma)
+        policy_reward = reward.s(mdp, policy)
+        prior_v = jnp.einsum("xs,x->s", state.prior, state.v_val)
+        w = bellman_v - policy_reward - gamma * prior_v
+        checked_w = state.prior_resolvent @ w
+        u = state.v_val - jnp.mean(state.v_val)
+        checked_u = state.prior_resolvent.T @ u
+        constraint = jnp.dot(u, state.v_val)
+        gain_denominator = jnp.dot(u, state.v_val - checked_w)
+        safe_denominator = jnp.where(
+            constraint == 0,
+            jnp.ones_like(gain_denominator),
+            gain_denominator,
+        )
+        gain = jnp.where(
+            constraint == 0,
+            jnp.zeros_like(gain_denominator),
+            1 / safe_denominator,
+        )
+        residual = state.v_val - bellman_v
+        proposal = (
+            state.v_val
+            - state.prior_resolvent @ residual
+            - gain * checked_w * jnp.dot(checked_u, residual)
+        )
+        proposal_bellman = bellman_opt_op.v(mdp, proposal, gamma)
+        proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
+        bound = gamma * state.bound
+        accepted = proposal_residual <= bound
+        v_val = jnp.where(accepted, proposal, bellman_v)
+        return replace(
+            state,
+            v_val=v_val,
+            bound=bound,
+            gain=gain,
+            accepted=accepted,
+        )
+
+
+@chex.dataclass(frozen=True)
 class AcceleratedPolicyIteration:
     r"""Perform one degree-``d`` Accelerated Policy Iteration micro-step.
 
@@ -1522,6 +1715,7 @@ __all__ = [
     "SafeAndersonValueIteration",
     "RankOneValueIteration",
     "DeflatedValueIteration",
+    "QuasiPolicyIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",
 ]

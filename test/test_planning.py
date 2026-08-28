@@ -1,4 +1,4 @@
-from dataclasses import is_dataclass
+from dataclasses import is_dataclass, replace
 
 import chex
 import jax
@@ -17,6 +17,7 @@ from jaxdp.planning import (
     MomentumValueIteration,
     PIDValueIteration,
     PolicyIteration,
+    QuasiPolicyIteration,
     QValueIteration,
     RankOneValueIteration,
     SafeAcceleratedValueIteration,
@@ -52,6 +53,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
     assert jaxdp.DeflatedValueIteration is DeflatedValueIteration
+    assert jaxdp.QuasiPolicyIteration is QuasiPolicyIteration
     assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
     assert jaxdp.MomentumValueIteration is MomentumValueIteration
     assert jaxdp.PIDValueIteration is PIDValueIteration
@@ -238,6 +240,86 @@ def test_deflated_value_iteration_composes_with_jit_and_vmap() -> None:
     assert states.w.shape == v_vals.shape
     assert states.v_val.shape == v_vals.shape
     assert states.dist.shape == dists.shape
+
+
+def test_quasi_policy_iteration_matches_rank_one_update() -> None:
+    mdp = _two_state_mdp()
+    planner = QuasiPolicyIteration(gamma=0.5)
+    v_val = jnp.array([1.0, -1.0])
+    prior = jnp.array([[0.8, 0.3], [0.2, 0.7]])
+    state = planner.init(mdp, v_val, prior)
+
+    updated = planner.update(mdp, state)
+
+    identity = jnp.eye(mdp.state_size)
+    prior_resolvent = jnp.linalg.solve(identity - planner.gamma * prior.T, identity)
+    bellman_v = bellman_opt_op.v(mdp, v_val, planner.gamma)
+    policy = greedy_map.v(mdp, v_val, planner.gamma)
+    policy_reward = jnp.sum(policy * jaxdp.reward.sa(mdp), axis=0)
+    w = bellman_v - policy_reward - (planner.gamma * prior.T) @ v_val
+    checked_w = prior_resolvent @ w
+    u = v_val - jnp.mean(v_val)
+    checked_u = prior_resolvent.T @ u
+    gain = 1 / jnp.dot(u, v_val - checked_w)
+    residual = v_val - bellman_v
+    proposal = (
+        v_val
+        - prior_resolvent @ residual
+        - gain * checked_w * jnp.dot(checked_u, residual)
+    )
+    proposal_bellman = bellman_opt_op.v(mdp, proposal, planner.gamma)
+    proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
+    bound = planner.gamma * state.bound
+    accepted = proposal_residual <= bound
+    expected = jnp.where(accepted, proposal, bellman_v)
+    assert jnp.allclose(state.prior_resolvent, prior_resolvent)
+    assert jnp.allclose(updated.gain, gain)
+    assert jnp.array_equal(updated.accepted, accepted)
+    assert jnp.allclose(updated.bound, bound)
+    assert jnp.allclose(updated.v_val, expected)
+
+
+def test_quasi_policy_iteration_safeguards_with_value_iteration() -> None:
+    mdp = _two_state_mdp()
+    planner = QuasiPolicyIteration(gamma=0.5)
+    state = planner.init(mdp, jnp.array([1.0, -1.0]))
+    state = replace(state, bound=jnp.zeros_like(state.bound))
+
+    updated = planner.update(mdp, state)
+
+    expected = bellman_opt_op.v(mdp, state.v_val, planner.gamma)
+    assert not updated.accepted
+    assert jnp.allclose(updated.v_val, expected)
+
+
+def test_quasi_policy_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = QuasiPolicyIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    priors = jnp.array(
+        [
+            [[0.5, 0.5], [0.5, 0.5]],
+            [[0.8, 0.3], [0.2, 0.7]],
+        ]
+    )
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals, priors))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.prior.shape == priors.shape
+    assert states.prior_resolvent.shape == priors.shape
+    assert states.bound.shape == (2,)
+    assert states.accepted.shape == (2,)
+    assert jnp.all(jnp.isfinite(states.v_val))
+    assert jnp.all(jnp.isfinite(states.gain))
 
 
 def test_safe_accelerated_value_iteration_matches_paper_recurrence() -> None:
