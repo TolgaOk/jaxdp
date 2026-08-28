@@ -27,6 +27,7 @@ from jaxdp.operator import (
     trans_op,
 )
 from jaxdp.planning import (
+    AcceleratedPolicyIteration,
     AnchoredQValueIteration,
     AnchoredValueIteration,
     MomentumValueIteration,
@@ -67,6 +68,7 @@ __all__ = [
     "RankOneValueIteration",
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
+    "AcceleratedPolicyIteration",
     "PolicyIteration",
     "expectation",
     "Occupancy",

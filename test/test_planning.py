@@ -9,6 +9,7 @@ from jaxdp.mapping import greedy_map
 from jaxdp.mdp import MDP
 from jaxdp.operator import bellman_opt_op
 from jaxdp.planning import (
+    AcceleratedPolicyIteration,
     AnchoredQValueIteration,
     AnchoredValueIteration,
     MomentumValueIteration,
@@ -38,6 +39,7 @@ def _two_state_mdp() -> MDP:
 
 
 def test_public_planning_names() -> None:
+    assert jaxdp.AcceleratedPolicyIteration is AcceleratedPolicyIteration
     assert jaxdp.ValueIteration is ValueIteration
     assert jaxdp.QValueIteration is QValueIteration
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
@@ -266,6 +268,67 @@ def test_momentum_value_iteration_composes_with_jit_and_vmap() -> None:
 
     assert states.v_val.shape == v_vals.shape
     assert states.prev_v_val.shape == v_vals.shape
+
+
+def test_accelerated_policy_iteration_matches_degree_two_recurrence() -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.full((mdp.action_size, mdp.state_size), 0.5)
+    planner = AcceleratedPolicyIteration(gamma=0.5, degree=2, tolerance=0.0)
+    state = planner.init(mdp, policy)
+
+    updated = planner.update(mdp, state)
+
+    alpha = (1 - jnp.sqrt(0.5)) / (1 + jnp.sqrt(0.5))
+    expected_x = jnp.array([1.0, 2.0])
+    assert not updated.improved
+    assert not updated.stable
+    assert jnp.array_equal(updated.policy, policy)
+    assert jnp.allclose(updated.history[0], expected_x)
+    assert jnp.allclose(updated.v_val, (1 + alpha) * expected_x)
+
+
+def test_accelerated_policy_iteration_improves_and_detects_stability() -> None:
+    mdp = _two_state_mdp()
+    policy = jnp.full((mdp.action_size, mdp.state_size), 0.5)
+    planner = AcceleratedPolicyIteration(gamma=0.5, degree=2, tolerance=10.0)
+    state = planner.init(mdp, policy)
+
+    improved = planner.update(mdp, state)
+    stable = planner.update(mdp, improved)
+
+    expected_policy = greedy_map.v(mdp, state.v_val, planner.gamma)
+    assert improved.improved
+    assert not improved.stable
+    assert jnp.array_equal(improved.policy, expected_policy)
+    assert jnp.array_equal(improved.v_val, state.v_val)
+    assert jnp.array_equal(improved.history, state.history)
+    assert stable.improved
+    assert stable.stable
+
+
+def test_accelerated_policy_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = AcceleratedPolicyIteration(gamma=0.5, degree=4)
+    policies = jnp.stack(
+        (
+            jnp.full((mdp.action_size, mdp.state_size), 0.5),
+            jnp.array([[1.0, 0.0], [0.0, 1.0]]),
+        )
+    )
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = jax.jit(jax.vmap(planner.init, in_axes=(None, 0, 0)))
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, policies, v_vals))
+
+    assert states.policy.shape == policies.shape
+    assert states.v_val.shape == v_vals.shape
+    assert states.history.shape == (2, planner.degree - 1, mdp.state_size)
+    assert states.improved.shape == (2,)
+    assert states.stable.shape == (2,)
 
 
 def test_policy_iteration_keeps_policy_and_value_aligned() -> None:

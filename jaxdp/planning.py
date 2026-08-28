@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 
 import chex
@@ -10,7 +11,7 @@ import jax.numpy as jnp
 
 from jaxdp.mapping import greedy_map, reward
 from jaxdp.mdp import MDP, make_mrp
-from jaxdp.operator import adj_trans_op, bellman_opt_op, resolvent, trans_op
+from jaxdp.operator import adj_trans_op, bellman_op, bellman_opt_op, resolvent, trans_op
 
 
 class PolicyEvaluation:
@@ -655,6 +656,155 @@ class RankOneValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class AcceleratedPolicyIteration:
+    r"""Perform one degree-``d`` Accelerated Policy Iteration micro-step.
+
+    While the current policy residual exceeds ``tolerance``, ``update`` applies one inner
+    accelerated evaluation step from Algorithm 4.1:
+
+    .. math::
+
+        x_{\ell+1}=\mathcal{T}^{\pi_k}_{V}y_\ell,
+        \qquad
+        y_{\ell+1}
+        = \left(1+\sum_{i=0}^{d-2}\alpha_i\right)x_{\ell+1}
+          -\alpha_{d-2}x_\ell-\cdots-\alpha_0x_{\ell-d+2},
+
+    .. math::
+
+        \alpha_i
+        = \binom{d}{i}
+          \frac{\left((1-\gamma)^{1/d}-1\right)^{d-i}}{\gamma}.
+
+    Once the residual is within tolerance, ``update`` performs one exact greedy policy
+    improvement and preserves the evaluation history for the next policy. Convergence requires
+    the policy-transition spectra to satisfy the paper's degree-``d`` accelerability condition.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``(0, 1)``.
+        degree: Acceleration degree, at least two.
+        tolerance: Nonnegative policy-evaluation residual tolerance.
+
+    Public dataclasses:
+        State: Policy, approximate values, evaluation history, and phase indicators.
+
+    Public methods:
+        init: Initialize a policy and its accelerated evaluation history.
+        update: Apply one evaluation or policy-improvement micro-step.
+    """
+
+    gamma: float
+    degree: int = 2
+    tolerance: float = 1e-6
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic degree-``d`` Accelerated Policy Iteration state.
+
+        Attributes:
+            policy: Current action probabilities with shape ``(A, S)``.
+            v_val: Current approximate policy values with shape ``(S,)``.
+            history: Most recent ``d - 1`` intermediate values with shape ``(d - 1, S)``.
+            improved: Whether the latest micro-step improved the policy.
+            stable: Whether the latest improvement retained the policy.
+        """
+
+        policy: jax.Array
+        v_val: jax.Array
+        history: jax.Array
+        improved: jax.Array
+        stable: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        policy: jax.Array,
+        v_val: jax.Array | None = None,
+    ) -> AcceleratedPolicyIteration.State:
+        """Initialize a policy and its evaluation history."""
+        if isinstance(self.degree, bool) or not isinstance(self.degree, int) or self.degree < 2:
+            raise ValueError("degree must be an integer of at least two")
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(v_val, (mdp.state_size,))
+        history = jnp.broadcast_to(v_val, (self.degree - 1, mdp.state_size))
+        return self.State(
+            policy=policy,
+            v_val=v_val,
+            history=history,
+            improved=jnp.asarray(False),
+            stable=jnp.asarray(False),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: AcceleratedPolicyIteration.State,
+    ) -> AcceleratedPolicyIteration.State:
+        """Apply one accelerated evaluation or exact improvement micro-step."""
+        if isinstance(self.degree, bool) or not isinstance(self.degree, int) or self.degree < 2:
+            raise ValueError("degree must be an integer of at least two")
+        gamma = jnp.asarray(self.gamma)
+        tolerance = jnp.asarray(self.tolerance)
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(tolerance, (), custom_message="tolerance must be scalar")
+        chex.assert_shape(state.policy, (mdp.action_size, mdp.state_size))
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.history, (self.degree - 1, mdp.state_size))
+        chex.assert_shape(state.improved, ())
+        chex.assert_shape(state.stable, ())
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (gamma, tolerance),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            tolerance >= 0,
+            jnp.asarray(True),
+            custom_message="tolerance must be nonnegative",
+        )
+
+        policy_bellman = bellman_op.v(mdp, state.policy, state.v_val, gamma)
+        residual = jnp.max(jnp.abs(state.v_val - policy_bellman))
+        epsilon = 1 - gamma
+        index = jnp.arange(self.degree - 1)
+        binomial = jnp.asarray(
+            [math.comb(self.degree, i) for i in range(self.degree - 1)],
+            dtype=state.v_val.dtype,
+        )
+        alpha = binomial * (epsilon ** (1 / self.degree) - 1) ** (self.degree - index) / gamma
+        eval_v_val = (1 + jnp.sum(alpha)) * policy_bellman - jnp.einsum(
+            "i,is->s",
+            jnp.flip(alpha),
+            state.history,
+        )
+        eval_history = jnp.concatenate(
+            (policy_bellman[None], state.history[:-1]),
+            axis=0,
+        )
+        greedy_policy = greedy_map.v(mdp, state.v_val, gamma)
+        improved = residual <= tolerance
+        stable = improved & jnp.all(greedy_policy == state.policy)
+        policy = jnp.where(improved, greedy_policy, state.policy)
+        v_val = jnp.where(improved, state.v_val, eval_v_val)
+        history = jnp.where(improved, state.history, eval_history)
+        return replace(
+            state,
+            policy=policy,
+            v_val=v_val,
+            history=history,
+            improved=improved,
+            stable=stable,
+        )
+
+
+@chex.dataclass(frozen=True)
 class PolicyIteration:
     r"""Perform one exact policy iteration update at a time.
 
@@ -717,5 +867,6 @@ __all__ = [
     "SafeAcceleratedValueIteration",
     "MomentumValueIteration",
     "RankOneValueIteration",
+    "AcceleratedPolicyIteration",
     "PolicyIteration",
 ]
