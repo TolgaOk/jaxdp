@@ -1197,6 +1197,116 @@ class RankOneValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class DeflatedValueIteration:
+    r"""Perform one rank-one Deflated Dynamics Value Iteration update at a time.
+
+    This is the paper's control form of DDVI. For a fixed state distribution ``dist``, each update
+    applies
+
+    .. math::
+
+        w_{k+1}
+        = \mathcal{T}^{*}_{V}w_k
+          -\gamma\langle\rho,w_k\rangle\mathbf{1},
+        \qquad
+        v_{k+1}
+        = w_{k+1}
+          +\frac{\gamma}{1-\gamma}
+           \langle\rho,w_{k+1}\rangle\mathbf{1}.
+
+    The rank-one correction only shifts state values by a constant, so it preserves the greedy
+    policy sequence. The theorem requires an unmasked stochastic transition; represent terminal
+    behavior through absorbing transitions and rewards instead of terminal indicators.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``(0, 1)``.
+
+    Public dataclasses:
+        State: Deflated iterate, reconstructed values, and the deflation distribution.
+
+    Public methods:
+        init: Initialize a consistent deflated iterate from state values.
+        update: Apply one rank-one control DDVI update.
+    """
+
+    gamma: float
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic rank-one DDVI state.
+
+        Attributes:
+            w: Deflated state-space iterate with shape ``(S,)``.
+            v_val: Reconstructed state values with shape ``(S,)``.
+            dist: Fixed deflation distribution with shape ``(S,)``.
+        """
+
+        w: jax.Array
+        v_val: jax.Array
+        dist: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+        dist: jax.Array | None = None,
+    ) -> DeflatedValueIteration.State:
+        """Initialize a deflated iterate that reconstructs the supplied values."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        if dist is None:
+            dist = jnp.full(
+                (mdp.state_size,),
+                1 / mdp.state_size,
+                dtype=mdp.transition.dtype,
+            )
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        chex.assert_shape(dist, (mdp.state_size,))
+        w = v_val - gamma * jnp.sum(dist * v_val)
+        return self.State(w=w, v_val=v_val, dist=dist)
+
+    def update(
+        self,
+        mdp: MDP,
+        state: DeflatedValueIteration.State,
+    ) -> DeflatedValueIteration.State:
+        """Apply one rank-one Deflated Dynamics Value Iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        chex.assert_shape(gamma, (), custom_message="gamma must be scalar")
+        chex.assert_shape(state.w, (mdp.state_size,))
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.dist, (mdp.state_size,))
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(gamma, custom_message="gamma must be finite")
+        chex.assert_trees_all_equal(
+            (gamma > 0) & (gamma < 1),
+            jnp.asarray(True),
+            custom_message="gamma must be in (0, 1)",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(mdp.terminal == 0),
+            jnp.asarray(True),
+            custom_message="Deflated Value Iteration requires unmasked transitions",
+        )
+        chex.assert_trees_all_equal(
+            jnp.all(state.dist >= 0),
+            jnp.asarray(True),
+            custom_message="dist must be nonnegative",
+        )
+        chex.assert_trees_all_close(
+            jnp.sum(state.dist),
+            jnp.asarray(1, dtype=state.dist.dtype),
+            custom_message="dist must sum to one",
+        )
+
+        bellman_w = bellman_opt_op.v(mdp, state.w, gamma)
+        w = bellman_w - gamma * jnp.sum(state.dist * state.w)
+        v_val = w + gamma / (1 - gamma) * jnp.sum(state.dist * w)
+        return replace(state, w=w, v_val=v_val)
+
+
+@chex.dataclass(frozen=True)
 class AcceleratedPolicyIteration:
     r"""Perform one degree-``d`` Accelerated Policy Iteration micro-step.
 
@@ -1411,6 +1521,7 @@ __all__ = [
     "AndersonValueIteration",
     "SafeAndersonValueIteration",
     "RankOneValueIteration",
+    "DeflatedValueIteration",
     "AcceleratedPolicyIteration",
     "PolicyIteration",
 ]

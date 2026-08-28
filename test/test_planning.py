@@ -13,6 +13,7 @@ from jaxdp.planning import (
     AnchoredQValueIteration,
     AnchoredValueIteration,
     AndersonValueIteration,
+    DeflatedValueIteration,
     MomentumValueIteration,
     PIDValueIteration,
     PolicyIteration,
@@ -50,6 +51,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
     assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
+    assert jaxdp.DeflatedValueIteration is DeflatedValueIteration
     assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
     assert jaxdp.MomentumValueIteration is MomentumValueIteration
     assert jaxdp.PIDValueIteration is PIDValueIteration
@@ -180,6 +182,62 @@ def test_rank_one_value_iteration_composes_with_jit_and_vmap() -> None:
     assert states.v_val.shape == v_vals.shape
     assert states.dist.shape == dists.shape
     assert jnp.allclose(jnp.sum(states.dist, axis=-1), jnp.ones(2))
+
+
+def test_deflated_value_iteration_matches_rank_one_recurrence() -> None:
+    mdp = _two_state_mdp()
+    planner = DeflatedValueIteration(gamma=0.5)
+    v_val = jnp.array([1.0, -1.0])
+    dist = jnp.array([0.25, 0.75])
+    state = planner.init(mdp, v_val, dist)
+
+    updated = planner.update(mdp, state)
+
+    expected_w = v_val - planner.gamma * jnp.sum(dist * v_val)
+    bellman_w = bellman_opt_op.v(mdp, expected_w, planner.gamma)
+    next_w = bellman_w - planner.gamma * jnp.sum(dist * expected_w)
+    expected_v = next_w + planner.gamma / (1 - planner.gamma) * jnp.sum(dist * next_w)
+    assert jnp.allclose(state.w, expected_w)
+    assert jnp.allclose(state.v_val, v_val)
+    assert jnp.allclose(updated.w, next_w)
+    assert jnp.allclose(updated.v_val, expected_v)
+
+
+def test_deflated_value_iteration_preserves_greedy_sequence() -> None:
+    mdp = _two_state_mdp()
+    planner = DeflatedValueIteration(gamma=0.5)
+    value_iteration = ValueIteration(gamma=0.5)
+    state = planner.init(mdp)
+    value_state = value_iteration.init(mdp)
+
+    for _ in range(4):
+        state = planner.update(mdp, state)
+        value_state = value_iteration.update(mdp, value_state)
+        difference = state.v_val - value_state.v_val
+
+        assert jnp.allclose(difference, jnp.full_like(difference, difference[0]))
+        assert jnp.array_equal(
+            greedy_map.v(mdp, state.v_val, planner.gamma),
+            greedy_map.v(mdp, value_state.v_val, value_iteration.gamma),
+        )
+
+
+def test_deflated_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = DeflatedValueIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    dists = jnp.array([[0.5, 0.5], [0.25, 0.75]])
+    init = jax.jit(jax.vmap(planner.init, in_axes=(None, 0, 0)))
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals, dists))
+
+    assert states.w.shape == v_vals.shape
+    assert states.v_val.shape == v_vals.shape
+    assert states.dist.shape == dists.shape
 
 
 def test_safe_accelerated_value_iteration_matches_paper_recurrence() -> None:
