@@ -295,6 +295,160 @@ class AnchoredQValueIteration:
 
 
 @chex.dataclass(frozen=True)
+class SafeAcceleratedValueIteration:
+    r"""Perform one safeguarded Accelerated Value Iteration update at a time.
+
+    Each update applies the S-AVI recurrence
+
+    .. math::
+
+        h_s
+        = v_s + \beta(v_s-v_{s-1}),
+        \qquad
+        \tilde{v}_{s+1}
+        = h_s-\alpha(h_s-\mathcal{T}^{*}_{V}h_s),
+
+    and accepts the accelerated proposal only when
+
+    .. math::
+
+        \lVert\tilde{v}_{s+1}-\mathcal{T}^{*}_{V}\tilde{v}_{s+1}\rVert_\infty
+        \leq \lambda'^{s+1}
+        \lVert v_0-\mathcal{T}^{*}_{V}v_0\rVert_\infty.
+
+    Otherwise, the update returns the ordinary value-iteration step
+    ``bellman_opt_op.v(mdp, v_val, gamma)``. By default, ``step_size`` and ``momentum`` use the
+    paper's A-VI tuning, while ``rate`` uses its experimental choice ``(1 + gamma) / 2``.
+
+    Attributes:
+        gamma: Scalar discount in the interval ``[0, 1)``.
+        rate: Safeguard rate in ``[gamma, 1)``.
+        step_size: Positive A-VI residual step size.
+        momentum: Nonnegative A-VI extrapolation coefficient.
+
+    Public dataclasses:
+        State: Current and preceding values, residual bound, and acceptance indicator.
+
+    Public methods:
+        init: Initialize with one ordinary value-iteration step.
+        update: Propose and safeguard one accelerated update.
+    """
+
+    gamma: float
+    rate: float | None = None
+    step_size: float | None = None
+    momentum: float | None = None
+
+    @chex.dataclass(frozen=True)
+    class State:
+        """Dynamic safeguarded A-VI state.
+
+        Attributes:
+            v_val: Current state values with shape ``(S,)``.
+            prev_v_val: Preceding state values with shape ``(S,)``.
+            bound: Scalar residual bound for ``v_val``.
+            accepted: Whether the latest accelerated proposal was accepted.
+        """
+
+        v_val: jax.Array
+        prev_v_val: jax.Array
+        bound: jax.Array
+        accepted: jax.Array
+
+    def init(
+        self,
+        mdp: MDP,
+        v_val: jax.Array | None = None,
+    ) -> SafeAcceleratedValueIteration.State:
+        """Initialize from state values and take the paper's initial VI step."""
+        if v_val is None:
+            v_val = jnp.zeros((mdp.state_size,), dtype=mdp.reward.dtype)
+        chex.assert_shape(v_val, (mdp.state_size,))
+        gamma = jnp.asarray(self.gamma)
+        rate = (1 + gamma) / 2 if self.rate is None else jnp.asarray(self.rate)
+        chex.assert_shape(rate, (), custom_message="rate must be scalar")
+        chex.assert_tree_all_finite(rate, custom_message="rate must be finite")
+        chex.assert_trees_all_equal(
+            (rate >= gamma) & (rate < 1),
+            jnp.asarray(True),
+            custom_message="rate must be in [gamma, 1)",
+        )
+
+        next_v_val = bellman_opt_op.v(mdp, v_val, gamma)
+        residual = jnp.max(jnp.abs(v_val - next_v_val))
+        return self.State(
+            v_val=next_v_val,
+            prev_v_val=v_val,
+            bound=rate * residual,
+            accepted=jnp.asarray(False),
+        )
+
+    def update(
+        self,
+        mdp: MDP,
+        state: SafeAcceleratedValueIteration.State,
+    ) -> SafeAcceleratedValueIteration.State:
+        """Propose and safeguard one accelerated value-iteration update."""
+        gamma = jnp.asarray(self.gamma)
+        rate = (1 + gamma) / 2 if self.rate is None else jnp.asarray(self.rate)
+        step_size = 1 / (1 + gamma) if self.step_size is None else jnp.asarray(self.step_size)
+        momentum = (
+            gamma / (1 + jnp.sqrt(1 - gamma**2))
+            if self.momentum is None
+            else jnp.asarray(self.momentum)
+        )
+        chex.assert_shape(state.v_val, (mdp.state_size,))
+        chex.assert_shape(state.prev_v_val, (mdp.state_size,))
+        chex.assert_shape(state.bound, ())
+        chex.assert_shape(state.accepted, ())
+        chex.assert_shape(rate, (), custom_message="rate must be scalar")
+        chex.assert_shape(step_size, (), custom_message="step_size must be scalar")
+        chex.assert_shape(momentum, (), custom_message="momentum must be scalar")
+        chex.assert_tree_all_finite(state, custom_message="state arrays must be finite")
+        chex.assert_tree_all_finite(
+            (rate, step_size, momentum),
+            custom_message="planner parameters must be finite",
+        )
+        chex.assert_trees_all_equal(
+            (rate >= gamma) & (rate < 1),
+            jnp.asarray(True),
+            custom_message="rate must be in [gamma, 1)",
+        )
+        chex.assert_trees_all_equal(
+            step_size > 0,
+            jnp.asarray(True),
+            custom_message="step_size must be positive",
+        )
+        chex.assert_trees_all_equal(
+            momentum >= 0,
+            jnp.asarray(True),
+            custom_message="momentum must be nonnegative",
+        )
+        chex.assert_trees_all_equal(
+            state.bound >= 0,
+            jnp.asarray(True),
+            custom_message="bound must be nonnegative",
+        )
+
+        extrapolated = state.v_val + momentum * (state.v_val - state.prev_v_val)
+        bellman_extrapolated = bellman_opt_op.v(mdp, extrapolated, gamma)
+        proposal = extrapolated - step_size * (extrapolated - bellman_extrapolated)
+        proposal_bellman = bellman_opt_op.v(mdp, proposal, gamma)
+        proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
+        bound = rate * state.bound
+        accepted = proposal_residual <= bound
+        fallback = bellman_opt_op.v(mdp, state.v_val, gamma)
+        v_val = jnp.where(accepted, proposal, fallback)
+        return replace(
+            state,
+            v_val=v_val,
+            prev_v_val=state.v_val,
+            bound=bound,
+            accepted=accepted,
+        )
+
+
+@chex.dataclass(frozen=True)
 class RankOneValueIteration:
     r"""Perform one Rank-One Value Iteration update at a time.
 
@@ -463,6 +617,7 @@ __all__ = [
     "QValueIteration",
     "AnchoredValueIteration",
     "AnchoredQValueIteration",
+    "SafeAcceleratedValueIteration",
     "RankOneValueIteration",
     "PolicyIteration",
 ]

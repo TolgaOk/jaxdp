@@ -14,6 +14,7 @@ from jaxdp.planning import (
     PolicyIteration,
     QValueIteration,
     RankOneValueIteration,
+    SafeAcceleratedValueIteration,
     ValueIteration,
     policy_eval,
 )
@@ -41,6 +42,7 @@ def test_public_planning_names() -> None:
     assert jaxdp.AnchoredValueIteration is AnchoredValueIteration
     assert jaxdp.AnchoredQValueIteration is AnchoredQValueIteration
     assert jaxdp.RankOneValueIteration is RankOneValueIteration
+    assert jaxdp.SafeAcceleratedValueIteration is SafeAcceleratedValueIteration
     assert jaxdp.PolicyIteration is PolicyIteration
     assert jaxdp.policy_eval is policy_eval
 
@@ -168,6 +170,64 @@ def test_rank_one_value_iteration_composes_with_jit_and_vmap() -> None:
     assert states.v_val.shape == v_vals.shape
     assert states.dist.shape == dists.shape
     assert jnp.allclose(jnp.sum(states.dist, axis=-1), jnp.ones(2))
+
+
+def test_safe_accelerated_value_iteration_matches_paper_recurrence() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAcceleratedValueIteration(
+        gamma=0.5,
+        rate=0.75,
+        step_size=1.0,
+        momentum=0.25,
+    )
+    state = planner.init(mdp, jnp.zeros(mdp.state_size))
+
+    updated = planner.update(mdp, state)
+
+    assert jnp.array_equal(state.prev_v_val, jnp.zeros(2))
+    assert jnp.allclose(state.v_val, jnp.array([2.0, 3.0]))
+    assert jnp.allclose(state.bound, 2.25)
+    assert updated.accepted
+    assert jnp.allclose(updated.prev_v_val, state.v_val)
+    assert jnp.allclose(updated.v_val, jnp.array([3.875, 4.25]))
+    assert jnp.allclose(updated.bound, 1.6875)
+
+
+def test_safe_accelerated_value_iteration_falls_back_to_vi() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAcceleratedValueIteration(
+        gamma=0.5,
+        rate=0.5,
+        step_size=10.0,
+        momentum=10.0,
+    )
+    state = planner.init(mdp, jnp.zeros(mdp.state_size))
+
+    updated = planner.update(mdp, state)
+
+    assert not updated.accepted
+    assert jnp.allclose(updated.v_val, bellman_opt_op.v(mdp, state.v_val, planner.gamma))
+
+
+def test_safe_accelerated_value_iteration_composes_with_jit_and_vmap() -> None:
+    mdp = _two_state_mdp()
+    planner = SafeAcceleratedValueIteration(gamma=0.5)
+    v_vals = jnp.array([[0.0, 0.0], [1.0, -1.0]])
+    init = chex.chexify(
+        jax.jit(jax.vmap(planner.init, in_axes=(None, 0))),
+        async_check=False,
+    )
+    update = chex.chexify(
+        jax.jit(jax.vmap(planner.update, in_axes=(None, 0))),
+        async_check=False,
+    )
+
+    states = update(mdp, init(mdp, v_vals))
+
+    assert states.v_val.shape == v_vals.shape
+    assert states.prev_v_val.shape == v_vals.shape
+    assert states.bound.shape == (2,)
+    assert states.accepted.shape == (2,)
 
 
 def test_policy_iteration_keeps_policy_and_value_aligned() -> None:
