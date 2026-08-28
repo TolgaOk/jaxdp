@@ -6,14 +6,14 @@ import jax.numpy as jnp
 import pytest
 
 import jaxdp
-from jaxdp.mapping import Expectation, GreedyMap
+from jaxdp.mapping import Expectation, GreedyMap, MellowMax
 from jaxdp.mdp import MDP, make_mrp
 from jaxdp.operator import (
     AdjTransOp,
     BellmanOp,
     BellmanOptOp,
     BoltzmannBellmanOp,
-    MellowmaxBellmanOptOp,
+    MellowMaxBellmanOptOp,
     SoftBellmanOptOp,
     TransOp,
 )
@@ -50,8 +50,9 @@ def test_public_bellman_names() -> None:
     assert jaxdp.BellmanOp is BellmanOp
     assert jaxdp.BellmanOptOp is BellmanOptOp
     assert jaxdp.SoftBellmanOptOp is SoftBellmanOptOp
-    assert jaxdp.MellowmaxBellmanOptOp is MellowmaxBellmanOptOp
+    assert jaxdp.MellowMaxBellmanOptOp is MellowMaxBellmanOptOp
     assert jaxdp.BoltzmannBellmanOp is BoltzmannBellmanOp
+    assert not hasattr(jaxdp, "MellowmaxBellmanOptOp")
     assert not hasattr(jaxdp, "Bellman")
     assert not hasattr(jaxdp, "BellmanOptimality")
     assert not hasattr(jaxdp, "Optimality")
@@ -168,12 +169,12 @@ def test_smooth_bellman_operators_match_action_reductions() -> None:
     temperature = 2.0
     immediate_q = jnp.einsum("asx,axs->as", mdp.reward, mdp.transition)
     soft_v = temperature * jax.nn.logsumexp(immediate_q / temperature, axis=0)
-    mellowmax_v = soft_v - temperature * jnp.log(immediate_q.shape[0])
+    mellowmax_v = MellowMax(temperature=temperature).q(immediate_q)
     boltzmann_policy = jax.nn.softmax(immediate_q / temperature, axis=0)
     boltzmann_v = jnp.sum(boltzmann_policy * immediate_q, axis=0)
 
     soft = SoftBellmanOptOp(temperature=temperature)
-    mellowmax = MellowmaxBellmanOptOp(temperature=temperature)
+    mellowmax = MellowMaxBellmanOptOp(temperature=temperature)
     boltzmann = BoltzmannBellmanOp(temperature=temperature)
 
     assert jnp.allclose(soft.v(mdp, v_val, 0.0), soft_v)
@@ -181,7 +182,7 @@ def test_smooth_bellman_operators_match_action_reductions() -> None:
     assert jnp.allclose(boltzmann.v(mdp, v_val, 0.0), boltzmann_v)
 
     soft_q = temperature * jax.nn.logsumexp(q_val / temperature, axis=0)
-    mellowmax_q = soft_q - temperature * jnp.log(q_val.shape[0])
+    mellowmax_q = MellowMax(temperature=temperature).q(q_val)
     boltzmann_q = jnp.sum(jax.nn.softmax(q_val / temperature, axis=0) * q_val, axis=0)
 
     trans_op = TransOp()
@@ -207,7 +208,7 @@ def test_soft_and_mellowmax_differ_by_uniform_policy_cost() -> None:
         mdp,
         v_val,
         0.5,
-    ) - MellowmaxBellmanOptOp(temperature=temperature).v(mdp, v_val, 0.5)
+    ) - MellowMaxBellmanOptOp(temperature=temperature).v(mdp, v_val, 0.5)
 
     assert jnp.allclose(difference, temperature * jnp.log(mdp.action_size))
 
@@ -216,13 +217,13 @@ def test_soft_and_mellowmax_differ_by_uniform_policy_cost() -> None:
     "operator",
     [
         SoftBellmanOptOp(temperature=0.0),
-        MellowmaxBellmanOptOp(temperature=-1.0),
+        MellowMaxBellmanOptOp(temperature=-1.0),
         BoltzmannBellmanOp(temperature=float("inf")),
         BoltzmannBellmanOp(temperature=float("nan")),
     ],
 )
 def test_smooth_bellman_operators_reject_invalid_temperature(
-    operator: SoftBellmanOptOp | MellowmaxBellmanOptOp | BoltzmannBellmanOp,
+    operator: SoftBellmanOptOp | MellowMaxBellmanOptOp | BoltzmannBellmanOp,
 ) -> None:
     with pytest.raises(AssertionError, match="temperature"):
         operator.v(_two_state_mdp(), jnp.zeros(2), gamma=0.5)
@@ -232,12 +233,12 @@ def test_smooth_bellman_operators_reject_invalid_temperature(
     "operator",
     [
         SoftBellmanOptOp(temperature=1.0),
-        MellowmaxBellmanOptOp(temperature=1.0),
+        MellowMaxBellmanOptOp(temperature=1.0),
         BoltzmannBellmanOp(temperature=1.0),
     ],
 )
 def test_smooth_bellman_operators_compose_with_jax(
-    operator: SoftBellmanOptOp | MellowmaxBellmanOptOp | BoltzmannBellmanOp,
+    operator: SoftBellmanOptOp | MellowMaxBellmanOptOp | BoltzmannBellmanOp,
 ) -> None:
     mdp = _two_state_mdp()
     values = jnp.array([[4.0, 8.0], [10_000.0, 10_000.0]])

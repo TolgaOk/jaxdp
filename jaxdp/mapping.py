@@ -215,6 +215,53 @@ class ProjSimplex:
 
 
 @chex.dataclass(frozen=True)
+class MellowMax:
+    r"""Namespace for the Mellowmax action-value reduction.
+
+    For a positive temperature, the ``q`` method applies
+
+    .. math::
+
+        \operatorname{mm}_{\tau}q(s)
+        = \tau\log\left(
+          \frac{1}{|\mathcal{A}|}\sum_{a\in\mathcal{A}}
+          \exp\left(\frac{q(s,a)}{\tau}\right)\right).
+
+    Attributes:
+        temperature: Positive Mellowmax temperature.
+
+    Methods:
+        q: Reduce action values to state values.
+    """
+
+    temperature: float
+
+    def q(self, q_val: jax.Array) -> jax.Array:
+        """Reduce action values with normalized log-mean-exp.
+
+        Args:
+            q_val: Action values with shape ``(A, S)``.
+
+        Returns:
+            State values with shape ``(S,)``.
+        """
+        chex.assert_rank(q_val, 2)
+        chex.assert_axis_dimension_gt(q_val, 0, 0)
+        temperature = jnp.asarray(self.temperature)
+        chex.assert_shape(temperature, (), custom_message="temperature must be scalar")
+        chex.assert_tree_all_finite(temperature, custom_message="temperature must be finite")
+        chex.assert_trees_all_equal(
+            temperature > 0,
+            jnp.asarray(True),
+            custom_message="temperature must be positive",
+        )
+        action_size = jnp.asarray(q_val.shape[0], dtype=temperature.dtype)
+        return temperature * (
+            jax.nn.logsumexp(q_val / temperature, axis=0) - jnp.log(action_size)
+        )
+
+
+@chex.dataclass(frozen=True)
 class Expectation:
     r"""Namespace for expectations over finite distributions.
 
@@ -425,6 +472,7 @@ __all__ = [
     "SoftGreedyMap",
     "EpsilonGreedy",
     "ProjSimplex",
+    "MellowMax",
     "Expectation",
     "Occupancy",
     "Stationary",

@@ -10,6 +10,7 @@ from jaxdp import mapping
 from jaxdp.mapping import (
     EpsilonGreedy,
     GreedyMap,
+    MellowMax,
     Occupancy,
     ProjSimplex,
     SoftGreedyMap,
@@ -60,6 +61,7 @@ def test_public_mapping_names() -> None:
     assert jaxdp.GreedyMap is GreedyMap
     assert jaxdp.SoftGreedyMap is SoftGreedyMap
     assert jaxdp.ProjSimplex is ProjSimplex
+    assert jaxdp.MellowMax is MellowMax
     assert jaxdp.Occupancy is Occupancy
     assert jaxdp.Stationary is Stationary
     assert jaxdp.eigenvalues is eigenvalues
@@ -172,6 +174,42 @@ def test_simplex_projection_composes_with_jit_and_vmap() -> None:
     assert policies.shape == q_vals.shape
     assert jnp.allclose(jnp.sum(policies, axis=1), 1)
     assert jnp.all(policies >= 0)
+
+
+def test_mellowmax_matches_normalized_log_mean_exp() -> None:
+    q_val = jnp.array([[2.0, -1.0], [0.0, 3.0], [1.0, 2.0]])
+    temperature = 0.75
+    reduction = MellowMax(temperature=temperature)
+    expected = temperature * (
+        jax.nn.logsumexp(q_val / temperature, axis=0) - jnp.log(q_val.shape[0])
+    )
+
+    assert is_dataclass(reduction)
+    assert jnp.allclose(reduction.q(q_val), expected)
+    assert jnp.allclose(reduction.q(jnp.full((3, 2), 4.0)), 4.0)
+
+
+@pytest.mark.parametrize("temperature", [0.0, -1.0, jnp.inf, jnp.nan])
+def test_mellowmax_rejects_invalid_temperature(temperature: float) -> None:
+    with pytest.raises(AssertionError, match="temperature"):
+        MellowMax(temperature=temperature).q(jnp.zeros((2, 2)))
+
+
+def test_mellowmax_composes_with_jit_and_vmap() -> None:
+    q_vals = jnp.array(
+        [
+            [[2.0, -1.0], [0.0, 3.0], [1.0, 2.0]],
+            [[-1.0, 2.0], [3.0, 0.0], [2.0, 1.0]],
+        ]
+    )
+    apply = chex.chexify(
+        jax.jit(jax.vmap(MellowMax(temperature=0.75).q)),
+        async_check=False,
+    )
+    v_vals = apply(q_vals)
+
+    assert v_vals.shape == (2, 2)
+    assert jnp.all(jnp.isfinite(v_vals))
 
 
 def test_occupancy_propagates_from_the_initial_distribution() -> None:

@@ -395,7 +395,7 @@ class SoftBellmanOptOp:
 
 
 @chex.dataclass(frozen=True)
-class MellowmaxBellmanOptOp:
+class MellowMaxBellmanOptOp:
     r"""Namespace for Mellowmax Bellman optimality operators.
 
     For a positive temperature, the action reduction and resulting operators are
@@ -584,6 +584,6 @@ __all__ = [
     "BellmanOp",
     "BellmanOptOp",
     "SoftBellmanOptOp",
-    "MellowmaxBellmanOptOp",
+    "MellowMaxBellmanOptOp",
     "BoltzmannBellmanOp",
 ]
