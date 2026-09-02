@@ -80,6 +80,3 @@ Every iterative planner is a configured dataclass with a nested `State`, an `ini
 | `DynamicBoltzmannValueIteration` | Apply one dynamic Boltzmann value update. |
 | `AcceleratedPolicyIteration` | Apply one accelerated evaluation or improvement micro-step. |
 | `PolicyIteration` | Apply one exact policy-improvement and evaluation update. |
-
-See [`doc/README.md`](../doc/README.md) for the concise mathematical API map and
-[`doc/notation.md`](../doc/notation.md) for extended definitions and conventions.

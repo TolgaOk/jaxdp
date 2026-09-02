@@ -1,16 +1,57 @@
+[build-system]
+requires = ["setuptools>=77.0.3"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "jaxdp"
 authors = [
-    {name = "Tolga Ok", email = "T.Ok@tudelft.nl"}
+    {name = "Tolga Ok", email = "T.Ok@tudelft.nl"},
 ]
 version = "0.3.0"
 requires-python = ">=3.11"
 readme = "README.md"
-description = "A Dynamic Programming package for discrete MDPs implemented in JAX"
-license = {text = "MIT License"}
+description = "Exact dynamic programming for finite Markov decision processes in JAX"
+license = "MIT"
+license-files = ["LICENCE.txt"]
+keywords = ["dynamic programming", "jax", "markov decision process", "reinforcement learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "chex>=0.1.90",
+    "jax>=0.7.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2.2",
+    "flax>=0.10.7",
+    "pytest>=8.4",
+    "rich>=14.1.0",
+    "ruff>=0.12.5",
+    "twine>=6.1.0",
+    "ty>=0.0.70",
+    "tyro>=1.0.6",
+]
+
+[project.urls]
+Repository = "https://github.com/TolgaOk/jaxdp"
+
+[tool.setuptools.packages.find]
+include = ["jaxdp", "jaxdp.*"]
+exclude = ["jaxdp._learning*", "jaxdp._planning*", "jaxdp.mdp.sampler*"]
+
+[tool.setuptools.package-data]
+jaxdp = ["README.md"]
 
 [tool.ty.src]
-exclude = ["setup.py"]
+exclude = ["_doc", "_examples"]
 
 [tool.ruff]
 # Set line length
@@ -24,6 +65,8 @@ exclude = [
     "dist",
     ".venv",
     "*.egg-info",
+    "_doc",
+    "_examples",
 ]
 
 # Target Python 3.11+
@@ -42,20 +85,12 @@ select = [
     "C4",  # flake8-comprehensions
 ]
 
-# Ignore specific rules that contradict our design choices
-ignore = [
-    "N801",  # Class name should use CapWords convention - we use lowercase for algorithm classes (vi, pi, etc.)
-    "N999",  # Invalid module name - allow files starting with underscore for private/experimental code
-    "F821",  # Undefined name - allow type variable names in type annotations (N, S, A, etc.)
-    "C408",  # Unnecessary `dict()` call - sometimes explicit dict() is clearer
-]
-
 [tool.ruff.lint.isort]
 # Configure import sorting
 known-first-party = ["jaxdp"]
 
 [tool.ruff.format]
-# Use single quotes for strings
+# Use double quotes for strings
 quote-style = "double"
 # Indent with 4 spaces
 indent-style = "space"
