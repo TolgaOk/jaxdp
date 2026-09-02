@@ -15,7 +15,7 @@ from jaxdp.mapping import (
     reward,
     stationary,
 )
-from jaxdp.mdp import MDP, MRP, make_mrp
+from jaxdp.mdp import MDP, MRP, make, make_mrp
 from jaxdp.operator import (
     BoltzmannBellmanOp,
     MellowMaxBellmanOptOp,
@@ -52,6 +52,7 @@ __all__ = [
     "planning",
     "MDP",
     "MRP",
+    "make",
     "make_mrp",
     "trans_op",
     "adj_trans_op",

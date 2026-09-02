@@ -3,7 +3,7 @@
 import chex
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 
 def sequential_mdp(state_size: int) -> MDP:

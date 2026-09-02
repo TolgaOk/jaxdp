@@ -1,7 +1,8 @@
 import jax.numpy as jnp
 import pytest
 
-from jaxdp.mdp import MDP, sequential_mdp
+from jaxdp.mdp import MDP
+from jaxdp.mdp.sequential import sequential_mdp
 
 
 def test_sequential_mdp_arrays() -> None:

@@ -47,6 +47,18 @@ def test_absorbing_reward_cell_is_nonterminal() -> None:
     assert jnp.all(mdp.reward[:, 1, 1] == 1)
 
 
+def test_terminal_hazard_is_absorbing_and_unrewarded() -> None:
+    mdp = grid_world(("#######", "#P H @#", "#######"))
+
+    assert jnp.array_equal(mdp.terminal, jnp.array([0.0, 0.0, 1.0, 0.0, 1.0]))
+    assert mdp.transition[1, 2, 1] == 1
+    assert mdp.reward[1, 1, 2] == 0
+    assert mdp.transition[1, 4, 3] == 1
+    assert mdp.reward[1, 3, 4] == 1
+    assert jnp.all(mdp.transition[:, 2, 2] == 1)
+    assert jnp.all(mdp.reward[:, 2] == 0)
+
+
 @pytest.mark.parametrize(
     ("board", "p_slip", "message"),
     [

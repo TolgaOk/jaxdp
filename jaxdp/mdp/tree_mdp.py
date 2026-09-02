@@ -4,7 +4,7 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 
 def tree_mdp(depth: int) -> MDP:

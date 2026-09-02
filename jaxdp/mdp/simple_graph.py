@@ -2,7 +2,7 @@
 
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 _EDGES = {
     0: (0, 4),

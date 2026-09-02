@@ -3,7 +3,7 @@
 import chex
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 
 def forest_mdp(rotation: int) -> MDP:

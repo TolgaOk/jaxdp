@@ -5,7 +5,7 @@ import jax
 import jax.numpy as jnp
 import jax.random as jrd
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 
 def garnet_mdp(

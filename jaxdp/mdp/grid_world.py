@@ -6,20 +6,20 @@ import chex
 import jax
 import jax.numpy as jnp
 
-from jaxdp.mdp import MDP
+from jaxdp.mdp.mdp import MDP
 
 _ACTIONS = ((1, 0), (0, 1), (-1, 0), (0, -1))
 _SLIP_ACTIONS = ((1, 3), (0, 2), (1, 3), (0, 2))
-_VALID_CELLS = frozenset("# P@X+=")
+_VALID_CELLS = frozenset("# P@X+=H")
 
 
 def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
     """Create a four-action MDP from a character grid.
 
-    ``P`` is the initial cell, ``@`` is a terminal goal, ``=`` is a nonterminal absorbing
-    reward cell, ``+`` gives reward one, ``X`` gives reward minus one, and ``#`` is a wall.
-    Rewards depend on the destination cell. Slip probability is divided equally between the two
-    perpendicular actions.
+    ``P`` is the initial cell, ``@`` is a rewarded terminal goal, ``H`` is an unrewarded terminal
+    hazard, ``=`` is a nonterminal absorbing reward cell, ``+`` gives reward one, ``X`` gives
+    reward minus one, and ``#`` is a wall. Rewards depend on the destination cell. Slip
+    probability is divided equally between the two perpendicular actions.
 
     Args:
         board: Rectangular rows containing supported cell characters.
@@ -64,7 +64,7 @@ def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
         cell = rows[row][column]
         for action, (row_step, column_step) in enumerate(_ACTIONS):
             target = (row + row_step, column + column_step)
-            next_state = current if cell in "@=" else state_index.get(target, current)
+            next_state = current if cell in "@=H" else state_index.get(target, current)
             base_transition = base_transition.at[action, next_state, current].set(1.0)
 
     slip_transition = jnp.stack(
@@ -76,7 +76,7 @@ def grid_world(board: Sequence[str], p_slip: float = 0.0) -> MDP:
     destination_reward = jnp.array(
         [cell_reward.get(rows[row][column], 0.0) for row, column in positions]
     )
-    terminal = jnp.array([rows[row][column] == "@" for row, column in positions])
+    terminal = jnp.array([rows[row][column] in "@H" for row, column in positions])
     reward = jnp.broadcast_to(destination_reward, transition.shape)
     reward = reward * (1 - terminal)[None, :, None]
 
