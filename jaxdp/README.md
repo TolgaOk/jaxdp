@@ -4,6 +4,9 @@ This directory contains the `jaxdp` source package. The root package re-exports 
 components. Stateless namespaces use lowercase aliases, while configured and stateful components
 use PascalCase names.
 
+Calls that validate array values need `chex.chexify` around the outermost `jax.jit` or `jax.vmap`
+call.
+
 ## Models and construction
 
 | Component | Purpose |
