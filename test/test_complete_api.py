@@ -14,15 +14,7 @@ def _two_state_mdp() -> MDP:
             [[0.0, 1.0], [1.0, 0.0]],
         ]
     )
-    reward = (
-        jnp.zeros((2, 2, 2))
-        .at[0, 1, 1]
-        .set(1.0)
-        .at[1, 0, 1]
-        .set(2.0)
-        .at[1, 1, 0]
-        .set(3.0)
-    )
+    reward = jnp.zeros((2, 2, 2)).at[0, 1, 1].set(1.0).at[1, 0, 1].set(2.0).at[1, 1, 0].set(3.0)
     initial = jnp.array([1.0, 0.0])
     terminal = jnp.zeros(2)
     return MDP(
@@ -79,9 +71,7 @@ def test_completed_api_supports_jit_and_vmap() -> None:
     state_distribution = chex.chexify(
         jax.jit(lambda policy: Occupancy(step=3).v(mdp, policy)),
         async_check=False,
-    )(
-        jnp.full((2, 2), 0.5)
-    )
+    )(jnp.full((2, 2), 0.5))
 
     assert policies.shape == (2, mdp.action_size, mdp.state_size)
     assert jnp.allclose(state_distribution, jnp.array([0.5, 0.5]))

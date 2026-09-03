@@ -67,18 +67,24 @@ def delayed_reward_mdp(
         )
     )
     reward_value = (
-        reward_mean + reward_scale * jrd.normal(key, (reward_size,))
-    ).reshape(pre_leaf_size, action_size).T
+        (reward_mean + reward_scale * jrd.normal(key, (reward_size,)))
+        .reshape(pre_leaf_size, action_size)
+        .T
+    )
     pre_leaf = jnp.arange(
         state_size - leaf_size - pre_leaf_size,
         state_size - leaf_size,
     )
     next_leaf = pre_leaf * action_size + action + 1
-    reward = jnp.zeros((action_size, state_size, state_size)).at[
-        action,
-        pre_leaf,
-        next_leaf,
-    ].set(reward_value)
+    reward = (
+        jnp.zeros((action_size, state_size, state_size))
+        .at[
+            action,
+            pre_leaf,
+            next_leaf,
+        ]
+        .set(reward_value)
+    )
 
     initial = jax.nn.one_hot(0, state_size)
     mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)

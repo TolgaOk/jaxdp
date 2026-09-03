@@ -316,11 +316,7 @@ def test_quasi_policy_iteration_matches_rank_one_update() -> None:
     checked_u = prior_resolvent.T @ u
     gain = 1 / jnp.dot(u, v_val - checked_w)
     residual = v_val - bellman_v
-    proposal = (
-        v_val
-        - prior_resolvent @ residual
-        - gain * checked_w * jnp.dot(checked_u, residual)
-    )
+    proposal = v_val - prior_resolvent @ residual - gain * checked_w * jnp.dot(checked_u, residual)
     proposal_bellman = bellman_opt_op.v(mdp, proposal, planner.gamma)
     proposal_residual = jnp.max(jnp.abs(proposal - proposal_bellman))
     bound = planner.gamma * state.bound

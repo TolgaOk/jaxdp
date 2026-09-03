@@ -27,15 +27,7 @@ def _two_state_mdp() -> MDP:
             [[0.0, 1.0], [1.0, 0.0]],
         ]
     )
-    reward = (
-        jnp.zeros((2, 2, 2))
-        .at[0, 1, 1]
-        .set(1.0)
-        .at[1, 0, 1]
-        .set(2.0)
-        .at[1, 1, 0]
-        .set(3.0)
-    )
+    reward = jnp.zeros((2, 2, 2)).at[0, 1, 1].set(1.0).at[1, 0, 1].set(2.0).at[1, 1, 0].set(3.0)
     return MDP(
         transition=transition,
         reward=reward,

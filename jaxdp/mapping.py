@@ -250,11 +250,14 @@ class ProjSimplex:
         cumulative = jnp.cumsum(sorted_val, axis=0) - 1
         rank = jnp.arange(1, q_val.shape[0] + 1, dtype=q_val.dtype)[:, None]
         support_size = jnp.sum(sorted_val - cumulative / rank > 0, axis=0)
-        threshold = jnp.take_along_axis(
-            cumulative,
-            support_size[None, :] - 1,
-            axis=0,
-        )[0] / support_size
+        threshold = (
+            jnp.take_along_axis(
+                cumulative,
+                support_size[None, :] - 1,
+                axis=0,
+            )[0]
+            / support_size
+        )
         return jnp.maximum(q_val - threshold, 0)
 
 
@@ -300,9 +303,7 @@ class MellowMax:
             custom_message="temperature must be positive",
         )
         action_size = jnp.asarray(q_val.shape[0], dtype=temperature.dtype)
-        return temperature * (
-            jax.nn.logsumexp(q_val / temperature, axis=0) - jnp.log(action_size)
-        )
+        return temperature * (jax.nn.logsumexp(q_val / temperature, axis=0) - jnp.log(action_size))
 
 
 class Expectation:
