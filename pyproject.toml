@@ -53,6 +53,9 @@ jaxdp = ["README.md"]
 [tool.ty.src]
 exclude = ["_doc", "_examples"]
 
+[tool.pytest.ini_options]
+testpaths = ["test"]
+
 [tool.ruff]
 # Set line length
 line-length = 100

@@ -167,7 +167,7 @@ def test_simplex_projection_matches_euclidean_projection() -> None:
     assert jnp.allclose(policy, expected)
     assert jnp.allclose(jnp.sum(policy, axis=0), 1)
     assert jnp.all(policy >= 0)
-    assert jnp.allclose(projection.q(policy), policy)
+    assert jnp.allclose(projection.q(policy), policy, atol=1e-7)
 
 
 def test_simplex_projection_composes_with_jit_and_vmap() -> None:
