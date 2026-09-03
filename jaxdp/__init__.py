@@ -1,5 +1,7 @@
 """Exact dynamic programming for finite Markov decision processes in JAX."""
 
+__version__ = "0.4.0"
+
 from jaxdp import mapping as mapping
 from jaxdp import operator as operator
 from jaxdp import planning as planning
@@ -47,6 +49,7 @@ from jaxdp.planning import (
 )
 
 __all__ = [
+    "__version__",
     "mapping",
     "operator",
     "planning",
