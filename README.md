@@ -58,7 +58,7 @@ v_vals = target_value(gammas)
 # (4, ...)
 ```
 
-See the [component reference](jaxdp/README.md) for the public API and MDPs.
+See the [component reference](https://github.com/TolgaOk/jaxdp/blob/master/jaxdp/README.md) for the public API and MDPs.
 
 ## Citation
 

@@ -7,7 +7,7 @@ name = "jaxdp"
 authors = [
     {name = "Tolga Ok", email = "T.Ok@tudelft.nl"},
 ]
-version = "0.3.0"
+version = "0.4.0"
 requires-python = ">=3.11"
 readme = "README.md"
 description = "Exact dynamic programming for finite Markov decision processes in JAX"
