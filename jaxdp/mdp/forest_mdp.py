@@ -1,49 +1,42 @@
+"""Forest-management MDP factory."""
+
+import chex
 import jax.numpy as jnp
-from jaxdp.mdp import MDP
+
+from jaxdp.mdp.mdp import MDP
 
 
 def forest_mdp(rotation: int) -> MDP:
-    """
-    Constructs a simple Forest MDP for forest management decisions.
-
-    - State space: Forest age (0 to rotation).
-    - Actions:
-         0: Wait (allow forest to grow).
-         1: Harvest (which resets the forest age to 0).
-    - Transitions:
-         * For action 0: if current age s < rotation, then s -> s+1; if s == rotation, remain at rotation.
-         * For action 1: regardless of current state, transition to state 0.
-    - Rewards:
-         * For action 0: reward is 0.
-         * For action 1: reward is proportional to the current forest age (e.g. revenue = s).
-    - Initial state: Forest age 0.
-    - Terminal: No explicit terminal (all states are nonterminal).
+    """Create a forest MDP with wait and harvest actions.
 
     Args:
-        rotation (int): Maximum forest age (rotation period).
+        rotation: Nonnegative maximum forest age.
 
     Returns:
-        MDP: The constructed Forest MDP.
+        Forest-management MDP initialized at age zero.
     """
-    n_states = rotation + 1
-    n_actions = 2
+    chex.assert_type(rotation, int, custom_message="rotation must be an integer")
+    chex.assert_scalar_non_negative(
+        rotation,
+        custom_message="rotation must be nonnegative",
+    )
 
+    state_size = rotation + 1
+    state = jnp.arange(state_size)
+    next_age = jnp.minimum(state + 1, rotation)
     transition = (
-        jnp.zeros((n_actions, n_states, n_states))
-        .at[0,
-            jnp.clip(jnp.arange(n_states) + 1, 0, n_states - 1),
-            jnp.arange(n_states)
-            ].set(1.0)
-        .at[1, 0, :].set(1)
+        jnp.zeros((2, state_size, state_size))
+        .at[0, next_age, state]
+        .set(1.0)
+        .at[1, 0, state]
+        .set(1.0)
     )
-    reward = (
-        jnp.zeros((n_actions, n_states, n_states))
-        .at[1, jnp.arange(n_states), 0].set(jnp.arange(n_states).astype("float"))
-    )
-    initial = (
-        jnp.zeros(n_states)
-        .at[0].set(1.0)
-    )
-    terminal = jnp.zeros(n_states)
+    reward = jnp.zeros_like(transition).at[1, state, 0].set(state)
+    initial = jnp.zeros(state_size).at[0].set(1.0)
+    terminal = jnp.zeros(state_size)
+    mdp = MDP(transition=transition, reward=reward, initial=initial, terminal=terminal)
+    mdp.validate()
+    return mdp
 
-    return MDP(transition, reward, initial, terminal, name=f"ForestMDP[rotation={rotation}]")
+
+__all__ = ["forest_mdp"]

@@ -1,8 +1,1 @@
-jax==0.7.0
-jaxlib==0.7.0
-tfp-nightly[jax]==0.26.0.dev20250729
-distrax==0.1.5
-chex==0.1.90
-flax==0.10.7
-rich==14.1.0
-ruff==0.12.5
+-e .[dev]

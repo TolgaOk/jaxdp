@@ -1,0 +1,84 @@
+from collections.abc import Sequence
+
+import jax.numpy as jnp
+import pytest
+
+from jaxdp.mdp.grid_world import grid_world
+
+
+def test_grid_world_uses_row_major_dynamics_and_terminal_rewards() -> None:
+    mdp = grid_world(("#####", "#P @#", "#####"))
+
+    assert mdp.state_size == 3
+    assert jnp.array_equal(mdp.initial, jnp.array([1.0, 0.0, 0.0]))
+    assert jnp.array_equal(mdp.terminal, jnp.array([0.0, 0.0, 1.0]))
+    assert mdp.transition[1, 1, 0] == 1
+    assert mdp.transition[1, 2, 1] == 1
+    assert jnp.all(mdp.transition[:, 2, 2] == 1)
+    assert mdp.reward[1, 1, 2] == 1
+    assert jnp.all(mdp.reward[:, 2, :] == 0)
+
+
+def test_grid_world_splits_slip_between_perpendicular_actions() -> None:
+    mdp = grid_world(
+        (
+            "#####",
+            "#   #",
+            "# P #",
+            "#  @#",
+            "#####",
+        ),
+        p_slip=0.2,
+    )
+
+    assert jnp.allclose(
+        mdp.transition[2, :, 4],
+        jnp.array([0.0, 0.8, 0.0, 0.1, 0.0, 0.1, 0.0, 0.0, 0.0]),
+    )
+
+
+def test_absorbing_reward_cell_is_nonterminal() -> None:
+    mdp = grid_world(("#####", "#P= #", "#####"))
+
+    assert not mdp.terminal[1]
+    assert mdp.transition[1, 1, 0] == 1
+    assert jnp.all(mdp.transition[:, 1, 1] == 1)
+    assert mdp.reward[1, 0, 1] == 1
+    assert jnp.all(mdp.reward[:, 1, 1] == 1)
+
+
+def test_terminal_hazard_is_absorbing_and_unrewarded() -> None:
+    mdp = grid_world(("#######", "#P H @#", "#######"))
+
+    assert jnp.array_equal(mdp.terminal, jnp.array([0.0, 0.0, 1.0, 0.0, 1.0]))
+    assert mdp.transition[1, 2, 1] == 1
+    assert mdp.reward[1, 1, 2] == 0
+    assert mdp.transition[1, 4, 3] == 1
+    assert mdp.reward[1, 3, 4] == 1
+    assert jnp.all(mdp.transition[:, 2, 2] == 1)
+    assert jnp.all(mdp.reward[:, 2] == 0)
+
+
+@pytest.mark.parametrize(
+    ("board", "p_slip", "message"),
+    [
+        ((), 0.0, "nonempty"),
+        (("###", "#P"), 0.0, "equal length"),
+        (("###", "#P?", "###"), 0.0, "invalid cells"),
+        (("###", "# #", "###"), 0.0, "exactly one"),
+        (("####", "#PP#", "####"), 0.0, "exactly one"),
+    ],
+)
+def test_grid_world_rejects_invalid_board(
+    board: Sequence[str],
+    p_slip: float,
+    message: str,
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        grid_world(board, p_slip)
+
+
+@pytest.mark.parametrize("p_slip", [-0.1, 1.1, float("inf"), float("nan")])
+def test_grid_world_rejects_invalid_slip_probability(p_slip: float) -> None:
+    with pytest.raises(AssertionError, match="p_slip"):
+        grid_world(("###", "#P#", "###"), p_slip)

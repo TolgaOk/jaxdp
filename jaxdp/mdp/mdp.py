@@ -1,162 +1,125 @@
-from typing import Tuple, Any, Dict, Optional, Union
-import json
-import jax.numpy as jnp
+"""Finite Markov decision processes."""
+
+import chex
 import jax
-from jax.typing import ArrayLike as KeyType
-import distrax
+import jax.numpy as jnp
+from chex import dataclass
 
-from jaxdp.typehints import F
+_ATOL = 1e-5
 
 
-class MDP():
-    """ Base Markov Decision Process (MDP) class
+@dataclass(frozen=True)
+class MDP:
+    r"""Finite Markov decision process.
 
-    Args:
-        transition (F["... A S S"]): Column stochastic matrix that
-            describes the transition dynamics of the MDP
-        reward (F["... A S S"]): Reward matrix
-        initial (F["... S"]): Stochastic vector for the initial state distribution
-        terminal (F["... S"]): A boolean-valued vector for terminal states
-        features (F["... S F"]): State features
-        name (str, optional): Name of the MDP. Defaults to "MDP".
-        validate (bool, optional): If true, validate the input matrices and vectors. Defaults to 
-            True.
+    .. math::
+
+        \mathcal{M}=(P,R,\mu,\tau)
+
+    The transition convention is ``transition[..., a, s_next, s]`` and the reward convention is
+    ``reward[..., a, s, s_next]``. Every array uses the same leading batch shape. Terminal states
+    are absorbing with zero outgoing reward; truncation is external to this model.
+
+    Attributes:
+        transition: Column-stochastic transition probabilities with shape ``(..., A, S, S)``.
+        reward: Transition rewards with shape ``(..., A, S, S)``.
+        initial: Initial state distribution with shape ``(..., S)``.
+        terminal: Terminal-state indicators with shape ``(..., S)``.
+
+    Methods:
+        validate: Validate shapes, probabilities, and terminal semantics.
     """
 
-    def __init__(self,
-                 transition: F["... A S S"],
-                 reward: F["... A S S"],
-                 initial: F["... S"],
-                 terminal: F["... S"],
-                 features: Optional[F["... S F"]] = None,
-                 name: str = "MDP",
-                 validate: bool = True):
-        self.name = name
-        self.transition = transition
-        self.reward = reward
-        self.initial = initial
-        self.terminal = terminal
-        if features is None:
-            features = jnp.eye(self.state_size)
-        self.features = features
-
-        if validate and not isinstance(self.transition, jax.core.Tracer):
-            self.validate()
-
-    def init_state(self, key: KeyType) -> F["... S"]:
-        return distrax.OneHotCategorical(
-            probs=self.initial, dtype="float").sample(seed=key)
-
-    def validate(self) -> None:
-        """ Validate the MDP matrices and vectors
-
-        Raises:
-            ValueError: If transition matrices are not column stochastic
-            ValueError: If initial state distribution is not stochastic
-            ValueError: If termination vector is not boolean-valued
-            ValueError: If terminal rewards are non-zero
-            ValueError: If terminal transitions are not self pointing
-        """
-        if not jnp.allclose(self.transition.sum(axis=-2), 1.0, atol=1e-5):
-            raise ValueError(
-                "Transition matrix must be column stochastic!")
-
-        if not jnp.allclose(jnp.sum(self.initial, axis=-1), 1.0, atol=1e-5):
-            raise ValueError(
-                "Initial distribution must be a stochastic vector!")
-
-        if not jnp.allclose(jnp.count_nonzero(self.terminal, axis=-1) +
-                            jnp.count_nonzero(1 - self.terminal, axis=-1), self.state_size):
-            raise ValueError(
-                "Terminal array should only contain boolean values!")
-
-        if not jnp.allclose(self.reward * self.terminal.reshape(1, -1, 1), 0):
-            raise ValueError("Terminal rewards must be zero!")
-
-        if not jnp.allclose(
-                jnp.einsum("axs,s->as",
-                           (self.transition == jnp.expand_dims(
-                               jnp.eye(self.state_size), 0)),
-                           self.terminal
-                           ) / self.state_size,
-                self.terminal.reshape(1, -1)):
-            raise ValueError("Terminal transitions must be self pointing!")
+    transition: jax.Array
+    reward: jax.Array
+    initial: jax.Array
+    terminal: jax.Array
 
     @property
     def state_size(self) -> int:
-        return self.transition.shape[-2]
-
-    @property
-    def feature_size(self) -> int:
-        return self.features.shape[-1]
+        """Number of states."""
+        return self.transition.shape[-1]
 
     @property
     def action_size(self) -> int:
+        """Number of actions."""
         return self.transition.shape[-3]
 
-    @property
-    def batch_shape(self) -> Tuple[int, ...]:
-        return self.transition.shape[:-3]
+    def validate(self) -> None:
+        """Validate shapes, values, and terminal semantics with Chex."""
+        chex.assert_shape(self.transition, (..., None, None, None))
+        chex.assert_axis_dimension_gt(self.transition, -3, 0)
+        chex.assert_axis_dimension_gt(self.transition, -1, 0)
+        chex.assert_axis_dimension(self.transition, -2, self.state_size)
+        chex.assert_shape(
+            self.reward,
+            self.transition.shape,
+            custom_message="reward shape must match transition",
+        )
 
-    @staticmethod
-    def array_names() -> Tuple[str, ...]:
-        """Return the name of the arrays that describe the MDP"""
-        return ("transition", "reward", "initial", "terminal")
+        state_shape = (*self.transition.shape[:-3], self.state_size)
+        chex.assert_shape(
+            self.initial,
+            state_shape,
+            custom_message="initial shape must match the MDP batch and state dimensions",
+        )
+        chex.assert_shape(
+            self.terminal,
+            state_shape,
+            custom_message="terminal shape must match the MDP batch and state dimensions",
+        )
 
-    def __repr__(self) -> str:
-        prefix = f"batch_shape={self.batch_shape}, " if len(
-            self.batch_shape) > 0 else ""
-        return (f"jaxdp.{self.name}({prefix}state_size={self.state_size},"
-                f" action_size={self.action_size})")
+        chex.assert_tree_all_finite(self, custom_message="MDP arrays must be finite")
 
-    @staticmethod
-    def load_mdp_from_json(file_path: str) -> "MDP":
-        """ Load an MDP from the given json file path
+        chex.assert_trees_all_equal(
+            jnp.all(self.transition >= 0),
+            jnp.asarray(True),
+            custom_message="transition probabilities must be nonnegative",
+        )
+        transition_mass = self.transition.sum(axis=-2)
+        chex.assert_trees_all_close(
+            transition_mass,
+            jnp.ones_like(transition_mass),
+            atol=_ATOL,
+            rtol=0.0,
+            custom_message="transition must be column stochastic",
+        )
 
-        Args:
-            file_path (str): JSON file path of the MDP definition
+        chex.assert_trees_all_equal(
+            jnp.all(self.initial >= 0),
+            jnp.asarray(True),
+            custom_message="initial probabilities must be nonnegative",
+        )
+        initial_mass = self.initial.sum(axis=-1)
+        chex.assert_trees_all_close(
+            initial_mass,
+            jnp.ones_like(initial_mass),
+            atol=_ATOL,
+            rtol=0.0,
+            custom_message="initial probabilities must sum to one",
+        )
 
-        Returns:
-            MDP: Initiated MDP
-        """
-        with open(file_path, "r") as fobj:
-            mdp_data = json.load(fobj)
+        chex.assert_trees_all_equal(
+            jnp.all((self.terminal == 0) | (self.terminal == 1)),
+            jnp.asarray(True),
+            custom_message="terminal indicators must be zero or one",
+        )
 
-        array_data = {}
-        for array_name in MDP.array_names():
-            array_data[array_name] = jnp.array(
-                mdp_data.pop(array_name)).astype("float")
+        identity = jnp.eye(self.state_size, dtype=self.transition.dtype)
+        terminal_transition = (self.transition - identity) * self.terminal[..., None, None, :]
+        chex.assert_trees_all_close(
+            terminal_transition,
+            jnp.zeros_like(terminal_transition),
+            atol=_ATOL,
+            rtol=0.0,
+            custom_message="terminal states must be absorbing",
+        )
 
-        return MDP(**array_data, **mdp_data)
-
-    def save_mdp_as_json(self, file_path: str) -> None:
-        """ Save an MDP (or stacked MDPs) as a json file. 
-
-        Args:
-            file_path (str): JSON file path of the MDP definition
-        """
-        with open(file_path, "w") as fobj:
-            json.dump({
-                "name": self.name,
-                **{array_name: getattr(self, array_name).tolist() for array_name in self.array_names()},
-            }, fobj)
-
-
-def flatten_mdp(container) -> Tuple[F[""], Dict[str, Any]]:
-    """Returns an iterable over container contents for registering as a Pytree"""
-    flat_contents = [
-        container.transition,
-        container.reward,
-        container.initial,
-        container.terminal,
-        container.features,
-    ]
-    return flat_contents, {
-        "name": container.name,
-        "validate": False,
-    }
-
-
-def unflatten_mdp(aux_data: Dict[str, Any], flat_contents: F[""]) -> MDP:
-    """Converts flat contents into a MDP for registering as a Pytree"""
-    return MDP(*flat_contents, **aux_data)
+        terminal_reward = self.reward * self.terminal[..., None, :, None]
+        chex.assert_trees_all_close(
+            terminal_reward,
+            jnp.zeros_like(terminal_reward),
+            atol=_ATOL,
+            rtol=0.0,
+            custom_message="rewards originating from terminal states must be zero",
+        )
