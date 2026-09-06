@@ -16,6 +16,9 @@ call.
 | `make_mrp` | Convert an `MDP` and policy into an `MRP`. |
 | `make` | Construct a reproducible named MDP recipe. |
 
+Pass a key to sample a model: `jaxdp.make("garnet", key=jax.random.key(7))`.
+Omitting `key` or passing `None` uses seed `42`; recipes without random generation ignore the key.
+
 Parameterized factories remain available from their defining `jaxdp.mdp` modules. For example,
 import `grid_world` from `jaxdp.mdp.grid_world`.
 
