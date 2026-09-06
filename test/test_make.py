@@ -1,9 +1,12 @@
+import chex
+import jax
 import jax.numpy as jnp
+import jax.random as jrd
 import numpy as np
 import pytest
 
 import jaxdp.mdp as mdp_module
-from jaxdp import make
+from jaxdp import MDP, make
 from jaxdp.planning import policy_eval
 
 
@@ -131,8 +134,75 @@ def test_seeded_recipes_are_reproducible(name: str) -> None:
     first = make(name)
     second = make(name)
 
-    assert jnp.array_equal(first.transition, second.transition)
-    assert jnp.array_equal(first.reward, second.reward)
+    chex.assert_trees_all_equal(first, second, make(name, key=None), make(name, key=jrd.key(42)))
+    chex.assert_trees_all_equal(make(name, key=jrd.key(7)), make(name, key=jrd.key(7)))
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "delayed-reward-long-noisy",
+        "delayed-reward-noisy",
+        "garnet",
+        "garnet-dense",
+        "garnet-large",
+        "garnet-medium",
+    ],
+)
+def test_different_keys_generate_different_models(name: str) -> None:
+    first = make(name, key=jrd.key(7))
+    second = make(name, key=jrd.key(8))
+
+    first.validate()
+    second.validate()
+    assert not jnp.array_equal(first.reward, second.reward)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "cliff-walking",
+        "delayed-reward",
+        "delayed-reward-long",
+        "forest",
+        "forest-long",
+        "four-rooms",
+        "frozen-lake",
+        "frozen-lake-deterministic",
+        "graph",
+        "grid-world",
+        "grid-world-slippery",
+        "sequential",
+        "sequential-long",
+        "tree",
+        "tree-deep",
+    ],
+)
+def test_fixed_models_are_unchanged_by_keys(name: str) -> None:
+    chex.assert_trees_all_equal(make(name), make(name, key=jrd.key(7)), make(name, key=jrd.key(8)))
+
+
+@pytest.mark.parametrize("name", ["garnet", "delayed-reward-noisy", "frozen-lake"])
+def test_make_composes_with_jit_and_vmap(name: str) -> None:
+    def create_one(key: jax.Array | None = None) -> MDP:
+        return make(name, key=key)
+
+    create = chex.chexify(jax.jit(create_one), async_check=False)
+    create_batch = chex.chexify(jax.jit(jax.vmap(create_one)), async_check=False)
+    keys = jrd.split(jrd.key(7), 2)
+    expected = jax.tree.map(
+        lambda *arrays: jnp.stack(arrays), make(name, key=keys[0]), make(name, key=keys[1])
+    )
+
+    chex.assert_trees_all_close(create(), make(name), rtol=1e-5, atol=1e-6)
+    chex.assert_trees_all_close(create(None), make(name), rtol=1e-5, atol=1e-6)
+    chex.assert_trees_all_close(create(keys[0]), make(name, key=keys[0]), rtol=1e-5, atol=1e-6)
+    chex.assert_trees_all_close(create_batch(keys), expected, rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize("name", ["garnet", "delayed-reward-noisy"])
+def test_make_accepts_legacy_keys(name: str) -> None:
+    chex.assert_trees_all_equal(make(name, key=jrd.PRNGKey(7)), make(name, key=jrd.key(7)))
 
 
 def test_make_rejects_unknown_recipe() -> None:
