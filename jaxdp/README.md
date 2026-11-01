@@ -32,6 +32,7 @@ Named recipes are grouped by family:
 - Garnet: `garnet`, `garnet-medium`, `garnet-large`, and `garnet-dense`.
 - Graph: `graph`.
 - Sequential: `sequential` and `sequential-long`.
+- SysAdmin: `sysadmin-circular` and `sysadmin-three-leg`.
 - Tree: `tree` and `tree-deep`.
 
 ## Operators

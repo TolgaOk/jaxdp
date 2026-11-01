@@ -36,6 +36,8 @@ def test_mdp_package_exports_only_models_and_construction() -> None:
         ("grid-world-slippery", 8, 4, 1),
         ("sequential", 4, 2, 0),
         ("sequential-long", 20, 2, 0),
+        ("sysadmin-circular", 128, 8, 0),
+        ("sysadmin-three-leg", 128, 8, 0),
         ("tree", 7, 2, 4),
         ("tree-deep", 63, 2, 32),
     ],
@@ -174,6 +176,8 @@ def test_different_keys_generate_different_models(name: str) -> None:
         "grid-world-slippery",
         "sequential",
         "sequential-long",
+        "sysadmin-circular",
+        "sysadmin-three-leg",
         "tree",
         "tree-deep",
     ],
@@ -182,7 +186,10 @@ def test_fixed_models_are_unchanged_by_keys(name: str) -> None:
     chex.assert_trees_all_equal(make(name), make(name, key=jrd.key(7)), make(name, key=jrd.key(8)))
 
 
-@pytest.mark.parametrize("name", ["garnet", "delayed-reward-noisy", "frozen-lake"])
+@pytest.mark.parametrize(
+    "name",
+    ["garnet", "delayed-reward-noisy", "frozen-lake", "sysadmin-circular", "sysadmin-three-leg"],
+)
 def test_make_composes_with_jit_and_vmap(name: str) -> None:
     def create_one(key: jax.Array | None = None) -> MDP:
         return make(name, key=key)
