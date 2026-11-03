@@ -13,6 +13,7 @@ from jaxdp.mdp.grid_world import grid_world
 from jaxdp.mdp.mdp import MDP
 from jaxdp.mdp.sequential import sequential_mdp
 from jaxdp.mdp.simple_graph import graph_mdp
+from jaxdp.mdp.sysadmin import sysadmin_mdp
 from jaxdp.mdp.tree_mdp import tree_mdp
 
 _GRID_WORLD = (
@@ -109,6 +110,8 @@ _RECIPES: dict[str, _Recipe] = {
     "grid-world-slippery": lambda key: grid_world(board=_GRID_WORLD, p_slip=0.2),
     "sequential": lambda key: sequential_mdp(state_size=4),
     "sequential-long": lambda key: sequential_mdp(state_size=20),
+    "sysadmin-circular": lambda key: sysadmin_mdp(machine_size=7),
+    "sysadmin-three-leg": lambda key: sysadmin_mdp(machine_size=7, topology="three-leg"),
     "tree": lambda key: tree_mdp(depth=2),
     "tree-deep": lambda key: tree_mdp(depth=5),
 }
